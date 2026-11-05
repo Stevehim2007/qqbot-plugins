@@ -115,7 +115,7 @@ class ArchiveContractTests(unittest.TestCase):
         path = ROOT / name
         self.assertTrue(path.is_file(), name)
         payload = json.loads(path.read_text(encoding="utf-8-sig"))
-        self.assertEqual(payload.get("schema_version"), 1)
+        self.assertEqual(payload.get("schema_version"), 2)
         self.assertEqual(payload.get("catalog_id"), "qqbot-plugins")
         return payload
 

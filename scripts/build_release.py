@@ -32,20 +32,49 @@ FINAL_PLUGINS = (
     "qqbot_stickers",
     "qqbot_memory_commands",
 )
-DEPENDENCIES: dict[str, list[str]] = {
-    "qqbot_core_reply": ["qqbot_safe_tools"],
-    "qqbot_safe_tools": [
-        "qqbot_web_reader",
-        "qqbot_image_search",
-        "qqbot_food",
-        "qqbot_stickers",
-    ],
-    "qqbot_web_reader": [],
-    "qqbot_image_search": [],
-    "qqbot_food": [],
-    "qqbot_stickers": [],
-    "qqbot_memory_commands": [],
+PROVIDES: dict[str, list[str]] = {
+    "qqbot_core_reply": ["reply"],
+    "qqbot_safe_tools": ["tools", "tools.confirmation", "tools.audit"],
+    "qqbot_web_reader": ["web.read", "web.read.next_page"],
+    "qqbot_image_search": ["image.search", "image.search.next_page", "image.collect_plan"],
+    "qqbot_food": ["food.query", "food.locations", "food.tags", "food.draft", "food.submit", "food.status"],
+    "qqbot_stickers": ["sticker.collect", "sticker.categories", "sticker.send", "sticker.index"],
+    "qqbot_memory_commands": ["memory.read", "memory.write", "memory.clear", "session", "persona"],
 }
+# Final release dependency direction:
+#   safe_tools is the ABI/auth base and must not hard-depend on business providers;
+#   business providers consume the base; core consumes safe_tools + memory.
+REQUIRES: dict[str, list[dict[str, Any]]] = {
+    "qqbot_core_reply": [
+        {"plugin_id": "qqbot_safe_tools", "version_range": ">=3.0.0,<4", "capability": "tools", "abi_version": 1, "optional": False},
+        {"plugin_id": "qqbot_memory_commands", "version_range": ">=4.0.0,<5", "capability": "memory.read", "abi_version": 1, "optional": False},
+    ],
+    "qqbot_safe_tools": [
+        {"plugin_id": "qqbot_web_reader", "version_range": ">=2.0.0,<3", "capability": "web.read", "abi_version": 1, "optional": True},
+        {"plugin_id": "qqbot_image_search", "version_range": ">=2.0.0,<3", "capability": "image.search", "abi_version": 1, "optional": True},
+        {"plugin_id": "qqbot_food", "version_range": ">=3.0.0,<4", "capability": "food.query", "abi_version": 1, "optional": True},
+        {"plugin_id": "qqbot_stickers", "version_range": ">=3.0.0,<4", "capability": "sticker.send", "abi_version": 1, "optional": True},
+    ],
+    "qqbot_web_reader": [
+        {"plugin_id": "qqbot_safe_tools", "version_range": ">=3.0.0,<4", "capability": "tools", "abi_version": 1, "optional": False},
+    ],
+    "qqbot_image_search": [
+        {"plugin_id": "qqbot_safe_tools", "version_range": ">=3.0.0,<4", "capability": "tools", "abi_version": 1, "optional": False},
+        {"plugin_id": "qqbot_stickers", "version_range": ">=3.0.0,<4", "capability": "sticker.collect", "abi_version": 1, "optional": True},
+    ],
+    "qqbot_food": [
+        {"plugin_id": "qqbot_safe_tools", "version_range": ">=3.0.0,<4", "capability": "tools", "abi_version": 1, "optional": False},
+    ],
+    "qqbot_stickers": [
+        {"plugin_id": "qqbot_safe_tools", "version_range": ">=3.0.0,<4", "capability": "tools", "abi_version": 1, "optional": False},
+    ],
+    "qqbot_memory_commands": [
+        {"plugin_id": "qqbot_safe_tools", "version_range": ">=3.0.0,<4", "capability": "tools", "abi_version": 1, "optional": False},
+    ],
+}
+CONFLICTS = ["qqbot_enhancer", "qqbot_core_full"]
+CONFIG_SCHEMA_VERSION = 1
+DATA_SCHEMA_VERSION = 1
 DISPLAY_NAMES = {
     "qqbot_core_reply": "QQ 核心回复",
     "qqbot_safe_tools": "Safe Tools 协议",
@@ -174,7 +203,18 @@ def validate_plugin(plugin_id: str) -> dict[str, Any]:
         "description": metadata.get("desc", ""),
         "author": metadata.get("author", ""),
         "astrbot": metadata.get("astrbot_version", ""),
-        "dependencies": list(DEPENDENCIES[plugin_id]),
+        # v1 compatibility field retained while clients migrate to requires.
+        "dependencies": [
+            item["plugin_id"] for item in REQUIRES[plugin_id] if not item.get("optional")
+        ],
+        "provides": [
+            {"capability": capability, "abi_version": 1}
+            for capability in PROVIDES[plugin_id]
+        ],
+        "requires": [dict(item) for item in REQUIRES[plugin_id]],
+        "conflicts": list(CONFLICTS),
+        "config_schema_version": CONFIG_SCHEMA_VERSION,
+        "data_schema_version": DATA_SCHEMA_VERSION,
         "recommended_groups": ["QQ Bot"],
     }
 
@@ -264,8 +304,8 @@ def build(tag: str, *, clean: bool = True) -> dict[str, Any]:
             if old.is_file() and old.suffix == ".zip":
                 old.unlink()
     local, remote = _catalog_entries(tag)
-    catalog = {"schema_version": 1, "catalog_id": "qqbot-plugins", "plugins": local}
-    manifest = {"schema_version": 1, "catalog_id": "qqbot-plugins", "plugins": remote}
+    catalog = {"schema_version": 2, "catalog_id": "qqbot-plugins", "plugins": local}
+    manifest = {"schema_version": 2, "catalog_id": "qqbot-plugins", "plugins": remote}
     _write_json(ROOT / "catalog.json", catalog)
     _write_json(ROOT / "manifest.json", manifest)
     return {"tag": tag, "plugins": local, "catalog": str(ROOT / "catalog.json"), "manifest": str(ROOT / "manifest.json")}

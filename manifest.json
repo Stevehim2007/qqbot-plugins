@@ -1,118 +1,381 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "catalog_id": "qqbot-plugins",
   "plugins": [
     {
-      "id": "qqbot_web_reader",
-      "name": "网页读取",
-      "version": "1.0.0",
-      "sha256": "874e35fc0ff76547229effa3fc9019e1bbb2914779eb3320aaaf21da3e6892da",
-      "size": 2738,
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v1.0.0/qqbot_web_reader-1.0.0.zip",
-      "root": "qqbot_web_reader",
+      "id": "qqbot_core_reply",
+      "name": "QQ 核心回复",
+      "version": "4.0.0",
+      "description": "唯一主回复/LLM owner；自包含 stdlib-only，负责 direct/astrbot memory、人格、会话、工具说明 handshake 与本地点歌。",
+      "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
-      "dependencies": [],
+      "dependencies": [
+        "qqbot_safe_tools",
+        "qqbot_memory_commands"
+      ],
+      "provides": [
+        {
+          "capability": "reply",
+          "abi_version": 1
+        }
+      ],
+      "requires": [
+        {
+          "plugin_id": "qqbot_safe_tools",
+          "version_range": ">=3.0.0,<4",
+          "capability": "tools",
+          "abi_version": 1,
+          "optional": false
+        },
+        {
+          "plugin_id": "qqbot_memory_commands",
+          "version_range": ">=4.0.0,<5",
+          "capability": "memory.read",
+          "abi_version": 1,
+          "optional": false
+        }
+      ],
+      "conflicts": [
+        "qqbot_enhancer",
+        "qqbot_core_full"
+      ],
+      "config_schema_version": 1,
+      "data_schema_version": 1,
       "recommended_groups": [
         "QQ Bot"
-      ]
-    },
-    {
-      "id": "qqbot_image_search",
-      "name": "图片搜索",
-      "version": "1.0.0",
-      "sha256": "28871b12f80a1668abb731e51c2c9a0edfd042c91332d218c33ad3254c4cc395",
-      "size": 2563,
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v1.0.0/qqbot_image_search-1.0.0.zip",
-      "root": "qqbot_image_search",
-      "astrbot": ">=4.29,<5",
-      "dependencies": [],
-      "recommended_groups": [
-        "QQ Bot"
-      ]
-    },
-    {
-      "id": "qqbot_food",
-      "name": "Food 搜索",
-      "version": "2.0.0",
-      "sha256": "f1ef0be0ffc59d43f23fd3944ed08c3329adee6698edde597b095d97e7cd862c",
-      "size": 11632,
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v2.0.0/qqbot_food-2.0.0.zip",
-      "root": "qqbot_food",
-      "astrbot": ">=4.29,<5",
-      "dependencies": [],
-      "recommended_groups": [
-        "QQ Bot"
-      ]
-    },
-    {
-      "id": "qqbot_stickers",
-      "name": "表情库",
-      "version": "2.0.0",
-      "sha256": "2e3b05551ed1ee697f87dde57a3e138a3aefcff06dfaf116f99bdf3f2a6a3f6c",
-      "size": 8226,
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v2.0.0/qqbot_stickers-2.0.0.zip",
-      "root": "qqbot_stickers",
-      "astrbot": ">=4.29,<5",
-      "dependencies": [],
-      "recommended_groups": [
-        "QQ Bot"
-      ]
+      ],
+      "sha256": "55d2b3a34995b395885868d146481e9619a0735b8192fcd0eb47e6dfa0341bd8",
+      "size": 59766,
+      "root": "qqbot_core_reply",
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.3.0-beta.4/qqbot_core_reply-4.0.0.zip"
     },
     {
       "id": "qqbot_safe_tools",
       "name": "Safe Tools 协议",
-      "version": "2.0.1",
-      "sha256": "310597d902eeb2ccc7a63ca166f0468f5955f65173cb50bce9d51d934c52c3d6",
-      "size": 21683,
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v2.0.1/qqbot_safe_tools-2.0.1.zip",
-      "root": "qqbot_safe_tools",
+      "version": "3.0.0",
+      "description": "唯一负责 [[tool:...]] marker 解析、校验、权限、冷却与跨插件安全调度的插件；不调用 LLM。",
+      "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
       "dependencies": [],
+      "provides": [
+        {
+          "capability": "tools",
+          "abi_version": 1
+        },
+        {
+          "capability": "tools.confirmation",
+          "abi_version": 1
+        },
+        {
+          "capability": "tools.audit",
+          "abi_version": 1
+        }
+      ],
+      "requires": [
+        {
+          "plugin_id": "qqbot_web_reader",
+          "version_range": ">=2.0.0,<3",
+          "capability": "web.read",
+          "abi_version": 1,
+          "optional": true
+        },
+        {
+          "plugin_id": "qqbot_image_search",
+          "version_range": ">=2.0.0,<3",
+          "capability": "image.search",
+          "abi_version": 1,
+          "optional": true
+        },
+        {
+          "plugin_id": "qqbot_food",
+          "version_range": ">=3.0.0,<4",
+          "capability": "food.query",
+          "abi_version": 1,
+          "optional": true
+        },
+        {
+          "plugin_id": "qqbot_stickers",
+          "version_range": ">=3.0.0,<4",
+          "capability": "sticker.send",
+          "abi_version": 1,
+          "optional": true
+        }
+      ],
+      "conflicts": [
+        "qqbot_enhancer",
+        "qqbot_core_full"
+      ],
+      "config_schema_version": 1,
+      "data_schema_version": 1,
       "recommended_groups": [
         "QQ Bot"
-      ]
+      ],
+      "sha256": "75a71ab826c7d6b049486207337d4d8094018f5a9a41c20646ded465cd4ef692",
+      "size": 49594,
+      "root": "qqbot_safe_tools",
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.3.0-beta.4/qqbot_safe_tools-3.0.0.zip"
+    },
+    {
+      "id": "qqbot_web_reader",
+      "name": "网页读取",
+      "version": "2.0.0",
+      "description": "独立的公开 HTTPS 网页读取插件；限制大小、超时、跳转、内容类型并拒绝内网/回环/保留地址，向 safe_tools 提供稳定工具 API。",
+      "author": "QQ Bot Studio",
+      "astrbot": ">=4.29,<5",
+      "dependencies": [
+        "qqbot_safe_tools"
+      ],
+      "provides": [
+        {
+          "capability": "web.read",
+          "abi_version": 1
+        },
+        {
+          "capability": "web.read.next_page",
+          "abi_version": 1
+        }
+      ],
+      "requires": [
+        {
+          "plugin_id": "qqbot_safe_tools",
+          "version_range": ">=3.0.0,<4",
+          "capability": "tools",
+          "abi_version": 1,
+          "optional": false
+        }
+      ],
+      "conflicts": [
+        "qqbot_enhancer",
+        "qqbot_core_full"
+      ],
+      "config_schema_version": 1,
+      "data_schema_version": 1,
+      "recommended_groups": [
+        "QQ Bot"
+      ],
+      "sha256": "62d22f9a627df6496750716b39aad62d5c47a2b20734ae166eaaeb06e9b177fa",
+      "size": 21548,
+      "root": "qqbot_web_reader",
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.3.0-beta.4/qqbot_web_reader-2.0.0.zip"
+    },
+    {
+      "id": "qqbot_image_search",
+      "name": "图片搜索",
+      "version": "2.0.0",
+      "description": "独立的有界图片搜索插件；Bing HTML 主源 + 百度 JSON 回退，校验相关性/去重/SSRF/内容类型/图片魔数/大小，不调用聊天模型。",
+      "author": "QQ Bot Studio",
+      "astrbot": ">=4.29,<5",
+      "dependencies": [
+        "qqbot_safe_tools"
+      ],
+      "provides": [
+        {
+          "capability": "image.search",
+          "abi_version": 1
+        },
+        {
+          "capability": "image.search.next_page",
+          "abi_version": 1
+        },
+        {
+          "capability": "image.collect_plan",
+          "abi_version": 1
+        }
+      ],
+      "requires": [
+        {
+          "plugin_id": "qqbot_safe_tools",
+          "version_range": ">=3.0.0,<4",
+          "capability": "tools",
+          "abi_version": 1,
+          "optional": false
+        },
+        {
+          "plugin_id": "qqbot_stickers",
+          "version_range": ">=3.0.0,<4",
+          "capability": "sticker.collect",
+          "abi_version": 1,
+          "optional": true
+        }
+      ],
+      "conflicts": [
+        "qqbot_enhancer",
+        "qqbot_core_full"
+      ],
+      "config_schema_version": 1,
+      "data_schema_version": 1,
+      "recommended_groups": [
+        "QQ Bot"
+      ],
+      "sha256": "2794066c2ab1bfe9b7d9b58b71cedf6871e663e8e101c649895901417617e4be",
+      "size": 36417,
+      "root": "qqbot_image_search",
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.3.0-beta.4/qqbot_image_search-2.0.0.zip"
+    },
+    {
+      "id": "qqbot_food",
+      "name": "Food 查询与提交",
+      "version": "3.0.0",
+      "description": "独立 Food 餐厅查询、标签/地点解析、草稿确认与评价提交；固定 https://food.dlsz.top，仅标准库，不调用聊天模型。",
+      "author": "QQ Bot Studio",
+      "astrbot": ">=4.29,<5",
+      "dependencies": [
+        "qqbot_safe_tools"
+      ],
+      "provides": [
+        {
+          "capability": "food.query",
+          "abi_version": 1
+        },
+        {
+          "capability": "food.locations",
+          "abi_version": 1
+        },
+        {
+          "capability": "food.tags",
+          "abi_version": 1
+        },
+        {
+          "capability": "food.draft",
+          "abi_version": 1
+        },
+        {
+          "capability": "food.submit",
+          "abi_version": 1
+        },
+        {
+          "capability": "food.status",
+          "abi_version": 1
+        }
+      ],
+      "requires": [
+        {
+          "plugin_id": "qqbot_safe_tools",
+          "version_range": ">=3.0.0,<4",
+          "capability": "tools",
+          "abi_version": 1,
+          "optional": false
+        }
+      ],
+      "conflicts": [
+        "qqbot_enhancer",
+        "qqbot_core_full"
+      ],
+      "config_schema_version": 1,
+      "data_schema_version": 1,
+      "recommended_groups": [
+        "QQ Bot"
+      ],
+      "sha256": "dd996315a48f80cbbbd16088b483c4a315ddbc528a4ef79e114491fef8fe9ce9",
+      "size": 57935,
+      "root": "qqbot_food",
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.3.0-beta.4/qqbot_food-3.0.0.zip"
+    },
+    {
+      "id": "qqbot_stickers",
+      "name": "表情收藏与发送",
+      "version": "3.0.0",
+      "description": "独立、自包含的收藏表情库：命令、确定性自然语言、SHA 去重、原子索引、旧数据迁移与安全 core-reply 装饰。",
+      "author": "QQ Bot Studio",
+      "astrbot": ">=4.29,<5",
+      "dependencies": [
+        "qqbot_safe_tools"
+      ],
+      "provides": [
+        {
+          "capability": "sticker.collect",
+          "abi_version": 1
+        },
+        {
+          "capability": "sticker.categories",
+          "abi_version": 1
+        },
+        {
+          "capability": "sticker.send",
+          "abi_version": 1
+        },
+        {
+          "capability": "sticker.index",
+          "abi_version": 1
+        }
+      ],
+      "requires": [
+        {
+          "plugin_id": "qqbot_safe_tools",
+          "version_range": ">=3.0.0,<4",
+          "capability": "tools",
+          "abi_version": 1,
+          "optional": false
+        }
+      ],
+      "conflicts": [
+        "qqbot_enhancer",
+        "qqbot_core_full"
+      ],
+      "config_schema_version": 1,
+      "data_schema_version": 1,
+      "recommended_groups": [
+        "QQ Bot"
+      ],
+      "sha256": "9fffc34b1d16276cf3fd6fb9fe692a0bfd9bda66b200611ce0b56d705e426bab",
+      "size": 68509,
+      "root": "qqbot_stickers",
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.3.0-beta.4/qqbot_stickers-3.0.0.zip"
     },
     {
       "id": "qqbot_memory_commands",
       "name": "记忆管理",
-      "version": "3.0.0",
-      "sha256": "f54c9e97101de70f1b10d3beb0d7dad2c52db1cf1f5fe817ee9f01391f968f87",
-      "size": 9328,
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v3.0.0/qqbot_memory_commands-3.0.0.zip",
-      "root": "qqbot_memory_commands",
-      "astrbot": ">=4.29,<5",
-      "dependencies": [],
-      "recommended_groups": [
-        "QQ Bot"
-      ]
-    },
-    {
-      "id": "qqbot_core_reply",
-      "name": "QQ 核心回复",
-      "version": "3.1.1",
-      "sha256": "f64dcdb5ad4ac360d6501371c0eb1f77cd1975b6a8d64e7054664c7176f2bfed",
-      "size": 2533,
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v3.1.1/qqbot_core_reply-3.1.1.zip",
-      "root": "qqbot_core_reply",
-      "astrbot": ">=4.29,<5",
-      "dependencies": [],
-      "recommended_groups": [
-        "QQ Bot"
-      ]
-    },
-    {
-      "id": "qqbot_core_full",
-      "name": "QQ 增强核心（兼容包）",
       "version": "4.0.0",
-      "sha256": "b8242e2c04cdc0ceb24d5e5cf30cf19269e9d9ca3a53e7e682f42f6dafdc363c",
-      "size": 164595,
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.0.0/qqbot_core_full-4.0.0.zip",
-      "root": "qqbot_core_full",
+      "description": "独立 /记忆（别名 /记忆管理）命令；复用 AstrBot 原生长期记忆服务，不调用聊天模型。",
+      "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
-      "dependencies": [],
+      "dependencies": [
+        "qqbot_safe_tools"
+      ],
+      "provides": [
+        {
+          "capability": "memory.read",
+          "abi_version": 1
+        },
+        {
+          "capability": "memory.write",
+          "abi_version": 1
+        },
+        {
+          "capability": "memory.clear",
+          "abi_version": 1
+        },
+        {
+          "capability": "session",
+          "abi_version": 1
+        },
+        {
+          "capability": "persona",
+          "abi_version": 1
+        }
+      ],
+      "requires": [
+        {
+          "plugin_id": "qqbot_safe_tools",
+          "version_range": ">=3.0.0,<4",
+          "capability": "tools",
+          "abi_version": 1,
+          "optional": false
+        }
+      ],
+      "conflicts": [
+        "qqbot_enhancer",
+        "qqbot_core_full"
+      ],
+      "config_schema_version": 1,
+      "data_schema_version": 1,
       "recommended_groups": [
         "QQ Bot"
-      ]
+      ],
+      "sha256": "44287bad8f919afa282c918e3309b320357ec46c1f4a63a681209afea00c2de0",
+      "size": 26899,
+      "root": "qqbot_memory_commands",
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.3.0-beta.4/qqbot_memory_commands-4.0.0.zip"
     }
   ]
 }
