@@ -69,7 +69,7 @@ class ImportContractTests(unittest.TestCase):
     def test_command_registration_has_food_and_aliases(self):
         args, kwargs = FoodPlugin.food_command._qqbot_food_command
         self.assertEqual(args[0], "food")
-        self.assertEqual(set(kwargs.get("alias", set())), {"吃什么", "饭店"})
+        self.assertEqual(set(kwargs.get("alias", set())), {"美食", "吃什么", "饭店"})
         self.assertEqual(kwargs.get("priority"), 110)
 
     def test_confirmation_handler_registration(self):
