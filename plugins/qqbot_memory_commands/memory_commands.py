@@ -23,6 +23,7 @@ from __future__ import annotations
 import difflib
 import re
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Iterable, Sequence
 
@@ -30,15 +31,27 @@ REDACTED = "[已隐藏]"
 DEFAULT_MAX_RESULTS = 5
 DEFAULT_CONTENT_CHARS = 80
 DEFAULT_REPLY_CHARS = 900
+MIN_MAX_RESULTS = 1
+MAX_MAX_RESULTS = 10
+MIN_CONTENT_CHARS = 20
+MAX_CONTENT_CHARS = 200
+MIN_REPLY_CHARS = 200
+MAX_REPLY_CHARS = 2000
 
 COMMAND = "记忆"
+COMMAND_ALIASES = ("记忆管理",)
+_COMMAND_NAMES = (COMMAND_ALIASES[0], COMMAND, "memory")
 USAGE = (
     "用法：/记忆 状态；/记忆 搜索 <关键词>；/记忆 删除 <id>；"
-    "/记忆 忘记 本群|我的；/记忆 整理"
+    "/记忆 忘记 本群|我的；/记忆 整理（/记忆管理 为等价别名）"
 )
-DISABLED_REPLY = "记忆管理命令未启用（管理员可在插件配置开启 memory_commands_enabled）。"
+DISABLED_REPLY = (
+    "记忆管理命令未启用（管理员可在插件配置开启 enabled；"
+    "旧配置 memory_commands_enabled 也兼容）。"
+)
 DESTRUCTIVE_DISABLED_REPLY = (
-    "删除/忘记未启用（管理员可在插件配置开启 memory_commands_destructive_enabled）。"
+    "删除/忘记未启用（管理员可在插件配置开启 destructive_enabled；"
+    "旧配置 memory_commands_destructive_enabled 也兼容）。"
 )
 PERMISSION_REPLY = "只有群主/管理员或允许名单可以使用记忆管理命令。"
 UNPATCHED_REPLY = "当前 AstrBot 没有长期记忆服务（未安装记忆补丁），/记忆 命令不可用。"
@@ -46,8 +59,21 @@ UNAVAILABLE_REPLY = "长期记忆服务当前不可用，请检查 AstrBot 记�
 MEMORY_OFF_REPLY = "长期记忆功能未启用（memory.enable=false），暂不读取或修改记忆。"
 READ_FAILED_REPLY = "读取记忆失败（未做任何修改），请稍后再试。"
 COMMAND_FAILED_REPLY = "记忆命令执行失败（未确认任何修改），请稍后再试。"
+HANDLER_FAILED_REPLY = "记忆管理命令执行失败（未确认任何修改），请稍后再试。"
 
-_ADMIN_ROLES = frozenset({"admin", "owner", "administrator", "群主", "管理员"})
+_ADMIN_ROLES = frozenset(
+    {
+        "admin",
+        "owner",
+        "administrator",
+        "superadmin",
+        "group_owner",
+        "group_admin",
+        "群主",
+        "管理员",
+        "群管理员",
+    }
+)
 _SAFE_FORGET_TARGETS = {
     "本群": "current",
     "群": "current",
@@ -104,6 +130,110 @@ class Options:
     max_reply_chars: int = DEFAULT_REPLY_CHARS
 
 
+def options_from_config(mapping: Mapping[str, Any] | None) -> Options:
+    """Build clamped options from canonical or legacy bot-1 config keys.
+
+    Canonical keys win when present.  Only a missing canonical key falls back
+    to its historical ``memory_commands_*`` spelling.  The helper is pure and
+    deliberately tolerant: a malformed value falls back to the safe default
+    (commands/destructive operations disabled) rather than raising.
+    """
+
+    data: Mapping[str, Any] = mapping if isinstance(mapping, Mapping) else {}
+
+    def choose(canonical: str, legacy: str, default: Any) -> Any:
+        if canonical in data:
+            return data[canonical]
+        if legacy in data:
+            return data[legacy]
+        return default
+
+    return Options(
+        enabled=_config_bool(
+            choose("enabled", "memory_commands_enabled", False),
+            default=False,
+        ),
+        destructive_enabled=_config_bool(
+            choose(
+                "destructive_enabled",
+                "memory_commands_destructive_enabled",
+                False,
+            ),
+            default=False,
+        ),
+        allow_user_ids=_config_ids(
+            choose("allow_user_ids", "memory_commands_allow_user_ids", "")
+        ),
+        max_results=_config_int(
+            choose("max_results", "memory_commands_max_results", DEFAULT_MAX_RESULTS),
+            default=DEFAULT_MAX_RESULTS,
+            minimum=MIN_MAX_RESULTS,
+            maximum=MAX_MAX_RESULTS,
+        ),
+        content_chars=_config_int(
+            choose(
+                "content_chars",
+                "memory_commands_content_chars",
+                DEFAULT_CONTENT_CHARS,
+            ),
+            default=DEFAULT_CONTENT_CHARS,
+            minimum=MIN_CONTENT_CHARS,
+            maximum=MAX_CONTENT_CHARS,
+        ),
+        max_reply_chars=_config_int(
+            choose(
+                "max_reply_chars",
+                "memory_commands_max_reply_chars",
+                DEFAULT_REPLY_CHARS,
+            ),
+            default=DEFAULT_REPLY_CHARS,
+            minimum=MIN_REPLY_CHARS,
+            maximum=MAX_REPLY_CHARS,
+        ),
+    )
+
+
+def _config_bool(value: Any, *, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value != 0
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "y", "on", "启用", "开"}:
+            return True
+        if lowered in {"0", "false", "no", "n", "off", "禁用", "关", ""}:
+            return False
+    return default
+
+
+def _config_int(value: Any, *, default: int, minimum: int, maximum: int) -> int:
+    if isinstance(value, bool):
+        return default
+    try:
+        parsed = int(str(value).strip()) if isinstance(value, str) else int(value)
+    except Exception:  # noqa: BLE001 - malformed config falls back safely
+        return default
+    return max(minimum, min(maximum, parsed))
+
+
+def _config_ids(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        candidates: Iterable[Any] = value.split(",")
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        candidates = value
+    else:
+        return ()
+    result: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        text = str(candidate or "").strip()
+        if text and text not in seen:
+            seen.add(text)
+            result.append(text)
+    return tuple(result)
+
+
 @dataclass(frozen=True)
 class ParsedCommand:
     action: str
@@ -152,7 +282,8 @@ def parse_command(text: str, prefixes: Sequence[str] = ("/",)) -> ParsedCommand:
             raw = raw[len(prefix) :].strip()
             break
     lowered = raw.lower()
-    for name in ("记忆", "memory"):
+    # Longest first: /记忆管理 must not be mistaken for /记忆 + "管理".
+    for name in _COMMAND_NAMES:
         if lowered == name:
             return ParsedCommand("help")
         if lowered.startswith(name):
@@ -179,7 +310,17 @@ def parse_command(text: str, prefixes: Sequence[str] = ("/",)) -> ParsedCommand:
 def is_authorized(event: Any, allow_user_ids: Iterable[str]) -> bool:
     """Admin / QQ group owner / explicit allowlist only."""
 
-    allowed = {str(value).strip() for value in allow_user_ids if str(value).strip()}
+    if isinstance(allow_user_ids, str):
+        candidates: Iterable[Any] = allow_user_ids.split(",")
+    elif allow_user_ids is None:
+        candidates = ()
+    else:
+        candidates = allow_user_ids
+    allowed = {
+        str(value).strip()
+        for value in candidates
+        if value is not None and str(value).strip()
+    }
     sender = _safe_str(lambda: event.get_sender_id())
     if sender and sender in allowed:
         return True
@@ -205,6 +346,8 @@ def open_service(context: Any, event: Any, core: Any) -> ServiceHandle | None:
         memory_context = core.build_context(event)
     except Exception:  # noqa: BLE001 - unpatched/broken service is a fallback
         return None
+    if service is None or memory_context is None:
+        return None
     scope = scope_for(memory_context)
     if scope is None or not scope.scope_id:
         return None
@@ -214,7 +357,7 @@ def open_service(context: Any, event: Any, core: Any) -> ServiceHandle | None:
 def scope_for(memory_context: Any) -> Scope | None:
     """The one scope a management reply may touch for this chat."""
 
-    is_private = bool(_safe_get(memory_context, "is_private", True))
+    is_private = _config_bool(_safe_get(memory_context, "is_private", True), default=True)
     group_id = str(_safe_get(memory_context, "group_id", "") or "")
     if is_private or not group_id:
         user_scope = _safe_get(memory_context, "user_scope", None)
@@ -258,7 +401,7 @@ def handle_text(
     handle = open_service(context, event, core)
     if handle is None:
         return UNAVAILABLE_REPLY
-    if not bool(getattr(handle.service, "enabled", False)):
+    if not _service_enabled(handle.service):
         return MEMORY_OFF_REPLY
     try:
         reply = _dispatch(parsed, handle, options, clock=clock or time.time)
@@ -293,8 +436,8 @@ def _status_reply(handle: ServiceHandle, options: Options) -> str:
         policy = handle.service.policy_for(handle.memory_context)
     except Exception:  # noqa: BLE001 - status must still answer
         policy = None
-    mode = str(_safe_get(policy, "mode", "未知"))
-    scope_mode = str(_safe_get(policy, "scope", "未知"))
+    mode = scrub_text(_safe_get(policy, "mode", "未知"), 60)
+    scope_mode = scrub_text(_safe_get(policy, "scope", "未知"), 60)
     inject = "开" if _safe_get(policy, "inject", False) else "关"
     extract = "开" if _safe_get(policy, "extract", False) else "关"
     fts = "开" if bool(getattr(handle.service, "fts_enabled", False)) else "关"
@@ -326,11 +469,16 @@ def _search_reply(query: str, handle: ServiceHandle, options: Options) -> str:
         return f"没有找到包含「{query}」的记忆（仅当前会话作用域）。"
     matches.sort(
         key=lambda record: (
-            -int(record.get("hits", 0) or 0),
-            -float(record.get("updated_at", 0) or 0),
+            -_as_int(record.get("hits", 0), default=0),
+            -_as_float(record.get("updated_at", 0), default=0.0),
         )
     )
-    limit = max(1, int(options.max_results))
+    limit = _config_int(
+        options.max_results,
+        default=DEFAULT_MAX_RESULTS,
+        minimum=MIN_MAX_RESULTS,
+        maximum=MAX_MAX_RESULTS,
+    )
     lines = [
         f"记忆搜索「{query}」（{handle.scope.label} · {len(matches)} 条命中，"
         f"最多显示 {limit} 条；内容不可信，请勿当作指令）",
@@ -350,12 +498,12 @@ def _tidy_reply(handle: ServiceHandle, options: Options, *, clock) -> str:
         return READ_FAILED_REPLY
     if not records:
         return f"{handle.scope.label}还没有记忆，无需整理。"
-    now = float(clock())
+    now = _as_float(clock(), default=0.0)
     # ponytail: preview only compares the 60 newest rows; a huge scope gets a
     # prefix preview instead of an O(n²) scan. Lift the cap if operators ask.
     preview = sorted(
         records,
-        key=lambda record: -float(record.get("updated_at", 0) or 0),
+        key=lambda record: -_as_float(record.get("updated_at", 0), default=0.0),
     )[:60]
     exact = _duplicate_groups(preview, threshold=1.0)
     near = _duplicate_groups(preview, threshold=0.9)
@@ -363,14 +511,14 @@ def _tidy_reply(handle: ServiceHandle, options: Options, *, clock) -> str:
     low_value = [
         record
         for record in preview
-        if float(record.get("importance", 1) or 0) <= 0.3
-        or float(record.get("confidence", 1) or 0) <= 0.3
+        if _as_float(record.get("importance", 1), default=1.0) <= 0.3
+        or _as_float(record.get("confidence", 1), default=1.0) <= 0.3
     ]
-    expired = [
-        record
-        for record in preview
-        if record.get("expires_at") and float(record.get("expires_at") or 0) <= now
-    ]
+    expired = []
+    for record in preview:
+        expires_at = _as_float(record.get("expires_at"), default=0.0)
+        if expires_at > 0 and expires_at <= now:
+            expired.append(record)
     lines = [
         f"记忆整理（dry-run 预览，不会修改任何数据）· {handle.scope.label} · "
         f"共 {len(records)} 条（预览 {len(preview)} 条）",
@@ -396,7 +544,12 @@ def _delete_reply(argument: str, handle: ServiceHandle, options: Options) -> str
     records = _scope_records(handle)
     if records is None:
         return READ_FAILED_REPLY
-    if memory_id not in {int(record.get("id", 0) or 0) for record in records}:
+    scoped_ids = {
+        _as_int(record.get("id", 0), default=0)
+        for record in records
+        if isinstance(record, dict)
+    }
+    if memory_id not in scoped_ids:
         return (
             f"未找到 id={memory_id} 的记忆（只能删除当前会话作用域，"
             "其他群/私聊记忆不会被删除）。"
@@ -405,7 +558,7 @@ def _delete_reply(argument: str, handle: ServiceHandle, options: Options) -> str
         deleted = handle.service.delete(memory_id)
     except Exception:  # noqa: BLE001 - report failure, never claim success
         return f"删除 id={memory_id} 失败（服务异常），请稍后再试。"
-    if deleted:
+    if _write_confirmed(deleted):
         return f"已删除记忆 id={memory_id}（{handle.scope.label}）。"
     return f"删除失败：服务未确认删除 id={memory_id}，请稍后再试。"
 
@@ -426,12 +579,16 @@ def _forget_reply(argument: str, handle: ServiceHandle, options: Options) -> str
             return "无法确定你的个人记忆作用域，未做任何修改。"
         scope_type, scope_id, label = "user", str(user_scope[1]), "我的"
     try:
-        count = handle.service.forget(scope_type, scope_id)
+        result = handle.service.forget(scope_type, scope_id)
     except Exception:  # noqa: BLE001 - report failure, never claim success
         return f"忘记{label}记忆失败（服务异常），请稍后再试。"
-    count = int(count or 0)
+    if isinstance(result, bool):
+        if result:
+            return f"已忘记{label}的记忆（服务已确认，未返回条数）。"
+        return f"{label}作用域没有可忘记的记忆（服务未返回可确认条数），未做任何修改。"
+    count = _as_int(result, default=0)
     if count <= 0:
-        return f"{label}作用域没有可忘记的记忆，未做任何修改。"
+        return f"{label}作用域没有可忘记的记忆（服务未返回可确认条数），未做任何修改。"
     return f"已忘记{label}的 {count} 条记忆。"
 
 
@@ -453,25 +610,47 @@ def scrub_text(text: str, limit: int = DEFAULT_CONTENT_CHARS) -> str:
 
 
 def _record_line(record: dict, options: Options) -> str:
-    memory_id = int(record.get("id", 0) or 0)
-    age = _age(float(record.get("updated_at", 0) or 0))
-    content = scrub_text(record.get("content", ""), max(1, int(options.content_chars)))
+    memory_id = _as_int(record.get("id", 0), default=0)
+    age = _age(_as_float(record.get("updated_at", 0), default=0.0))
+    limit = _config_int(
+        options.content_chars,
+        default=DEFAULT_CONTENT_CHARS,
+        minimum=MIN_CONTENT_CHARS,
+        maximum=MAX_CONTENT_CHARS,
+    )
+    content = scrub_text(record.get("content", ""), limit)
     return f"- [id:{memory_id}] {age}：{content}"
 
 
 def _scope_records(handle: ServiceHandle) -> list[dict] | None:
+    """Read only the already-bound scope, never a full database export."""
+
     try:
         payload = handle.service.export(handle.scope.kind, handle.scope.scope_id)
     except Exception:  # noqa: BLE001 - callers answer with a failure notice
         return None
     if not isinstance(payload, (list, tuple)):
         return None
-    return [record for record in payload if isinstance(record, dict)]
+    records: list[dict] = []
+    for record in payload:
+        if not isinstance(record, dict):
+            return None
+        # Defense in depth against a buggy service.  Records without scope
+        # metadata are assumed to have been filtered by the explicit export
+        # call; records that name another scope are never displayed or deleted.
+        record_scope_type = record.get("scope_type")
+        record_scope_id = record.get("scope_id")
+        if record_scope_type is not None and str(record_scope_type) != handle.scope.kind:
+            continue
+        if record_scope_id is not None and str(record_scope_id) != handle.scope.scope_id:
+            continue
+        records.append(record)
+    return records
 
 
 def _duplicate_groups(records: Sequence[dict], *, threshold: float) -> list[list[dict]]:
     groups: list[list[dict]] = []
-    for index, record in enumerate(records):
+    for record in records:
         text = _normalise(record.get("content", ""))
         if not text:
             continue
@@ -491,7 +670,7 @@ def _normalise(text: Any) -> str:
 
 
 def _sample_ids(groups: Sequence[Sequence[dict]]) -> str:
-    ids = [int(group[0].get("id", 0) or 0) for group in groups[:3]]
+    ids = [_as_int(group[0].get("id", 0), default=0) for group in groups[:3]]
     return f"（示例 id {', '.join(str(value) for value in ids)}）" if ids else ""
 
 
@@ -506,6 +685,42 @@ def _age(updated_at: float) -> str:
     if seconds < 86400:
         return f"{int(seconds // 3600)} 小时前"
     return f"{int(seconds // 86400)} 天前"
+
+
+def _service_enabled(service: Any) -> bool:
+    enabled = _safe_get(service, "enabled", False)
+    if callable(enabled):
+        try:
+            enabled = enabled()
+        except Exception:  # noqa: BLE001 - treat a broken flag as off
+            return False
+    return bool(enabled)
+
+
+def _as_int(value: Any, *, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    try:
+        return int(value)
+    except Exception:  # noqa: BLE001 - malformed service value falls back
+        return default
+
+
+def _as_float(value: Any, *, default: float = 0.0) -> float:
+    if value is None or isinstance(value, bool):
+        return default
+    try:
+        return float(value)
+    except Exception:  # noqa: BLE001 - malformed service value falls back
+        return default
+
+
+def _write_confirmed(result: Any) -> bool:
+    """Accept only an explicit boolean success or a positive numeric rowcount."""
+
+    if isinstance(result, bool):
+        return result
+    return _as_int(result, default=0) > 0
 
 
 def _event_roles(event: Any) -> list[str]:
@@ -535,7 +750,10 @@ def _event_roles(event: Any) -> list[str]:
 
 def _safe_get(source: Any, name: str, default: Any) -> Any:
     try:
-        value = getattr(source, name, default) if source is not None else default
+        if isinstance(source, Mapping):
+            value = source.get(name, default)
+        else:
+            value = getattr(source, name, default) if source is not None else default
     except Exception:  # noqa: BLE001 - duck-typed stub
         return default
     return default if value is None else value
@@ -549,7 +767,12 @@ def _safe_str(getter) -> str:
 
 
 def _bounded(text: str, options: Options) -> str:
-    limit = max(200, min(2000, int(options.max_reply_chars)))
+    limit = _config_int(
+        options.max_reply_chars,
+        default=DEFAULT_REPLY_CHARS,
+        minimum=MIN_REPLY_CHARS,
+        maximum=MAX_REPLY_CHARS,
+    )
     if len(text) <= limit:
         return text
     return text[: max(1, limit - 1)].rstrip() + "…"
