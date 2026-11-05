@@ -167,7 +167,37 @@ def _normalized_host(raw_host: str) -> str:
     return host
 
 
-def validate_fetch_url(raw: object, *, allow_http: bool = False) -> str:
+def _host_allowed(host: str, allowed_hosts: object) -> bool:
+    """Match a host against an optional exact/``*.suffix`` allowlist."""
+
+    if not allowed_hosts:
+        return True
+    if isinstance(allowed_hosts, str):
+        patterns = [allowed_hosts]
+    else:
+        try:
+            patterns = [str(item) for item in allowed_hosts]
+        except TypeError:
+            return False
+    normalized = str(host or "").lower().rstrip(".")
+    for pattern in patterns:
+        candidate = pattern.strip().lower().rstrip(".")
+        if not candidate:
+            continue
+        if candidate.startswith("*."):
+            if normalized.endswith(candidate[1:]):
+                return True
+        elif normalized == candidate:
+            return True
+    return False
+
+
+def validate_fetch_url(
+    raw: object,
+    *,
+    allow_http: bool = False,
+    allowed_hosts: object = None,
+) -> str:
     """Return a normalized public HTTPS URL or raise :class:`WebFetchError`."""
 
     value = str(raw or "").strip()
@@ -187,6 +217,8 @@ def validate_fetch_url(raw: object, *, allow_http: bool = False) -> str:
     if scheme not in allowed_schemes:
         raise WebFetchError("invalid_url")
     host = _normalized_host(parts.hostname or "")
+    if not _host_allowed(host, allowed_hosts):
+        raise WebFetchError("blocked_host")
     if parts.username is not None or parts.password is not None:
         raise WebFetchError("invalid_url")
     if port is not None and not 1 <= port <= 65535:
@@ -554,6 +586,7 @@ def fetch_page_text(
     max_redirects: int = WEB_FETCH_DEFAULT_MAX_REDIRECTS,
     allow_http: bool = False,
     user_agent: str = DEFAULT_USER_AGENT,
+    allowed_hosts: object = None,
 ) -> PageResult:
     """Fetch one public text page; raise :class:`WebFetchError` on failure."""
 
@@ -568,7 +601,11 @@ def fetch_page_text(
     )
     timeout = max(0.5, min(float(timeout or WEB_FETCH_DEFAULT_TIMEOUT), 300.0))
     deadline = time.monotonic() + timeout
-    current = validate_fetch_url(url, allow_http=allow_http)
+    current = validate_fetch_url(
+        url,
+        allow_http=allow_http,
+        allowed_hosts=allowed_hosts,
+    )
     for hop in range(max_redirects + 1):
         remaining = deadline - time.monotonic()
         if remaining <= 0.05:
@@ -588,6 +625,7 @@ def fetch_page_text(
                 current = validate_fetch_url(
                     urllib.parse.urljoin(current, hop_result.location),
                     allow_http=allow_http,
+                    allowed_hosts=allowed_hosts,
                 )
             except WebFetchError as exc:
                 raise WebFetchError("bad_redirect") from exc

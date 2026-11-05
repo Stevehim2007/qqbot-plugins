@@ -43,13 +43,17 @@ class CommandTests(unittest.TestCase):
         self.plugin = main.WebReaderPlugin(context=None, config={})
         COMMAND_REGISTRY.clear()
 
-    def test_command_registration_includes_both_aliases(self):
+    def test_command_registration_includes_canonical_name_and_aliases(self):
         registrations = [
-            item for item in REGISTRATIONS_AT_IMPORT if item["name"] == "网页"
+            item for item in REGISTRATIONS_AT_IMPORT if item["name"] == "网页读取"
         ]
         self.assertEqual(len(registrations), 1)
-        self.assertIn("读网页", registrations[0]["aliases"])
-        self.assertEqual(main.COMMAND_NAMES, ("网页", "读网页"))
+        self.assertEqual(
+            set(registrations[0]["aliases"]),
+            {"网页", "读网页", "web"},
+        )
+        for name in ("网页读取", "网页", "读网页", "web"):
+            self.assertIn(name, main.COMMAND_NAMES)
 
     def test_extract_url_supports_both_command_names(self):
         self.assertEqual(

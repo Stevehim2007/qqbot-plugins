@@ -14,26 +14,42 @@
     "description": "返回正文最大字符数",
     "type": "int",
     "default": 4000,
-    "slider": {"min": 500, "max": 20000, "step": 500}
+    "slider": {
+      "min": 500,
+      "max": 20000,
+      "step": 500
+    }
   },
   "max_bytes": {
     "description": "响应体最大字节数",
     "type": "int",
     "default": 262144,
-    "slider": {"min": 65536, "max": 5242880, "step": 65536},
+    "slider": {
+      "min": 65536,
+      "max": 5242880,
+      "step": 65536
+    },
     "hint": "最多读取上限+1 字节用于判断超限，不会无限读取。"
   },
   "timeout_seconds": {
     "description": "单次读取总超时秒数",
     "type": "int",
     "default": 10,
-    "slider": {"min": 1, "max": 60, "step": 1}
+    "slider": {
+      "min": 1,
+      "max": 60,
+      "step": 1
+    }
   },
   "max_redirects": {
     "description": "最多跟随跳转次数",
     "type": "int",
     "default": 3,
-    "slider": {"min": 0, "max": 5, "step": 1},
+    "slider": {
+      "min": 0,
+      "max": 5,
+      "step": 1
+    },
     "hint": "每一跳都会重新解析 DNS 并校验目标是否为公开 HTTPS 地址。"
   },
   "user_agent": {
@@ -44,7 +60,7 @@
   "usage_reply": {
     "description": "未提供链接时的提示",
     "type": "text",
-    "default": "用法：/网页 https://example.com（别名 /读网页）"
+    "default": "用法：/网页读取 <URL> 或 /网页读取 下一页（别名 /网页、/读网页、/web）"
   },
   "disabled_reply": {
     "description": "功能关闭时的提示",
@@ -110,5 +126,149 @@
     "description": "未知错误时的兜底提示",
     "type": "text",
     "default": "读取网页失败，请稍后再试。"
+  },
+  "commands.aliases": {
+    "description": "规范命令别名",
+    "type": "list",
+    "default": [
+      "网页",
+      "读网页",
+      "web"
+    ],
+    "items": {
+      "type": "string"
+    }
+  },
+  "fetch.timeout_seconds": {
+    "description": "fetch：单次读取总超时秒数",
+    "type": "int",
+    "default": 10,
+    "slider": {
+      "min": 1,
+      "max": 60,
+      "step": 1
+    }
+  },
+  "fetch.max_bytes": {
+    "description": "fetch：响应体最大字节数",
+    "type": "int",
+    "default": 262144,
+    "slider": {
+      "min": 65536,
+      "max": 5242880,
+      "step": 65536
+    }
+  },
+  "fetch.max_redirects": {
+    "description": "fetch：最多跟随跳转次数",
+    "type": "int",
+    "default": 3,
+    "slider": {
+      "min": 0,
+      "max": 5,
+      "step": 1
+    }
+  },
+  "fetch.allowed_hosts": {
+    "description": "fetch：可选主机白名单（空表示不额外限制）",
+    "type": "list",
+    "default": [],
+    "items": {
+      "type": "string"
+    },
+    "hint": "支持 example.com 或 *.example.com；内网/非公开地址始终拒绝。"
+  },
+  "fetch.allow_http": {
+    "description": "fetch：允许明文 HTTP（默认仅 HTTPS）",
+    "type": "bool",
+    "default": false
+  },
+  "fetch.user_agent": {
+    "description": "fetch：请求 User-Agent",
+    "type": "string",
+    "default": "Mozilla/5.0 (compatible; QQBotStudio-WebReader/2.0; +https://github.com/Stevehim2007/qqbot-plugins)"
+  },
+  "extract.mode": {
+    "description": "extract：正文提取模式",
+    "type": "string",
+    "default": "text",
+    "options": [
+      "text",
+      "html_text"
+    ],
+    "labels": [
+      "纯文本",
+      "保留HTML文本换行"
+    ]
+  },
+  "extract.max_chars": {
+    "description": "extract：提取正文最大字符数",
+    "type": "int",
+    "default": 4000,
+    "slider": {
+      "min": 500,
+      "max": 20000,
+      "step": 500
+    }
+  },
+  "paging.page_chars": {
+    "description": "paging：每页字符数",
+    "type": "int",
+    "default": 1200,
+    "slider": {
+      "min": 200,
+      "max": 8000,
+      "step": 100
+    }
+  },
+  "cache.ttl_seconds": {
+    "description": "cache：网页分页缓存 TTL 秒数（0 表示立即过期）",
+    "type": "int",
+    "default": 600,
+    "slider": {
+      "min": 0,
+      "max": 86400,
+      "step": 60
+    }
+  },
+  "cache.max_entries": {
+    "description": "cache：最多缓存网页分页数",
+    "type": "int",
+    "default": 100,
+    "slider": {
+      "min": 0,
+      "max": 1000,
+      "step": 10
+    }
+  },
+  "policy.policy_id": {
+    "description": "policy：授权策略登记引用",
+    "type": "string",
+    "default": "default"
+  },
+  "policy.owner_epoch": {
+    "description": "policy：服务端已提交 owner epoch",
+    "type": "int",
+    "default": 1,
+    "slider": {
+      "min": 0,
+      "max": 1000,
+      "step": 1
+    }
+  },
+  "no_cursor_reply": {
+    "description": "没有可继续分页时的提示",
+    "type": "text",
+    "default": "没有可继续的网页分页；请先发送 /网页读取 <URL>。"
+  },
+  "cursor_invalid_reply": {
+    "description": "分页游标无效时的提示",
+    "type": "text",
+    "default": "分页游标无效或已过期，请重新读取网页。"
+  },
+  "cache_miss_reply": {
+    "description": "分页缓存失效时的提示",
+    "type": "text",
+    "default": "网页分页缓存已失效，请重新读取网页。"
   }
 }
