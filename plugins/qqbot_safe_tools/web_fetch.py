@@ -52,7 +52,7 @@ WEB_FETCH_BLOCKED_HOST_SUFFIXES = (
 )
 _HOSTNAME_RE = re.compile(r"[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?\Z")
 WEB_FETCH_USER_AGENT = (
-    "Mozilla/5.0 (compatible; qqbot_enhancer/4.0; +https://food.dlsz.top)"
+    "Mozilla/5.0 (compatible; qqbot_safe_tools/3.0; +https://food.dlsz.top)"
 )
 WEB_FETCH_HEADERS = {
     "User-Agent": WEB_FETCH_USER_AGENT,

@@ -1,1 +1,232 @@
-{"enabled": {"description": "启用工具协议诊断命令", "type": "bool", "default": true}}
+{
+  "enabled": {
+    "description": "启用 Safe Tools 协议（唯一 marker 解析/执行 owner）",
+    "type": "bool",
+    "default": true
+  },
+  "marker_enabled": {
+    "description": "允许模型回复携带 [[tool:...]] 标记",
+    "type": "bool",
+    "default": true
+  },
+  "max_actions": {
+    "description": "每条回复可执行的动作数；协议硬上限为 1，0 表示不执行",
+    "type": "int",
+    "default": 1,
+    "slider": {
+      "min": 0,
+      "max": 1,
+      "step": 1
+    }
+  },
+  "allow_fetch_webpage": {
+    "description": "允许 fetch_webpage（公开 HTTP(S) 网页读取）",
+    "type": "bool",
+    "default": true
+  },
+  "allow_search_images": {
+    "description": "允许 search_images（图片搜索）",
+    "type": "bool",
+    "default": true
+  },
+  "allow_search_food_restaurants": {
+    "description": "允许 search_food_restaurants（只读餐厅搜索）",
+    "type": "bool",
+    "default": true
+  },
+  "allow_submit_food_review": {
+    "description": "允许 submit_food_review（Food 评价提交）",
+    "type": "bool",
+    "default": true
+  },
+  "allow_send_sticker": {
+    "description": "允许 send_sticker（发送本地表情）",
+    "type": "bool",
+    "default": true
+  },
+  "allow_collect_sticker": {
+    "description": "允许 collect_sticker（收藏当前表情）",
+    "type": "bool",
+    "default": true
+  },
+  "allow_list_categories": {
+    "description": "允许 list_sticker_categories（列出表情分类）",
+    "type": "bool",
+    "default": true
+  },
+  "web_fetch_cooldown_seconds": {
+    "description": "网页读取冷却秒数（按会话）",
+    "type": "int",
+    "default": 30,
+    "slider": {
+      "min": 0,
+      "max": 3600,
+      "step": 5
+    }
+  },
+  "image_search_cooldown_seconds": {
+    "description": "图片搜索冷却秒数（按会话）",
+    "type": "int",
+    "default": 10,
+    "slider": {
+      "min": 0,
+      "max": 3600,
+      "step": 5
+    }
+  },
+  "food_search_cooldown_seconds": {
+    "description": "餐厅搜索冷却秒数（按会话）",
+    "type": "int",
+    "default": 10,
+    "slider": {
+      "min": 0,
+      "max": 3600,
+      "step": 5
+    }
+  },
+  "food_submit_cooldown_seconds": {
+    "description": "Food 评价提交冷却秒数（按会话）",
+    "type": "int",
+    "default": 60,
+    "slider": {
+      "min": 0,
+      "max": 3600,
+      "step": 10
+    }
+  },
+  "sticker_cooldown_seconds": {
+    "description": "发送表情冷却秒数（按会话）",
+    "type": "int",
+    "default": 20,
+    "slider": {
+      "min": 0,
+      "max": 3600,
+      "step": 5
+    }
+  },
+  "collect_sticker_cooldown_seconds": {
+    "description": "收藏表情冷却秒数（按会话）",
+    "type": "int",
+    "default": 30,
+    "slider": {
+      "min": 0,
+      "max": 3600,
+      "step": 5
+    }
+  },
+  "list_categories_cooldown_seconds": {
+    "description": "列出表情分类冷却秒数（按会话）",
+    "type": "int",
+    "default": 5,
+    "slider": {
+      "min": 0,
+      "max": 3600,
+      "step": 5
+    }
+  },
+  "max_keyword_chars": {
+    "description": "图片搜索关键词最大字符数",
+    "type": "int",
+    "default": 100,
+    "slider": {
+      "min": 1,
+      "max": 200,
+      "step": 1
+    }
+  },
+  "max_search_count": {
+    "description": "图片搜索单次最多图片数",
+    "type": "int",
+    "default": 1,
+    "slider": {
+      "min": 1,
+      "max": 5,
+      "step": 1
+    }
+  },
+  "max_web_chars": {
+    "description": "网页读取最多保留字符数",
+    "type": "int",
+    "default": 4000,
+    "slider": {
+      "min": 100,
+      "max": 8000,
+      "step": 100
+    }
+  },
+  "tool_timeout_seconds": {
+    "description": "单次跨插件工具调用超时秒数",
+    "type": "int",
+    "default": 30,
+    "slider": {
+      "min": 1,
+      "max": 120,
+      "step": 1
+    }
+  },
+  "max_fallback_chars": {
+    "description": "工具失败时安全回退文本最大字符数",
+    "type": "int",
+    "default": 500,
+    "slider": {
+      "min": 80,
+      "max": 2000,
+      "step": 20
+    }
+  },
+  "fallback_generic": {
+    "description": "未知工具错误的安全回退原因",
+    "type": "string",
+    "default": "工具暂时不可用，本次已回退为普通回复。"
+  },
+  "fallback_disabled": {
+    "description": "工具协议关闭时的原因",
+    "type": "string",
+    "default": "工具协议已关闭，本次调用已忽略。"
+  },
+  "fallback_marker_disabled": {
+    "description": "marker 功能关闭时的原因",
+    "type": "string",
+    "default": "工具标记功能已关闭，本次调用已忽略。"
+  },
+  "fallback_too_many": {
+    "description": "回复包含多个工具时的原因",
+    "type": "string",
+    "default": "每条回复最多只能使用一个工具，本次调用已忽略。"
+  },
+  "fallback_invalid": {
+    "description": "工具名/参数无效时的原因",
+    "type": "string",
+    "default": "工具调用格式无效，本次调用已忽略。"
+  },
+  "fallback_permission": {
+    "description": "工具未获允许时的原因",
+    "type": "string",
+    "default": "该工具未启用，本次调用已忽略。"
+  },
+  "fallback_cooldown": {
+    "description": "工具冷却中的原因",
+    "type": "string",
+    "default": "该工具正在冷却，请稍后再试。"
+  },
+  "fallback_unavailable": {
+    "description": "依赖插件或方法缺失时的原因",
+    "type": "string",
+    "default": "所需工具插件暂时不可用，本次调用已忽略。"
+  },
+  "fallback_timeout": {
+    "description": "跨插件工具调用超时时的原因",
+    "type": "string",
+    "default": "工具执行超时，本次已回退为普通回复。"
+  },
+  "fallback_failed": {
+    "description": "工具抛出异常时的原因",
+    "type": "string",
+    "default": "工具执行失败，本次已回退为普通回复。"
+  },
+  "fallback_empty": {
+    "description": "工具返回 None 或空结果时的原因",
+    "type": "string",
+    "default": "工具没有返回可用结果，本次已回退为普通回复。"
+  }
+}
