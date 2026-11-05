@@ -51,14 +51,14 @@ def downloaded(url="https://cdn.example.com/a.png"):
 
 
 class CommandRegistrationTests(unittest.TestCase):
-    def test_single_registration_covers_all_four_spellings(self):
+    def test_single_registration_covers_all_spellings(self):
         registrations = [
-            item for item in REGISTRATIONS_AT_IMPORT if item["name"] == "图片搜索"
+            item for item in REGISTRATIONS_AT_IMPORT if item["name"] == "找图"
         ]
         self.assertEqual(len(registrations), 1)
         self.assertEqual(
             set(registrations[0]["aliases"]),
-            {"搜图片", "找图", "搜图"},
+            {"搜图", "搜图片", "image", "图片搜索"},
         )
         self.assertEqual(registrations[0]["priority"], 110)
 

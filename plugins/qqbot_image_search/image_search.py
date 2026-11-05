@@ -408,27 +408,36 @@ def validate_image_payload(
     content_type: str,
     *,
     max_bytes: int,
+    allowed_types: Iterable[str] | None = None,
 ) -> tuple[str, str]:
-    """Validate size, declared type and magic bytes; return (mime, suffix)."""
+    """Validate size, declared type, configured allowlist and magic bytes."""
 
     if not data:
         raise ImageSearchError("empty")
     if len(data) > max_bytes:
         raise ImageSearchError("too_large")
+    allowed = (
+        {str(item).strip().lower() for item in allowed_types if str(item).strip()}
+        if allowed_types is not None
+        else set(ALLOWED_IMAGE_CONTENT_TYPES)
+    )
+    if not allowed:
+        allowed = set(ALLOWED_IMAGE_CONTENT_TYPES)
     declared = str(content_type or "").split(";", 1)[0].strip().lower()
-    if declared and declared not in ALLOWED_IMAGE_CONTENT_TYPES | OCTET_STREAM_TYPES:
+    if declared and declared not in allowed | OCTET_STREAM_TYPES:
         raise ImageSearchError("bad_content_type")
     detected = detect_image_magic(data)
     if detected is None:
         raise ImageSearchError("bad_magic")
     mime, suffix = detected
-    if declared in ALLOWED_IMAGE_CONTENT_TYPES:
-        normalized = {
-            "image/jpg": "image/jpeg",
-            "image/x-ms-bmp": "image/bmp",
-        }.get(declared, declared)
-        if normalized != mime:
-            raise ImageSearchError("bad_content_type")
+    normalized = {
+        "image/jpg": "image/jpeg",
+        "image/x-ms-bmp": "image/bmp",
+    }.get(declared, declared)
+    if normalized in ALLOWED_IMAGE_CONTENT_TYPES and normalized != mime:
+        raise ImageSearchError("bad_content_type")
+    if mime not in allowed:
+        raise ImageSearchError("bad_content_type")
     return mime, suffix
 
 
@@ -1277,6 +1286,7 @@ class SearchOptions:
     download_timeout: float = IMAGE_SEARCH_DEFAULT_DOWNLOAD_TIMEOUT
     download_max_bytes: int = IMAGE_SEARCH_DEFAULT_DOWNLOAD_MAX_BYTES
     download_attempts: int = 8
+    allowed_types: tuple[str, ...] = tuple(sorted(ALLOWED_IMAGE_CONTENT_TYPES))
 
 
 def _bounded_options(options: SearchOptions | None) -> SearchOptions:
@@ -1298,6 +1308,12 @@ def _bounded_options(options: SearchOptions | None) -> SearchOptions:
             min(int(base.download_max_bytes or 1024), IMAGE_SEARCH_MAX_DOWNLOAD_BYTES_HARD_LIMIT),
         ),
         download_attempts=max(1, int(base.download_attempts or 1)),
+        allowed_types=tuple(
+            str(item).strip().lower()
+            for item in (base.allowed_types or ALLOWED_IMAGE_CONTENT_TYPES)
+            if str(item).strip()
+        )
+        or tuple(sorted(ALLOWED_IMAGE_CONTENT_TYPES)),
     )
 
 
@@ -1420,6 +1436,7 @@ def download_image_bytes(
     max_bytes: int = IMAGE_SEARCH_DEFAULT_DOWNLOAD_MAX_BYTES,
     max_redirects: int = IMAGE_SEARCH_MAX_REDIRECTS,
     user_agent: str = IMAGE_SEARCH_USER_AGENT,
+    allowed_types: Iterable[str] | None = None,
 ) -> tuple[bytes, str, str]:
     """Download and validate one image; return ``(data, mime, suffix)``."""
 
@@ -1441,6 +1458,7 @@ def download_image_bytes(
         result.data,
         result.content_type,
         max_bytes=max_bytes,
+        allowed_types=allowed_types,
     )
     return result.data, mime, suffix
 
@@ -1461,6 +1479,7 @@ def download_image_to_temp(
     max_bytes: int = IMAGE_SEARCH_DEFAULT_DOWNLOAD_MAX_BYTES,
     max_redirects: int = IMAGE_SEARCH_MAX_REDIRECTS,
     user_agent: str = IMAGE_SEARCH_USER_AGENT,
+    allowed_types: Iterable[str] | None = None,
     temp_dir: str | None = None,
 ) -> DownloadedImage:
     """Download one safe image into a bounded temporary file."""
@@ -1472,6 +1491,7 @@ def download_image_to_temp(
         max_bytes=max_bytes,
         max_redirects=max_redirects,
         user_agent=user_agent,
+        allowed_types=allowed_types,
     )
     temp_path = ""
     try:
@@ -1526,6 +1546,7 @@ def download_images(
                     max_bytes=options.download_max_bytes,
                     max_redirects=options.max_redirects,
                     user_agent=options.user_agent,
+                    allowed_types=options.allowed_types,
                     temp_dir=temp_dir,
                 )
             )
