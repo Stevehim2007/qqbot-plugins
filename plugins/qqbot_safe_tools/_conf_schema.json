@@ -1,0 +1,1 @@
+{"enabled": {"description": "启用工具协议诊断命令", "type": "bool", "default": true}}

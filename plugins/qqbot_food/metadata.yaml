@@ -1,0 +1,8 @@
+name: qqbot_food
+display_name: Food 搜索
+desc: 独立 Food 搜索命令；只读查询，不启动聊天模型，不改旧 qqbot_enhancer。
+version: 2.0.0
+author: QQ Bot Studio
+support_platforms:
+  - aiocqhttp
+astrbot_version: ">=4.29,<5"

@@ -1,0 +1,8 @@
+name: qqbot_safe_tools
+display_name: Safe Tools 协议
+desc: 独立 safe_tools marker 解析协议包；只读诊断，不接管旧增强的 marker 执行。
+version: 2.0.0
+author: QQ Bot Studio
+support_platforms:
+  - aiocqhttp
+astrbot_version: ">=4.29,<5"

@@ -29,6 +29,48 @@
       "recommended_groups": [
         "QQ Bot"
       ]
+    },
+    {
+      "id": "qqbot_food",
+      "name": "Food 搜索",
+      "version": "2.0.0",
+      "sha256": "f1ef0be0ffc59d43f23fd3944ed08c3329adee6698edde597b095d97e7cd862c",
+      "size": 11632,
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v2.0.0/qqbot_food-2.0.0.zip",
+      "root": "qqbot_food",
+      "astrbot": ">=4.29,<5",
+      "dependencies": [],
+      "recommended_groups": [
+        "QQ Bot"
+      ]
+    },
+    {
+      "id": "qqbot_stickers",
+      "name": "表情库",
+      "version": "2.0.0",
+      "sha256": "2e3b05551ed1ee697f87dde57a3e138a3aefcff06dfaf116f99bdf3f2a6a3f6c",
+      "size": 8226,
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v2.0.0/qqbot_stickers-2.0.0.zip",
+      "root": "qqbot_stickers",
+      "astrbot": ">=4.29,<5",
+      "dependencies": [],
+      "recommended_groups": [
+        "QQ Bot"
+      ]
+    },
+    {
+      "id": "qqbot_safe_tools",
+      "name": "Safe Tools 协议",
+      "version": "2.0.0",
+      "sha256": "3d1af9eeba09a34c76a3c733c352c6750f98422cab810e0782e1645590954278",
+      "size": 6170,
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v2.0.0/qqbot_safe_tools-2.0.0.zip",
+      "root": "qqbot_safe_tools",
+      "astrbot": ">=4.29,<5",
+      "dependencies": [],
+      "recommended_groups": [
+        "QQ Bot"
+      ]
     }
   ]
 }

@@ -1,0 +1,8 @@
+name: qqbot_stickers
+display_name: 表情库
+desc: 独立表情库只读状态命令；不改旧 qqbot_enhancer 的收藏/索引。
+version: 2.0.0
+author: QQ Bot Studio
+support_platforms:
+  - aiocqhttp
+astrbot_version: ">=4.29,<5"
