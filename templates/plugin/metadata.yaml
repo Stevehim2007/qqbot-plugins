@@ -1,0 +1,8 @@
+name: qqbot_example
+display_name: 示例插件
+desc: 只处理 /示例 明确命令，不启动聊天模型。
+version: 0.1.0
+author: QQ Bot Studio
+support_platforms:
+  - aiocqhttp
+astrbot_version: ">=4.29,<5"

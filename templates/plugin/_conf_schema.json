@@ -1,0 +1,7 @@
+{
+  "enabled": {
+    "description": "启用 /示例 命令",
+    "type": "bool",
+    "default": true
+  }
+}
