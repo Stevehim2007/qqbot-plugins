@@ -71,6 +71,20 @@
       "recommended_groups": [
         "QQ Bot"
       ]
+    },
+    {
+      "id": "qqbot_memory_commands",
+      "name": "记忆管理",
+      "version": "3.0.0",
+      "sha256": "f54c9e97101de70f1b10d3beb0d7dad2c52db1cf1f5fe817ee9f01391f968f87",
+      "size": 9328,
+      "download": "qqbot_memory_commands-3.0.0.zip",
+      "root": "qqbot_memory_commands",
+      "astrbot": ">=4.29,<5",
+      "dependencies": [],
+      "recommended_groups": [
+        "QQ Bot"
+      ]
     }
   ]
 }

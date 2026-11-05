@@ -1,0 +1,5 @@
+{
+  "enabled": {"description": "启用核心回复（必须在旧增强停用后打开）", "type": "bool", "default": false},
+  "llm_timeout_seconds": {"description": "模型超时秒数", "type": "int", "default": 60, "slider": {"min": 10, "max": 180, "step": 5}},
+  "system_prompt": {"description": "核心回复系统提示词", "type": "string", "default": "你是 QQ 群里的助手，回答简洁自然，不要冒充真人。"}
+}
