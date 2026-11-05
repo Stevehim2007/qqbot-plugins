@@ -22,6 +22,7 @@ try:
         FakeEvent,
         FakePersonaManager,
         FakeProvider,
+        FakeResult,
         FakeStarMeta,
         collect,
     )
@@ -120,3 +121,25 @@ def plain_text(result) -> str:
 
 def extras(event) -> dict:
     return dict(getattr(event, "extras", {}) or {})
+
+
+def make_request_context(**overrides):
+    import contracts
+
+    payload = {
+        "protocol_version": contracts.PROTOCOL_VERSION,
+        "instance_id": "inst-1",
+        "platform": "aiocqhttp",
+        "bot_id": "bot-1",
+        "actor_id": "actor-1",
+        "conversation_id": "conv-1",
+        "persona_id": "persona-1",
+        "source_message_id": "msg-1",
+        "turn_id": "turn-1",
+        "capability": "reply.turn",
+        "requested_scope": {"kind": "group", "group_id": "123"},
+        "owner_epoch": 1,
+        "deadline": 0.0,
+    }
+    payload.update(overrides)
+    return contracts.RequestContext(**payload)

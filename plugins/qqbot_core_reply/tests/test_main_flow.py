@@ -37,7 +37,9 @@ class MainFlowTests(unittest.TestCase):
         self.assertEqual(results, [])
         self.assertEqual(ctx.llm_calls, [])
         self.assertFalse(event.stopped)
-        self.assertFalse(event.llm_blocked)
+        # New authoritative contract: disabled/not-ready still gates the
+        # native default LLM so it cannot become a second reply controller.
+        self.assertTrue(event.llm_blocked)
 
     def test_private_direct_success_single_reply(self):
         plugin, ctx, _ = make_plugin(overrides={"enabled": True})
