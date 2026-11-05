@@ -1,7 +1,7 @@
 name: qqbot_safe_tools
 display_name: Safe Tools 协议
 desc: 独立 safe_tools marker 解析协议包；只读诊断，不接管旧增强的 marker 执行。
-version: 2.0.0
+version: 2.0.1
 author: QQ Bot Studio
 support_platforms:
   - aiocqhttp
