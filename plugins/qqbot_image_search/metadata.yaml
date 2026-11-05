@@ -1,7 +1,7 @@
 name: qqbot_image_search
 display_name: 图片搜索
-desc: 明确命令搜索网络图片，不启动聊天模型，不解析 safe_tools marker。
-version: 1.0.0
+desc: 独立的有界图片搜索插件；Bing HTML 主源 + 百度 JSON 回退，校验相关性/去重/SSRF/内容类型/图片魔数/大小，不调用聊天模型。
+version: 2.0.0
 author: QQ Bot Studio
 support_platforms:
   - aiocqhttp
