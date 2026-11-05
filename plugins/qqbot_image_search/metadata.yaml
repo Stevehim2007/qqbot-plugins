@@ -1,0 +1,8 @@
+name: qqbot_image_search
+display_name: 图片搜索
+desc: 明确命令搜索网络图片，不启动聊天模型，不解析 safe_tools marker。
+version: 1.0.0
+author: QQ Bot Studio
+support_platforms:
+  - aiocqhttp
+astrbot_version: ">=4.29,<5"

@@ -1,0 +1,5 @@
+{
+  "max_chars": {"description": "最多返回字符数", "type": "int", "default": 4000, "slider": {"min": 500, "max": 20000, "step": 500}},
+  "timeout_seconds": {"description": "请求超时秒数", "type": "int", "default": 12, "slider": {"min": 3, "max": 60, "step": 1}},
+  "max_bytes": {"description": "最多读取字节数", "type": "int", "default": 1048576, "slider": {"min": 65536, "max": 5242880, "step": 65536}}
+}
