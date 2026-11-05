@@ -1,0 +1,6 @@
+{
+  "enabled": {"description": "启用独立记忆管理命令", "type": "bool", "default": true},
+  "destructive_enabled": {"description": "允许删除和忘记", "type": "bool", "default": false},
+  "allow_user_ids": {"description": "允许的发送者 ID，逗号分隔", "type": "string", "default": ""},
+  "max_results": {"description": "最多返回条数", "type": "int", "default": 5, "slider": {"min": 1, "max": 10, "step": 1}}
+}
