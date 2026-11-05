@@ -1,7 +1,7 @@
 name: qqbot_core_reply
 display_name: QQ 核心回复
 desc: 独立主回复核心；默认关闭，只有显式启用且旧增强停用时才接管。
-version: 3.1.0
+version: 3.1.1
 author: QQ Bot Studio
 support_platforms:
   - aiocqhttp

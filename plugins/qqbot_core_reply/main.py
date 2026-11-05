@@ -30,6 +30,10 @@ class CoreReplyPlugin(Star):
         if not bool(cfg.get("enabled", False)):
             return
         try:
+            # Never turn an explicit slash command into a model reply; the
+            # command-owning plugin must stay the single handler.
+            if str(getattr(event, "message_str", "") or "").lstrip().startswith("/"):
+                return
             if not (event.is_private_chat() or event.is_at_or_wake_command):
                 return
             provider = self.context.get_using_provider(umo=event.unified_msg_origin)

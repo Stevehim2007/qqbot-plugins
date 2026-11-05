@@ -85,6 +85,20 @@
       "recommended_groups": [
         "QQ Bot"
       ]
+    },
+    {
+      "id": "qqbot_core_reply",
+      "name": "QQ 核心回复",
+      "version": "3.1.0",
+      "sha256": "a518dca64eab2e907977e5010067c02e43dc7ed2742289d8d745d28ee60b35a9",
+      "size": 2442,
+      "download": "qqbot_core_reply-3.1.0.zip",
+      "root": "qqbot_core_reply",
+      "astrbot": ">=4.29,<5",
+      "dependencies": [],
+      "recommended_groups": [
+        "QQ Bot"
+      ]
     }
   ]
 }
