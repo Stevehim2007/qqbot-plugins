@@ -99,6 +99,20 @@
       "recommended_groups": [
         "QQ Bot"
       ]
+    },
+    {
+      "id": "qqbot_core_full",
+      "name": "QQ 增强核心（兼容包）",
+      "version": "4.0.0",
+      "sha256": "b8242e2c04cdc0ceb24d5e5cf30cf19269e9d9ca3a53e7e682f42f6dafdc363c",
+      "size": 164595,
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.0.0/qqbot_core_full-4.0.0.zip",
+      "root": "qqbot_core_full",
+      "astrbot": ">=4.29,<5",
+      "dependencies": [],
+      "recommended_groups": [
+        "QQ Bot"
+      ]
     }
   ]
 }
