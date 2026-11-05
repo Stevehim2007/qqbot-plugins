@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from support import FakeContext, FakeEvent, collect_event, extras, make_plugin
+import command_exclusion
 import config as config_module
 import main as core_main
 
@@ -55,6 +56,85 @@ class SchemaTests(unittest.TestCase):
         ):
             self.assertIn(key, schema)
 
+    def test_safe_default_is_disabled(self):
+        schema = json.loads((ROOT / "_conf_schema.json").read_text(encoding="utf-8"))
+        self.assertFalse(schema["enabled"]["default"])
+        self.assertFalse(config_module.DEFAULTS["enabled"])
+
+    def test_canonical_groups_present(self):
+        schema = json.loads((ROOT / "_conf_schema.json").read_text(encoding="utf-8"))
+        for key in (
+            "participation.private_enabled",
+            "participation.mention_enabled",
+            "participation.group_probability",
+            "participation.group_allow",
+            "participation.group_deny",
+            "participation.ignore_self",
+            "participation.ignore_bot",
+            "cooldown.seconds",
+            "cooldown.key_mode",
+            "cooldown.admin_bypass",
+            "concurrency.per_conversation",
+            "commands.exclude_aliases",
+            "commands.unknown_command_mode",
+            "persona.default_id",
+            "persona.binding_mode",
+            "context.max_messages",
+            "context.max_chars",
+            "llm.provider_id",
+            "llm.timeout_seconds",
+            "llm.tool_round_limit",
+            "reply.max_segments",
+            "reply.streaming_mode",
+            "reply.error_mode",
+            "session.key_mode",
+        ):
+            self.assertIn(key, schema)
+
+    def test_canonical_enums_are_bounded(self):
+        schema = json.loads((ROOT / "_conf_schema.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            schema["cooldown.key_mode"]["options"],
+            [
+                "legacy_compatible",
+                "instance",
+                "group",
+                "user",
+                "conversation",
+                "conversation_persona",
+            ],
+        )
+        self.assertEqual(
+            schema["reply.streaming_mode"]["options"],
+            ["buffer_until_validated", "disabled"],
+        )
+        self.assertEqual(schema["concurrency.per_conversation"]["default"], 1)
+
+    def test_all_registered_aliases_are_excluded(self):
+        aliases = set(command_exclusion.ALL_ALIASES)
+        for expected in (
+            "回复",
+            "reply",
+            "冷却",
+            "cooldown",
+            "会话列表",
+            "会话",
+            "切换会话",
+            "新会话",
+            "删除会话",
+            "会话删除",
+            "option",
+            "插件用法",
+            "用法",
+            "唱歌",
+            "点歌",
+        ):
+            self.assertIn(expected, aliases)
+        self.assertEqual(
+            set(command_exclusion.excluded_aliases(["custom"])),
+            aliases | {"custom"},
+        )
+
     def test_schema_probability_bounds(self):
         schema = json.loads((ROOT / "_conf_schema.json").read_text(encoding="utf-8"))
         self.assertEqual(schema["reply_probability"]["slider"]["min"], 0)
@@ -74,6 +154,9 @@ class SchemaTests(unittest.TestCase):
         self.assertIn("qqbot_stickers", readme)
         self.assertIn("回滚", readme)
         self.assertIn("python3 -m unittest discover -s tests -q", readme)
+        self.assertIn("contracts.py", readme)
+        self.assertIn("reply_turn_run", readme)
+        self.assertIn("默认停用", readme)
 
 
 class ImportIsolationTests(unittest.TestCase):
@@ -90,6 +173,16 @@ class ImportIsolationTests(unittest.TestCase):
             "persona_bridge.py",
             "media.py",
             "songs.py",
+            "participation.py",
+            "command_exclusion.py",
+            "cooldown.py",
+            "conversation.py",
+            "persona.py",
+            "model_gateway.py",
+            "reply_pipeline.py",
+            "state.py",
+            "contracts.py",
+            "commands.py",
         ):
             source = (ROOT / name).read_text(encoding="utf-8")
             self.assertNotIn("qqbot_enhancer", source)
@@ -104,6 +197,16 @@ class ImportIsolationTests(unittest.TestCase):
             "persona_bridge",
             "personas",
             "songs",
+            "participation",
+            "command_exclusion",
+            "cooldown",
+            "conversation",
+            "persona",
+            "model_gateway",
+            "reply_pipeline",
+            "state",
+            "contracts",
+            "commands",
         }
         imported: set[str] = set()
         for node in ast.walk(tree):
@@ -170,12 +273,15 @@ class ConfigInjectionTests(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(ctx.llm_calls[0]["system_prompt"], "ATTR-SYSTEM")
 
-    def test_missing_config_defaults_enabled(self):
+    def test_missing_config_defaults_disabled_fail_closed(self):
         ctx = FakeContext()
         plugin = core_main.CoreReplyPlugin(ctx, config=None)
         ctx.llm_responses = ["ok"]
-        results = run(collect_event(plugin, FakeEvent("hello", private=True)))
-        self.assertEqual(len(results), 1)
+        event = FakeEvent("hello", private=True)
+        results = run(collect_event(plugin, event))
+        self.assertEqual(results, [])
+        self.assertEqual(ctx.llm_calls, [])
+        self.assertTrue(event.llm_blocked)
 
     def test_plugin_constructor_signature_accepts_context_and_config(self):
         import inspect
@@ -197,6 +303,86 @@ class ConfigInjectionTests(unittest.TestCase):
         run(collect_event(plugin, FakeEvent("abcdefghij", private=True)))
         self.assertIn("abcd", ctx.llm_calls[0]["prompt"])
         self.assertNotIn("abcde", ctx.llm_calls[0]["prompt"])
+
+    def test_legacy_mapping_prefers_explicit_legacy_over_canonical_default(self):
+        config = config_module.RuntimeConfig(
+            {
+                "reply_probability": 0.8,
+                "group_cooldown_seconds": 7,
+                "group_identity_history_limit": 3,
+                "participation.group_probability": 0.12,
+                "cooldown.seconds": 30,
+                "context.max_messages": 8,
+            }
+        )
+        self.assertAlmostEqual(
+            config.effective_float(
+                "participation.group_probability", "reply_probability"
+            ),
+            0.8,
+        )
+        self.assertEqual(
+            config.effective_float(
+                "cooldown.seconds",
+                "group_cooldown_seconds",
+                maximum=3600,
+            ),
+            7,
+        )
+        self.assertEqual(
+            config.effective_int(
+                "context.max_messages", "group_identity_history_limit"
+            ),
+            3,
+        )
+
+    def test_canonical_nondefault_overrides_legacy(self):
+        config = config_module.RuntimeConfig(
+            {
+                "reply_probability": 0.8,
+                "participation.group_probability": 0.25,
+                "cooldown.seconds": 11,
+                "group_cooldown_seconds": 7,
+            }
+        )
+        self.assertAlmostEqual(
+            config.effective_float(
+                "participation.group_probability", "reply_probability"
+            ),
+            0.25,
+        )
+        self.assertEqual(
+            config.effective_float(
+                "cooldown.seconds",
+                "group_cooldown_seconds",
+                maximum=3600,
+            ),
+            11,
+        )
+
+    def test_nested_canonical_config(self):
+        config = config_module.RuntimeConfig(
+            {
+                "participation": {
+                    "private_enabled": False,
+                    "group_probability": 0.4,
+                },
+                "llm": {"timeout_seconds": 9},
+                "context": {"max_messages": 4},
+            }
+        )
+        self.assertFalse(config.effective_bool("participation.private_enabled", default=True))
+        self.assertAlmostEqual(
+            config.effective_float("participation.group_probability"),
+            0.4,
+        )
+        self.assertEqual(config.effective_int("llm.timeout_seconds", minimum=1), 9)
+        self.assertEqual(config.effective_int("context.max_messages"), 4)
+
+    def test_owner_epoch_initialized_from_config(self):
+        plugin, ctx, _ = make_plugin(overrides={"enabled": True, "owner_epoch": 7})
+        self.assertEqual(plugin.state.owner_epoch, 7)
+        self.assertEqual(ctx.qqbot_service_registry.get_provider("core_reply").owner_epoch, 7)
 
     def test_candidate_extras_original_text(self):
         plugin, ctx, _ = make_plugin(overrides={"enabled": True})

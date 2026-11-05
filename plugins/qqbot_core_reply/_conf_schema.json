@@ -2,7 +2,7 @@
   "enabled": {
     "description": "启用核心回复（部署时请先停用旧 qqbot_enhancer）",
     "type": "bool",
-    "default": true
+    "default": false
   },
   "memory_mode": {
     "description": "对话记忆模式",
@@ -544,5 +544,210 @@
     "description": "点歌冷却提示模板",
     "type": "text",
     "default": "点歌冷却中，请约 {seconds} 秒后再试。"
+  },
+  "owner_epoch": {
+    "description": "服务端已提交的 reply owner epoch（控制面维护，普通QQ不可编辑）",
+    "type": "int",
+    "default": 1,
+    "invisible": true
+  },
+  "participation.private_enabled": {
+    "description": "私聊参与",
+    "type": "bool",
+    "default": true
+  },
+  "participation.mention_enabled": {
+    "description": "@ 当前机器人参与",
+    "type": "bool",
+    "default": true
+  },
+  "participation.group_probability": {
+    "description": "非 @ 群参与概率（规范键）",
+    "type": "float",
+    "default": 0.12,
+    "slider": {
+      "min": 0,
+      "max": 1,
+      "step": 0.01
+    }
+  },
+  "participation.group_allow": {
+    "description": "群允许列表（稳定ID；空=不限制）",
+    "type": "list",
+    "default": [],
+    "items": {
+      "type": "string"
+    }
+  },
+  "participation.group_deny": {
+    "description": "群拒绝列表（稳定ID）",
+    "type": "list",
+    "default": [],
+    "items": {
+      "type": "string"
+    }
+  },
+  "participation.ignore_self": {
+    "description": "忽略机器人自身消息",
+    "type": "bool",
+    "default": true
+  },
+  "participation.ignore_bot": {
+    "description": "忽略机器人消息",
+    "type": "bool",
+    "default": true
+  },
+  "cooldown.seconds": {
+    "description": "规范群冷却秒数（映射 group_cooldown_seconds）",
+    "type": "float",
+    "default": 30,
+    "slider": {
+      "min": 0,
+      "max": 3600,
+      "step": 1
+    }
+  },
+  "cooldown.key_mode": {
+    "description": "冷却键维度",
+    "type": "string",
+    "options": [
+      "legacy_compatible",
+      "instance",
+      "group",
+      "user",
+      "conversation",
+      "conversation_persona"
+    ],
+    "default": "legacy_compatible"
+  },
+  "cooldown.admin_bypass": {
+    "description": "管理员绕过冷却（由safe_tools授权策略决定）",
+    "type": "bool",
+    "default": false
+  },
+  "concurrency.per_conversation": {
+    "description": "同一会话并发回复控制器上限（固定1）",
+    "type": "int",
+    "default": 1,
+    "slider": {
+      "min": 1,
+      "max": 1,
+      "step": 1
+    }
+  },
+  "commands.exclude_aliases": {
+    "description": "额外自动排除的命令别名",
+    "type": "list",
+    "default": [],
+    "items": {
+      "type": "string"
+    }
+  },
+  "commands.unknown_command_mode": {
+    "description": "未知命令处理模式",
+    "type": "string",
+    "options": [
+      "terminal_error",
+      "ignore"
+    ],
+    "default": "terminal_error"
+  },
+  "persona.default_id": {
+    "description": "默认AstrBot人格稳定ID（空=不绑定）",
+    "type": "string",
+    "default": ""
+  },
+  "persona.binding_mode": {
+    "description": "人格绑定模式",
+    "type": "string",
+    "options": [
+      "legacy_compatible",
+      "conversation",
+      "user"
+    ],
+    "default": "legacy_compatible"
+  },
+  "context.max_messages": {
+    "description": "上下文最多消息条数",
+    "type": "int",
+    "default": 8,
+    "slider": {
+      "min": 0,
+      "max": 30,
+      "step": 1
+    }
+  },
+  "context.max_chars": {
+    "description": "上下文/输入最大字符数",
+    "type": "int",
+    "default": 2000,
+    "slider": {
+      "min": 50,
+      "max": 10000,
+      "step": 50
+    }
+  },
+  "llm.provider_id": {
+    "description": "固定provider ID（空=当前会话provider）",
+    "type": "string",
+    "default": "",
+    "_special": "select_provider"
+  },
+  "llm.timeout_seconds": {
+    "description": "模型超时秒数（规范键）",
+    "type": "float",
+    "default": 45,
+    "slider": {
+      "min": 1,
+      "max": 300,
+      "step": 1
+    }
+  },
+  "llm.tool_round_limit": {
+    "description": "同一turn允许的有限工具续轮预算",
+    "type": "int",
+    "default": 0,
+    "slider": {
+      "min": 0,
+      "max": 8,
+      "step": 1
+    }
+  },
+  "reply.max_segments": {
+    "description": "单条回复最大片段数",
+    "type": "int",
+    "default": 1,
+    "slider": {
+      "min": 1,
+      "max": 8,
+      "step": 1
+    }
+  },
+  "reply.streaming_mode": {
+    "description": "完整校验后发送模式",
+    "type": "string",
+    "options": [
+      "buffer_until_validated",
+      "disabled"
+    ],
+    "default": "buffer_until_validated"
+  },
+  "reply.error_mode": {
+    "description": "错误终结模式",
+    "type": "string",
+    "options": [
+      "terminal_error",
+      "silent_with_audit"
+    ],
+    "default": "terminal_error"
+  },
+  "session.key_mode": {
+    "description": "会话键模式",
+    "type": "string",
+    "options": [
+      "legacy_compatible",
+      "platform_bot_conversation"
+    ],
+    "default": "legacy_compatible"
   }
 }

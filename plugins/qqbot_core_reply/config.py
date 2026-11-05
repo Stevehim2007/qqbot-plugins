@@ -15,9 +15,37 @@ from typing import Any
 _MISSING = object()
 
 DEFAULTS: dict[str, Any] = {
-    "enabled": True,
+    # Safe default per the authoritative migration contract: a newly
+    # installed package must not take over replies before explicit handover.
+    "enabled": False,
     "memory_mode": "direct",
-    # Reply decision policy.
+    "owner_epoch": 1,
+    # Canonical v4.3 groups (flat keys keep AstrBot's schema loader intact).
+    "participation.private_enabled": True,
+    "participation.mention_enabled": True,
+    "participation.group_probability": 0.12,
+    "participation.group_allow": [],
+    "participation.group_deny": [],
+    "participation.ignore_self": True,
+    "participation.ignore_bot": True,
+    "cooldown.seconds": 30,
+    "cooldown.key_mode": "legacy_compatible",
+    "cooldown.admin_bypass": False,
+    "concurrency.per_conversation": 1,
+    "commands.exclude_aliases": [],
+    "commands.unknown_command_mode": "terminal_error",
+    "persona.default_id": "",
+    "persona.binding_mode": "legacy_compatible",
+    "context.max_messages": 8,
+    "context.max_chars": 2000,
+    "llm.provider_id": "",
+    "llm.timeout_seconds": 45,
+    "llm.tool_round_limit": 0,
+    "reply.max_segments": 1,
+    "reply.streaming_mode": "buffer_until_validated",
+    "reply.error_mode": "terminal_error",
+    "session.key_mode": "legacy_compatible",
+    # Reply decision policy (legacy-compatible keys).
     "reply_probability": 0.12,
     "group_cooldown_seconds": 30,
     "user_cooldown_seconds": 90,
@@ -159,6 +187,22 @@ class ConfigReader:
         return values
 
     def _lookup(self, key: str) -> Any:
+        if "." in key:
+            parts = key.split(".")
+            for container in self._containers():
+                current = container
+                found = True
+                for part in parts:
+                    if isinstance(current, Mapping) and part in current:
+                        current = current[part]
+                        continue
+                    try:
+                        current = getattr(current, part)
+                    except Exception:
+                        found = False
+                        break
+                if found:
+                    return current
         for container in self._containers():
             if isinstance(container, Mapping):
                 try:
@@ -289,3 +333,194 @@ class ConfigReader:
 
 def re_split_commas(text: str) -> list[str]:
     return text.replace("，", ",").split(",")
+
+
+class RuntimeConfig:
+    """Typed config with canonical-key fallback and committed overrides.
+
+    The base object is AstrBot's injected plugin config.  ``overrides`` is the
+    in-memory committed layer used by ``/回复 设置`` and the provider configure
+    ABI.  It is intentionally not written into the AstrBot config file here.
+    """
+
+    def __init__(self, config: Any = None) -> None:
+        self.base = ConfigReader(config)
+        self.overrides: dict[str, Any] = {}
+
+    # Plain typed accessors -------------------------------------------------
+    def value(self, key: str) -> Any:
+        if key in self.overrides:
+            return self.overrides[key]
+        return self.base.value(key)
+
+    def bool(self, key: str, default: bool = False) -> bool:
+        if key in self.overrides:
+            raw = self.overrides[key]
+            return bool(raw) if isinstance(raw, bool) else str(raw).strip().lower() in {"1", "true", "yes", "on", "是"}
+        return self.base.bool(key, default=default)
+
+    def int(self, key: str, minimum: int = 0, maximum: int | None = None) -> int:
+        raw = self.overrides.get(key, None)
+        if key in self.overrides:
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                value = minimum
+            if value < minimum:
+                value = minimum
+            if maximum is not None and value > maximum:
+                value = maximum
+            return value
+        return self.base.int(key, minimum=minimum, maximum=maximum)
+
+    def float(self, key: str, minimum: float = 0.0, maximum: float = 1.0) -> float:
+        raw = self.overrides.get(key, None)
+        if key in self.overrides:
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                value = minimum
+            if value < minimum:
+                value = minimum
+            if value > maximum:
+                value = maximum
+            return value
+        return self.base.float(key, minimum=minimum, maximum=maximum)
+
+    def string(self, key: str, default: str = "") -> str:
+        if key in self.overrides:
+            return str(self.overrides[key])
+        return self.base.string(key, default=default)
+
+    def string_list(self, key: str) -> list[str]:
+        if key in self.overrides:
+            raw = self.overrides[key]
+            if isinstance(raw, str):
+                return [item.strip() for item in re_split_commas(raw) if item.strip()]
+            if isinstance(raw, (list, tuple, set)):
+                return [str(item).strip() for item in raw if str(item).strip()]
+            return [str(raw).strip()] if str(raw).strip() else []
+        return self.base.string_list(key)
+
+    def has(self, key: str) -> bool:
+        return key in self.overrides or self.base.has(key)
+
+    # Canonical mapping -----------------------------------------------------
+    def effective(
+        self,
+        canonical: str,
+        legacy: str | None = None,
+        *,
+        default: Any = None,
+    ) -> Any:
+        """Prefer an explicitly stored canonical/override value, else legacy.
+
+        DEFAULTS contains canonical keys for schema completeness, but the base
+        reader only reports a key as present when the operator actually stored
+        it (or it exists in the injected object).  This keeps old deployments
+        behaving exactly like the legacy keys.
+        """
+
+        if canonical in self.overrides:
+            return self.overrides[canonical]
+        if self.base.has(canonical):
+            canonical_value = self.base.value(canonical)
+            # AstrBot may materialize every schema default into the injected
+            # config.  In that case an explicitly migrated legacy key must win
+            # when the canonical value is still the untouched default.
+            if legacy and self.base.has(legacy):
+                legacy_value = self.base.value(legacy)
+                if (
+                    canonical_value == default_value(canonical)
+                    and legacy_value != default_value(legacy)
+                ):
+                    return legacy_value
+            return canonical_value
+        if legacy:
+            if legacy in self.overrides:
+                return self.overrides[legacy]
+            if self.base.has(legacy):
+                return self.base.value(legacy)
+            fallback = default_value(legacy)
+            if fallback is not None:
+                return fallback
+        if default is not None:
+            return default
+        return default_value(canonical)
+
+    def effective_bool(
+        self,
+        canonical: str,
+        legacy: str | None = None,
+        *,
+        default: bool = False,
+    ) -> bool:
+        value = self.effective(canonical, legacy, default=default)
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        return str(value).strip().lower() in {"1", "true", "yes", "on", "是", "启用"}
+
+    def effective_int(
+        self,
+        canonical: str,
+        legacy: str | None = None,
+        *,
+        default: int = 0,
+        minimum: int = 0,
+        maximum: int | None = None,
+    ) -> int:
+        value = self.effective(canonical, legacy, default=default)
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            number = default
+        number = max(minimum, number)
+        if maximum is not None:
+            number = min(maximum, number)
+        return number
+
+    def effective_float(
+        self,
+        canonical: str,
+        legacy: str | None = None,
+        *,
+        default: float = 0.0,
+        minimum: float = 0.0,
+        maximum: float = 1.0,
+    ) -> float:
+        value = self.effective(canonical, legacy, default=default)
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            number = default
+        return min(maximum, max(minimum, number))
+
+    def effective_list(
+        self,
+        canonical: str,
+        legacy: str | None = None,
+    ) -> list[str]:
+        value = self.effective(canonical, legacy, default=[])
+        if isinstance(value, str):
+            return [item.strip() for item in re_split_commas(value) if item.strip()]
+        if isinstance(value, (list, tuple, set)):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return [str(value).strip()] if str(value).strip() else []
+
+    def set_overrides(self, changes: dict[str, Any]) -> None:
+        for key, value in changes.items():
+            self.overrides[str(key)] = value
+
+    def snapshot(self) -> dict[str, Any]:
+        merged = dict(DEFAULTS)
+        merged.update(self.overrides)
+        return merged
+
+
+def memory_mode(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if text in {"astrbot", "memory", "conversation", "long-term", "long_term"}:
+        return "astrbot"
+    return "direct"

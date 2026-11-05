@@ -62,6 +62,13 @@ def install() -> None:
 
             return decorator
 
+        @staticmethod
+        def on_decorating_result(*args: Any, **kwargs: Any):
+            def decorator(func):
+                return func
+
+            return decorator
+
     class AstrMessageEvent:
         pass
 
@@ -206,6 +213,7 @@ class FakeEvent:
         self.stopped = False
         self.llm_blocked = False
         self.llm_requested = False
+        self._result: Any = None
 
     def get_messages(self) -> list[Any]:
         return list(self._components)
@@ -241,7 +249,14 @@ class FakeEvent:
         self.stopped = True
 
     def plain_result(self, text: str) -> FakeResult:
-        return FakeResult("plain", text=str(text))
+        self._result = FakeResult("plain", text=str(text))
+        return self._result
+
+    def get_result(self):
+        return self._result
+
+    def set_result(self, result: Any) -> None:
+        self._result = result
 
     def chain_result(self, chain: list[Any]) -> FakeResult:
         return FakeResult("chain", chain=list(chain))
