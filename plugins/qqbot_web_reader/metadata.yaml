@@ -1,7 +1,7 @@
 name: qqbot_web_reader
 display_name: 网页读取
-desc: 明确命令读取公开 HTTPS 网页，限制大小、超时和私网访问。
-version: 1.0.0
+desc: 独立的公开 HTTPS 网页读取插件；限制大小、超时、跳转、内容类型并拒绝内网/回环/保留地址，向 safe_tools 提供稳定工具 API。
+version: 2.0.0
 author: QQ Bot Studio
 support_platforms:
   - aiocqhttp

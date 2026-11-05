@@ -1,4 +1,153 @@
 {
-  "max_results": {"description": "最多返回图片数", "type": "int", "default": 3, "slider": {"min": 1, "max": 5, "step": 1}},
-  "timeout_seconds": {"description": "请求超时秒数", "type": "int", "default": 12, "slider": {"min": 3, "max": 60, "step": 1}}
+  "enabled": {
+    "description": "启用图片搜索命令与 safe_tools 图片搜索",
+    "type": "bool",
+    "default": true
+  },
+  "natural_language_enabled": {
+    "description": "允许 @/私聊自然语言找图",
+    "type": "bool",
+    "default": true,
+    "hint": "仅对私聊和明确 @ 机器人的消息生效；非 @ 群消息不会触发，不使用任何模型判断。"
+  },
+  "max_results": {
+    "description": "单次回复最多图片数",
+    "type": "int",
+    "default": 3,
+    "slider": {"min": 1, "max": 5, "step": 1},
+    "hint": "命令、自然语言和 safe_tools 的 count 都会被硬限制在该值以内。"
+  },
+  "max_keyword_chars": {
+    "description": "搜索关键词最大长度",
+    "type": "int",
+    "default": 100,
+    "slider": {"min": 10, "max": 300, "step": 10}
+  },
+  "timeout_seconds": {
+    "description": "搜索结果页/JSON 请求超时秒数",
+    "type": "int",
+    "default": 12,
+    "slider": {"min": 3, "max": 60, "step": 1}
+  },
+  "max_response_bytes": {
+    "description": "搜索响应最大字节数",
+    "type": "int",
+    "default": 2000000,
+    "slider": {"min": 65536, "max": 5000000, "step": 65536},
+    "hint": "最多读取上限+1 字节用于判断超限。"
+  },
+  "max_candidates": {
+    "description": "最多保留/尝试的候选图片 URL 数",
+    "type": "int",
+    "default": 15,
+    "slider": {"min": 1, "max": 30, "step": 1}
+  },
+  "max_redirects": {
+    "description": "搜索与图片下载最多跳转次数",
+    "type": "int",
+    "default": 3,
+    "slider": {"min": 0, "max": 5, "step": 1},
+    "hint": "每一次跳转都重新校验目标为公开 HTTP(S) 地址。"
+  },
+  "safe_search": {
+    "description": "Bing 安全搜索级别",
+    "type": "string",
+    "default": "strict",
+    "options": ["strict", "moderate", "off"],
+    "labels": ["严格", "适中", "关闭"]
+  },
+  "baidu_fallback_enabled": {
+    "description": "Bing 失败或结果不足时回退百度图片 JSON",
+    "type": "bool",
+    "default": true,
+    "hint": "百度仅作为第二来源；两个来源都会做 URL、大小、内容类型和相关性命中检查。"
+  },
+  "relevance_enabled": {
+    "description": "启用标题/描述相关性过滤",
+    "type": "bool",
+    "default": true
+  },
+  "min_relevance_score": {
+    "description": "候选图片最低相关性分数",
+    "type": "float",
+    "default": 0.6,
+    "slider": {"min": 0, "max": 1, "step": 0.05},
+    "hint": "没有标题/描述元数据的候选默认会被过滤。"
+  },
+  "download_timeout_seconds": {
+    "description": "单张图片下载超时秒数",
+    "type": "int",
+    "default": 20,
+    "slider": {"min": 3, "max": 120, "step": 1}
+  },
+  "download_max_bytes": {
+    "description": "单张图片最大下载字节数",
+    "type": "int",
+    "default": 8000000,
+    "slider": {"min": 65536, "max": 20971520, "step": 65536}
+  },
+  "download_attempts": {
+    "description": "每次搜索最多尝试下载的候选数",
+    "type": "int",
+    "default": 8,
+    "slider": {"min": 1, "max": 15, "step": 1}
+  },
+  "group_cooldown_seconds": {
+    "description": "每群/会话图片搜索冷却秒数",
+    "type": "int",
+    "default": 15,
+    "slider": {"min": 0, "max": 600, "step": 5}
+  },
+  "user_cooldown_seconds": {
+    "description": "每用户图片搜索冷却秒数",
+    "type": "int",
+    "default": 10,
+    "slider": {"min": 0, "max": 1800, "step": 5}
+  },
+  "user_agent": {
+    "description": "搜索与图片下载 User-Agent",
+    "type": "string",
+    "default": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 QQBotStudio-ImageSearch/2.0"
+  },
+  "success_prefix": {
+    "description": "发送图片前的文字前缀",
+    "type": "text",
+    "default": "为你找到这些图片："
+  },
+  "usage_reply": {
+    "description": "未提供关键词时的提示",
+    "type": "text",
+    "default": "用法：/图片搜索 关键词（别名 /搜图片；也可用 /找图、/搜图）"
+  },
+  "disabled_reply": {
+    "description": "功能关闭时的提示",
+    "type": "text",
+    "default": "图片搜索功能当前未启用。"
+  },
+  "invalid_keyword_reply": {
+    "description": "关键词无效时的提示",
+    "type": "text",
+    "default": "请提供有效的图片搜索关键词。"
+  },
+  "empty_reply": {
+    "description": "没有安全可用结果时的提示",
+    "type": "text",
+    "default": "没有找到合适的图片，换个关键词试试吧。"
+  },
+  "error_reply": {
+    "description": "搜索/下载失败时的兜底提示",
+    "type": "text",
+    "default": "搜索图片失败了，请稍后再试。"
+  },
+  "timeout_reply": {
+    "description": "搜索超时时的提示",
+    "type": "text",
+    "default": "搜索图片超时了，请稍后再试。"
+  },
+  "cooldown_reply": {
+    "description": "冷却提示模板",
+    "type": "text",
+    "default": "图片搜索冷却中，请约 {seconds} 秒后再试。",
+    "hint": "支持 {seconds} 占位符。"
+  }
 }
