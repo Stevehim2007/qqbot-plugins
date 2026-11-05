@@ -1,7 +1,7 @@
 name: qqbot_stickers
-display_name: 表情库
-desc: 独立表情库只读状态命令；不改旧 qqbot_enhancer 的收藏/索引。
-version: 2.0.0
+display_name: QQ 表情库
+desc: 独立、自包含的收藏表情库：命令、确定性自然语言、SHA 去重、原子索引、旧数据迁移与安全 core-reply 装饰。
+version: 3.0.0
 author: QQ Bot Studio
 support_platforms:
   - aiocqhttp
