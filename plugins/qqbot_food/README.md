@@ -104,3 +104,93 @@ replies, safe-tool search limits/sort defaults/replies, submit enable/timeout/
 bytes/cooldown/draft TTL, all field limits, confirmation/duplicate/error
 replies, and the legacy `food_nl_*` knobs (kept for config compatibility; this
 plugin itself does not run LLM-style natural-language participation).
+
+## Canonical commands (ABI v1)
+
+The root is `/food`, with `/美食` as the root alias.  Old `/吃什么`, `/饭店`
+and legacy `/food <关键词>` search remain compatible.
+
+```text
+/food 查询 火锅
+/food 位置 南关区
+/food 标签 火锅
+/food 提交 店名=A火锅 位置ID=10 味道=4.5 性价比=3.5 评价=好吃 标签=火锅
+/food 确认 DRAFT_ID
+/food 取消 DRAFT_ID
+/food 状态 OP_ID
+/美食 查询 火锅
+/吃什么 火锅
+```
+
+`/food 提交` creates a persistent draft and returns its `DRAFT_ID`; it does
+not submit.  `/food 确认 DRAFT_ID` consumes the current confirmation token for
+that draft.  A draft must be previewed before confirmation, and an old token
+becomes invalid whenever the payload or revision changes.
+
+## Provider ABI v1
+
+`contracts.py` defines protocol/ABI version 1, `RequestContext`,
+`ProviderResult`, the HMAC confirmation-token issuer and an in-process
+`ProviderRegistry`.  `main.py` registers exactly one `food` provider owned by
+`qqbot_food`, marks readiness only after initialization, rejects duplicate
+owners/ABI mismatches, and unregisters/closes the ledger in `terminate()`.
+
+Fixed provider methods (each receives `request_context, args` and returns a
+contract `status/data` dict; no URL, SQL, method name or free function is
+accepted from a caller):
+
+```python
+food_query, food_locations, food_tags, food_set_location, food_change_tags,
+food_draft_create, food_draft_preview, food_confirm, food_cancel,
+food_operation_status
+```
+
+The existing safe-tool methods `tool_search_restaurants` and
+`tool_submit_food_review` remain available for `qqbot_safe_tools`.
+
+## Draft/operation state machine
+
+```text
+collecting -> draft -> awaiting_confirmation -> confirmed -> submitting
+           -> succeeded / rejected / outcome_unknown
+cancelled / expired are explicit branches
+```
+
+Drafts carry `draft_id`, actor/instance/bot/scope/persona, normalized payload,
+payload hash, revision, timestamps and TTL.  Confirmation tokens bind draft id,
+revision, payload hash, actor, scope, persona and expiry.  The SQLite CAS in
+`ledger.py` ensures one concurrent confirmation can execute the remote POST.
+Same idempotency key + same payload replays the stored result; a different
+payload returns a 409-style `idempotency_conflict`.
+
+A timeout, oversized response, 5xx, redirect or other ambiguous outcome becomes
+`outcome_unknown`, is preserved across restart and is never automatically
+resent.  Only explicit 4xx site rejections proven to have no side effect are
+marked retryable.  A site `DUPLICATE_USERNAME` is treated as already submitted
+only when that explicit evidence matches the operation payload.
+
+## Data
+
+- Legacy JSON confirmation state: `food_state.json` (existing safe-tool flow).
+- ABI draft/operation ledger: `food_ledger.sqlite3` in the same plugin data
+  directory, WAL mode, parameterized SQL, atomic transactions and mode `0600`.
+  Unknown/in-flight operations are fail-closed on startup.
+- The ledger is separate from qqbot_safe_tools' confirmation/dispatch ledger.
+
+## Config groups (flat-schema equivalents)
+
+Nested configuration is honored when the injected config provides it; the flat
+`_conf_schema.json` also exposes equivalent keys while preserving every old
+`food_*`/`food_submit_*`/`food_search_*` setting:
+
+- query: `query_limit`, `query_name_max_chars`, `query_default_location`,
+  `query_default_tags`, `query_cache_ttl_seconds`
+- submit: `submit_backend_id`, `submit_timeout_seconds`,
+  `submit_confirm_required`, `submit_idempotency_mode`,
+  `submit_unknown_result_mode`, `submit_username_max_chars`
+- drafts: `drafts_ttl_seconds`, `drafts_confirmation_ttl_seconds`,
+  `draft_name_max_chars`, `draft_location_max_chars`,
+  `draft_comment_max_chars`
+- location/tags: `location_visibility`, `tags_max_count`, `tags_name_length`,
+  `policy_id`
+- provider: `provider_instance_id`, `provider_owner_epoch`

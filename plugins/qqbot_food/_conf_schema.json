@@ -398,5 +398,115 @@
     "description": "保留旧无描述美食图参与开关",
     "type": "bool",
     "default": false
+  },
+  "provider_instance_id": {
+    "description": "ABI provider 的稳定实例ID（登记引用，不是路径）",
+    "type": "text",
+    "default": "astrbot"
+  },
+  "provider_owner_epoch": {
+    "description": "ABI provider owner epoch；迁移时由控制面提交",
+    "type": "int",
+    "default": 1
+  },
+  "query_limit": {
+    "description": "规范查询默认返回条数（硬上限5）",
+    "type": "int",
+    "default": 5
+  },
+  "query_name_max_chars": {
+    "description": "规范查询关键词最大字符数",
+    "type": "int",
+    "default": 50
+  },
+  "query_default_location": {
+    "description": "规范查询的默认位置文本（空表示使用当前scope偏好）",
+    "type": "text",
+    "default": ""
+  },
+  "query_default_tags": {
+    "description": "规范查询的默认标签，逗号分隔",
+    "type": "text",
+    "default": ""
+  },
+  "query_cache_ttl_seconds": {
+    "description": "规范查询只读缓存TTL秒数，0表示不缓存",
+    "type": "int",
+    "default": 0
+  },
+  "submit_backend_id": {
+    "description": "登记的后端ID；仅允许固定 food.dlsz.top 适配器",
+    "type": "text",
+    "default": "food.dlsz.top"
+  },
+  "submit_timeout_seconds": {
+    "description": "POST /api/upload 超时秒数",
+    "type": "int",
+    "default": 12
+  },
+  "submit_confirm_required": {
+    "description": "提交是否必须经过预览确认，默认开启",
+    "type": "bool",
+    "default": true
+  },
+  "submit_idempotency_mode": {
+    "description": "幂等模式：backend_key / lookup_by_business_key / manual_unknown",
+    "type": "text",
+    "default": "lookup_by_business_key"
+  },
+  "submit_unknown_result_mode": {
+    "description": "结果未知处理：query_then_manual（不自动重试）",
+    "type": "text",
+    "default": "query_then_manual"
+  },
+  "submit_username_max_chars": {
+    "description": "提交用户名最大字符数（昵称/fallback）",
+    "type": "int",
+    "default": 32
+  },
+  "drafts_ttl_seconds": {
+    "description": "规范草稿TTL秒数",
+    "type": "int",
+    "default": 600
+  },
+  "drafts_confirmation_ttl_seconds": {
+    "description": "确认凭证有效秒数",
+    "type": "int",
+    "default": 300
+  },
+  "draft_name_max_chars": {
+    "description": "规范草稿店名最大字符数",
+    "type": "int",
+    "default": 100
+  },
+  "draft_location_max_chars": {
+    "description": "规范草稿位置最大字符数",
+    "type": "int",
+    "default": 60
+  },
+  "draft_comment_max_chars": {
+    "description": "规范草稿评价最大字符数",
+    "type": "int",
+    "default": 500
+  },
+  "location_visibility": {
+    "description": "位置偏好可见性：private / scope_shared",
+    "type": "text",
+    "default": "private"
+  },
+  "tags_max_count": {
+    "description": "规范标签最大数量",
+    "type": "int",
+    "default": 5
+  },
+  "tags_name_length": {
+    "description": "规范单个标签最大字符数",
+    "type": "int",
+    "default": 20
+  },
+  "policy_id": {
+    "description": "引用safe_tools权限策略ID，不保存管理员名单",
+    "type": "text",
+    "default": ""
   }
 }

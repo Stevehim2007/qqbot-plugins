@@ -123,7 +123,7 @@ class CommandSearchTests(PluginTestBase):
         plugin = self.plugin()
         args, kwargs = plugin.food_command._qqbot_food_command
         self.assertEqual(args[0], "food")
-        self.assertEqual(set(kwargs["alias"]), {"吃什么", "饭店"})
+        self.assertEqual(set(kwargs["alias"]), {"美食", "吃什么", "饭店"})
         for command in ("/吃什么 火锅", "/饭店 火锅"):
             event = self.event(command)
             results = call_command(plugin, event)

@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import shlex
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +18,7 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, StarTools
 
-from . import food
+from . import contracts, food
 from .api import (
     FoodAPIClient,
     FoodHTTPError,
@@ -24,11 +26,38 @@ from .api import (
     FoodTimeoutError,
     FoodTransportError,
 )
-from .config import PluginConfig
+from .backend import FoodBackend
+from .config import DEFAULTS, PluginConfig
+from .contracts import (
+    ConfirmationTokenIssuer,
+    ProviderRegistrationError,
+    ProviderResult,
+    get_or_create_registry,
+)
+from .ledger import FoodLedger
+from .provider import FoodContractProvider
 from .state import FoodStateStore, state_key
 
 PLUGIN_NAME = "qqbot_food"
-COMMAND_NAMES = ("food", "吃什么", "饭店")
+COMMAND_NAMES = ("food", "美食", "吃什么", "饭店")
+CANONICAL_SUBCOMMANDS = {
+    "查询": "query",
+    "query": "query",
+    "位置": "locations",
+    "location": "locations",
+    "locations": "locations",
+    "标签": "tags",
+    "tag": "tags",
+    "tags": "tags",
+    "提交": "submit",
+    "submit": "submit",
+    "确认": "confirm",
+    "confirm": "confirm",
+    "取消": "cancel",
+    "cancel": "cancel",
+    "状态": "status",
+    "status": "status",
+}
 _SUBMIT_ALLOWED_KEYS = {
     "restaurant",
     "name",
@@ -214,6 +243,49 @@ class FoodPlugin(Star):
             clock=self._clock,
         )
 
+        # ABI v1 provider.  The SQLite ledger is the canonical draft/operation
+        # store and is deliberately independent of the legacy JSON state above.
+        self._contract_ready = False
+        self._provider_error = ""
+        self._ledger: FoodLedger | None = None
+        self._backend: FoodBackend | None = None
+        self._confirmation_issuer: ConfirmationTokenIssuer | None = None
+        self._contract_provider: FoodContractProvider | None = None
+        self._registry = None
+        try:
+            self._ledger = FoodLedger(
+                self._data_dir / "food_ledger.sqlite3",
+                clock=self._clock,
+            )
+            self._backend = FoodBackend(
+                get_json=self._get_json,
+                post_submit=self._post_submit,
+                timeout_seconds=max(
+                    1, self._cfg_int("food_submit_timeout_seconds", default=12)
+                ),
+            )
+            ttl = self._cfg_int(
+                "drafts_confirmation_ttl_seconds", default=300
+            )
+            self._confirmation_issuer = ConfirmationTokenIssuer(
+                self._ledger.token_secret(), ttl_seconds=ttl
+            )
+            self._contract_provider = FoodContractProvider(self)
+            self._registry = get_or_create_registry(context)
+            self._registry.register(
+                owner=PLUGIN_NAME,
+                capability=contracts.PROVIDER_CAPABILITY,
+                provider=self._contract_provider,
+                abi_version=contracts.ABI_VERSION,
+            )
+            self._registry.set_ready(PLUGIN_NAME, True)
+            self._contract_ready = True
+        except ProviderRegistrationError:
+            raise
+        except Exception:
+            self._provider_error = "provider_initialization_failed"
+            self._contract_ready = False
+
     # ------------------------------------------------------------------
     # Config, data and bounded replies
     # ------------------------------------------------------------------
@@ -244,6 +316,107 @@ class FoodPlugin(Star):
 
     def _cfg_str(self, key: str) -> str:
         return self.config.string(key)
+
+    def _canonical_value(
+        self,
+        group: str,
+        name: str,
+        *,
+        flat_key: str = "",
+        legacy_key: str = "",
+        default: Any = None,
+    ) -> Any:
+        """Read a canonical nested group where available, then flat/legacy.
+
+        AstrBot's flat ``_conf_schema.json`` cannot describe every nested
+        object, so canonical settings are also exposed as flat keys such as
+        ``query_limit``.  If a future/struct-aware config passes
+        ``{"query": {"limit": 5}}`` it is honored first.
+        """
+
+        section = self.config.values.get(str(group))
+        if isinstance(section, Mapping):
+            for candidate in (str(name), str(flat_key), str(legacy_key)):
+                if candidate and candidate in section:
+                    return section.get(candidate)
+        for candidate in (
+            f"{group}.{name}" if group and name else "",
+            flat_key,
+            legacy_key,
+        ):
+            if candidate and candidate in self.config.values:
+                return self.config.values[candidate]
+        if flat_key in self.config.values:
+            return self.config.values[flat_key]
+        if legacy_key and legacy_key in self.config.values:
+            return self.config.values[legacy_key]
+        if flat_key in DEFAULTS:
+            return DEFAULTS[flat_key]
+        if legacy_key and legacy_key in DEFAULTS:
+            return DEFAULTS[legacy_key]
+        if default is not None:
+            return default
+        return self.config.raw(f"{group}_{name}")
+
+    def _contract_context(self, event: AstrMessageEvent | None) -> dict[str, Any]:
+        sender = _event_sender_id(event) if event is not None else ""
+        umo = _event_umo(event) if event is not None else ""
+        group_id = "" if event is None or _event_is_private(event) else _event_group_id(event)
+        scope = (
+            {"kind": "group", "id": group_id}
+            if group_id
+            else {"kind": "user", "id": sender}
+        )
+        source_message_id = ""
+        turn_id = ""
+        if event is not None:
+            for attr in ("message_id", "msg_id"):
+                value = getattr(event, attr, None)
+                if value not in (None, ""):
+                    source_message_id = _text(value)[:200]
+                    break
+            try:
+                message_obj = getattr(event, "message_obj", None)
+                if source_message_id == "" and message_obj is not None:
+                    source_message_id = _text(
+                        getattr(message_obj, "message_id", "")
+                    )[:200]
+            except Exception:
+                pass
+            turn_id = _text(umo)[:200]
+        return contracts.RequestContext(
+            protocol_version=contracts.PROTOCOL_VERSION,
+            instance_id=_text(
+                self._canonical_value(
+                    "provider",
+                    "instance_id",
+                    flat_key="provider_instance_id",
+                    legacy_key="",
+                    default="astrbot",
+                )
+            )[:200],
+            platform="aiocqhttp",
+            bot_id=_text(
+                getattr(event, "self_id", "")
+                if event is not None
+                else ""
+            )[:200]
+            or "bot",
+            actor_id=sender,
+            conversation_id=umo,
+            persona_id="",
+            source_message_id=source_message_id,
+            turn_id=turn_id,
+            capability=contracts.PROVIDER_CAPABILITY,
+            requested_scope=scope,
+            owner_epoch=self._cfg_int("provider_owner_epoch", default=1),
+            deadline=self._now()
+            + max(1, self._cfg_int("food_timeout_seconds", default=12))
+            + 5,
+            group_id=group_id,
+            group_name=_event_group_name(event) if event is not None else "",
+            actor_name=_event_sender_name(event) if event is not None else "",
+        ).to_dict()
 
     def _now(self) -> float:
         try:
@@ -731,9 +904,491 @@ class FoodPlugin(Star):
         return self._plain(event, text)
 
     # ------------------------------------------------------------------
+    # ABI v1 fixed provider methods (request_context/args -> contract dict)
+    # ------------------------------------------------------------------
+    def provider_status(self) -> dict[str, Any]:
+        registry_status = (
+            self._registry.status() if self._registry is not None else {"abi_version": contracts.ABI_VERSION, "providers": []}
+        )
+        return {
+            "abi_version": contracts.ABI_VERSION,
+            "ready": bool(self._contract_ready),
+            "provider": PLUGIN_NAME,
+            "capability": contracts.PROVIDER_CAPABILITY,
+            "error": self._provider_error,
+            "registry": registry_status,
+        }
+
+    def _contract_unavailable(self) -> dict[str, Any] | None:
+        if self._contract_ready and self._contract_provider is not None:
+            return None
+        return ProviderResult.not_ready("Food provider 尚未就绪").to_dict()
+
+    async def _contract_call(self, method: Any, request_context: Any, args: Any) -> dict[str, Any]:
+        unavailable = self._contract_unavailable()
+        if unavailable is not None:
+            return unavailable
+        try:
+            return await method(request_context, args)
+        except Exception:
+            return ProviderResult.error(
+                contracts.ERR_INTERNAL, "Food provider 内部错误"
+            ).to_dict()
+
+    async def food_query(self, request_context: Any, args: Any) -> dict[str, Any]:
+        return await self._contract_call(
+            self._contract_provider.food_query, request_context, args
+        )
+
+    async def food_locations(self, request_context: Any, args: Any) -> dict[str, Any]:
+        return await self._contract_call(
+            self._contract_provider.food_locations, request_context, args
+        )
+
+    async def food_tags(self, request_context: Any, args: Any) -> dict[str, Any]:
+        return await self._contract_call(
+            self._contract_provider.food_tags, request_context, args
+        )
+
+    async def food_set_location(self, request_context: Any, args: Any) -> dict[str, Any]:
+        return await self._contract_call(
+            self._contract_provider.food_set_location, request_context, args
+        )
+
+    async def food_change_tags(self, request_context: Any, args: Any) -> dict[str, Any]:
+        return await self._contract_call(
+            self._contract_provider.food_change_tags, request_context, args
+        )
+
+    async def food_draft_create(self, request_context: Any, args: Any) -> dict[str, Any]:
+        return await self._contract_call(
+            self._contract_provider.food_draft_create, request_context, args
+        )
+
+    async def food_draft_preview(self, request_context: Any, args: Any) -> dict[str, Any]:
+        return await self._contract_call(
+            self._contract_provider.food_draft_preview, request_context, args
+        )
+
+    async def food_confirm(self, request_context: Any, args: Any) -> dict[str, Any]:
+        return await self._contract_call(
+            self._contract_provider.food_confirm, request_context, args
+        )
+
+    async def food_cancel(self, request_context: Any, args: Any) -> dict[str, Any]:
+        return await self._contract_call(
+            self._contract_provider.food_cancel, request_context, args
+        )
+
+    async def food_operation_status(self, request_context: Any, args: Any) -> dict[str, Any]:
+        return await self._contract_call(
+            self._contract_provider.food_operation_status, request_context, args
+        )
+
+    async def terminate(self) -> None:
+        """AstrBot lifecycle cleanup: stop readiness and unregister provider."""
+
+        self._contract_ready = False
+        if self._registry is not None:
+            try:
+                self._registry.set_ready(PLUGIN_NAME, False)
+            except Exception:
+                pass
+            try:
+                self._registry.unregister(PLUGIN_NAME)
+            except Exception:
+                pass
+        if self._ledger is not None:
+            try:
+                self._ledger.close()
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------------
+    # Canonical subcommands and provider result rendering
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _split_subcommand(raw_args: str) -> tuple[str, str]:
+        text = str(raw_args or "").strip()
+        if not text:
+            return "", ""
+        parts = text.split(None, 1)
+        token = parts[0].casefold()
+        rest = parts[1].strip() if len(parts) > 1 else ""
+        action = CANONICAL_SUBCOMMANDS.get(token, "")
+        return action, rest
+
+    def _contract_error_text(self, result: Mapping[str, Any]) -> str:
+        data = result.get("data") if isinstance(result.get("data"), Mapping) else {}
+        code = _text(result.get("error_code"))
+        message = _text(result.get("message"))
+        labels = {
+            contracts.ERR_PERMISSION_DENIED: "无权执行这个 Food 操作。",
+            contracts.ERR_NOT_READY: "Food provider 尚未就绪。",
+            contracts.ERR_DEPENDENCY_MISSING: "Food 依赖服务不可用。",
+            contracts.ERR_INVALID_ARGS: "Food 参数不合法。",
+            contracts.ERR_DRAFT_NOT_FOUND: "草稿不存在或已被清理。",
+            contracts.ERR_DRAFT_EXPIRED: "草稿已过期，请重新创建。",
+            contracts.ERR_DRAFT_INCOMPLETE: "草稿字段尚未补全。",
+            contracts.ERR_CONFIRMATION_REQUIRED: "请先预览草稿并取得确认，再执行确认。",
+            contracts.ERR_CONFIRMATION_EXPIRED: "确认已过期，请重新预览草稿。",
+            contracts.ERR_CONFIRMATION_INVALID: "确认凭证无效，请重新预览草稿。",
+            contracts.ERR_REVISION_CONFLICT: "草稿内容已变更，旧确认已失效（409）。",
+            contracts.ERR_IDEMPOTENCY_CONFLICT: "同一幂等键对应不同内容，拒绝执行（409）。",
+            contracts.ERR_OUTCOME_UNKNOWN: "提交结果未知，禁止自动重试；可用 /food 状态 <OP_ID> 查询。",
+            contracts.ERR_INVALID_STATE: "当前状态不允许该操作。",
+            contracts.ERR_AMBIGUOUS_LOCATION: "地点匹配到多个结果，请写得更具体。",
+            contracts.ERR_AMBIGUOUS_TAG: "标签匹配到多个结果，请写得更具体。",
+            contracts.ERR_NOT_FOUND: "没有找到对应记录。",
+            contracts.ERR_BACKEND_TIMEOUT: "Food 后端超时，请稍后再试。",
+            contracts.ERR_BACKEND_ERROR: "Food 后端暂时不可用，请稍后再试。",
+            "invalid_score": "分数需要在 0.1-5 之间。",
+            "site_missing_field": "站点提示缺少必填字段。",
+            "site_invalid_score": "站点提示分数不合法。",
+            "site_location_exists": "位置已存在，请换更具体的写法。",
+            "site_restaurant_not_found": "站点没有找到这家店。",
+            "site_rejected": "站点拒绝了这次提交。",
+        }
+        text = labels.get(code, "")
+        missing = data.get("missing_fields") if isinstance(data, Mapping) else None
+        if code == contracts.ERR_DRAFT_INCOMPLETE and missing:
+            text = "草稿还缺字段：" + "、".join(str(item) for item in list(missing)[:8])
+        if code in (contracts.ERR_AMBIGUOUS_LOCATION, contracts.ERR_AMBIGUOUS_TAG):
+            options = data.get("items") if isinstance(data, Mapping) else None
+            if isinstance(options, list):
+                names = [
+                    _text(item.get("name") if isinstance(item, Mapping) else item)[:60]
+                    for item in options[:5]
+                ]
+                names = [name for name in names if name]
+                if names:
+                    text += " 候选：" + "、".join(names)
+        if not text:
+            text = message or "Food 操作失败，请稍后再试。"
+        return food.clamp_food_reply(
+            text,
+            max_chars=self._cfg_int(
+                "food_reply_max_chars", minimum=200, maximum=5000, default=1800
+            ),
+        )
+
+    @staticmethod
+    def _draft_summary(data: Mapping[str, Any]) -> str:
+        payload = data.get("normalized_payload")
+        if not isinstance(payload, Mapping):
+            payload = {}
+        parts = []
+        if payload.get("restaurant"):
+            parts.append("店名：" + _text(payload.get("restaurant"))[:100])
+        location = payload.get("location_text") or payload.get("location_id")
+        if location not in (None, ""):
+            parts.append("位置：" + _text(location)[:100])
+        if payload.get("taste") is not None:
+            parts.append("味道：" + food._format_number(payload.get("taste")))
+        if payload.get("value") is not None:
+            parts.append("性价比：" + food._format_number(payload.get("value")))
+        if payload.get("tags"):
+            parts.append("标签：" + "、".join(str(tag) for tag in list(payload.get("tags"))[:8]))
+        if payload.get("comment"):
+            parts.append("评价：" + _text(payload.get("comment"))[:100])
+        return "；".join(parts)
+
+    def _contract_result_text(
+        self,
+        result: Mapping[str, Any],
+        *,
+        action: str,
+        request: Mapping[str, Any] | None = None,
+    ) -> str:
+        if not isinstance(result, Mapping):
+            return "Food 服务返回格式异常。"
+        if _text(result.get("status")) != "ok":
+            return self._contract_error_text(result)
+        data = result.get("data") if isinstance(result.get("data"), Mapping) else {}
+        if action == "query":
+            items = data.get("items") if isinstance(data.get("items"), list) else []
+            if not items:
+                return self._reply("food_empty_reply")
+            req = request or {}
+            label = _text(req.get("name")) or "餐厅"
+            return food.format_food_search_results(
+                items,
+                label=label,
+                location_name=_text(req.get("location")),
+                max_results=min(5, len(items)),
+                footer=f"更多：{food.FOOD_BASE_URL}",
+                max_chars=self._cfg_int(
+                    "food_reply_max_chars", minimum=200, maximum=5000, default=1800
+                ),
+            )
+        if action == "locations":
+            items = data.get("items") if isinstance(data.get("items"), list) else []
+            if not items:
+                return self._reply(
+                    "food_location_not_found_reply",
+                    location=_text((request or {}).get("query")),
+                )
+            lines = ["地点搜索结果："]
+            for index, item in enumerate(items[:20], 1):
+                if not isinstance(item, Mapping):
+                    continue
+                lines.append(
+                    f"{index}. {_text(item.get('name'))[:100]}"
+                    f"（{_text(item.get('path'))[:200]}） [ID:{item.get('id')}]"
+                )
+            if data.get("ambiguous"):
+                lines.append("匹配到多个地点，请用更具体的路径再查。")
+            if data.get("cursor"):
+                lines.append("还有更多结果，请继续缩小查询范围。")
+            return food.clamp_food_reply(
+                "\n".join(lines),
+                max_chars=self._cfg_int(
+                    "food_reply_max_chars", minimum=200, maximum=5000, default=1800
+                ),
+            )
+        if action == "tags":
+            items = data.get("items") if isinstance(data.get("items"), list) else []
+            if not items:
+                return self._reply(
+                    "food_search_unknown_tag_reply",
+                    tags=_text((request or {}).get("query")),
+                )
+            lines = ["标签搜索结果："]
+            for index, item in enumerate(items[:50], 1):
+                if not isinstance(item, Mapping):
+                    continue
+                lines.append(
+                    f"{index}. {_text(item.get('name'))[:100]} [ID:{item.get('id')}]"
+                )
+            if data.get("ambiguous"):
+                lines.append("匹配到多个标签，请写得更精确。")
+            return food.clamp_food_reply(
+                "\n".join(lines),
+                max_chars=self._cfg_int(
+                    "food_reply_max_chars", minimum=200, maximum=5000, default=1800
+                ),
+            )
+        if action == "draft_create":
+            draft_id = _text(data.get("draft_id"))
+            status = _text(data.get("status"))
+            if status == "collecting":
+                missing = data.get("missing_fields") or []
+                return (
+                    f"草稿已创建：{draft_id}\n"
+                    + "还缺字段："
+                    + "、".join(str(item) for item in list(missing)[:8])
+                    + "\n请用 /food 提交 ... 补全，或重新创建。"
+                )[:1800]
+            return f"草稿已创建：{draft_id}\n{self._draft_summary(data)}\n请先预览后再确认。"
+        if action == "draft_preview":
+            draft_id = _text(data.get("draft_id"))
+            summary = self._draft_summary(data)
+            return (
+                f"草稿已就绪：{draft_id}\n{summary}\n"
+                f"回复 /food 确认 {draft_id} 即可提交；确认内容变更会失效。"
+            )[:1800]
+        if action == "confirm":
+            state = _text(data.get("state"))
+            op_id = _text(data.get("op_id"))
+            remote = data.get("remote_data") if isinstance(data.get("remote_data"), Mapping) else {}
+            if state == "succeeded":
+                if remote.get("already_submitted"):
+                    return self._reply("food_submit_duplicate_username_reply")
+                name = _text(remote.get("restaurant_name"))
+                return (
+                    (f"已提交：{name}\n" if name else "已提交。\n")
+                    + (f"操作ID：{op_id}" if op_id else "")
+                ).strip()
+            return f"操作已完成：{state}" + (f"\n操作ID：{op_id}" if op_id else "")
+        if action == "cancel":
+            return f"草稿已取消：{_text(data.get('draft_id'))}"
+        if action == "status":
+            state = _text(data.get("state") or data.get("status"))
+            op_id = _text(data.get("op_id"))
+            draft_id = _text(data.get("draft_id"))
+            side = _text(data.get("side_effect_state"))
+            retryable = "是" if data.get("retryable") else "否"
+            lines = ["Food 操作状态：", f"操作ID：{op_id}", f"草稿ID：{draft_id}", f"状态：{state}"]
+            if side:
+                lines.append(f"副作用：{side}")
+            lines.append(f"可重试：{retryable}")
+            if state == "outcome_unknown":
+                lines.append("结果未知，禁止自动重试。")
+            return food.clamp_food_reply(
+                "\n".join(lines),
+                max_chars=self._cfg_int(
+                    "food_reply_max_chars", minimum=200, maximum=5000, default=1800
+                ),
+            )
+        return "Food 操作完成。"
+
+    def _parse_draft_command_args(self, rest: str) -> dict[str, Any]:
+        try:
+            tokens = shlex.split(str(rest or ""))
+        except ValueError:
+            raise ValueError("参数引号不匹配")
+        aliases = {
+            "店名": "restaurant",
+            "name": "restaurant",
+            "restaurant": "restaurant",
+            "位置": "location",
+            "location": "location",
+            "位置id": "location_id",
+            "location_id": "location_id",
+            "味道": "taste",
+            "味道分": "taste",
+            "taste": "taste",
+            "性价比": "value",
+            "性价比分": "value",
+            "value": "value",
+            "评价": "comment",
+            "评论": "comment",
+            "comment": "comment",
+            "标签": "tags",
+            "tag": "tags",
+            "tags": "tags",
+            "标签id": "tag_ids",
+            "tag_ids": "tag_ids",
+            "幂等键": "idempotency_key",
+            "idempotency_key": "idempotency_key",
+            "draft_id": "draft_id",
+        }
+        result: dict[str, Any] = {}
+        for token in tokens:
+            if "=" not in token:
+                raise ValueError("参数需要 key=value")
+            key, value = token.split("=", 1)
+            key = str(key).strip().casefold()
+            field = aliases.get(key, "")
+            if not field:
+                raise ValueError("未知参数")
+            if field == "tag_ids":
+                result[field] = [
+                    part.strip() for part in value.split(",") if part.strip()
+                ]
+            elif field == "location_id":
+                try:
+                    result[field] = int(value)
+                except (TypeError, ValueError):
+                    raise ValueError("位置ID非法")
+            else:
+                result[field] = value.strip()
+        return result
+
+    async def _handle_canonical_command(
+        self, event: AstrMessageEvent, action: str, rest: str
+    ):
+        ctx = self._contract_context(event)
+        if action == "query":
+            request = self._parse_search_command(rest) if rest else {
+                "ok": True,
+                "name": "",
+                "location": "",
+                "tags": [],
+                "sort": "total",
+                "order": "desc",
+                "limit": max(1, self._cfg_int("food_max_results", default=5)),
+            }
+            if not request.get("ok"):
+                return self._plain(
+                    event, self._invalid_search_reply(request.get("error", ""), tool=False)
+                )
+            provider_args = {
+                "query_text": request.get("name") or "",
+                "location": request.get("location") or "",
+                "tags": request.get("tags") or [],
+                "sort": request.get("sort") or "total",
+                "order": request.get("order") or "desc",
+                "limit": request.get("limit") or 5,
+            }
+            if not provider_args["location"]:
+                context_parts = self._group_location_parts(event)
+                if context_parts:
+                    provider_args["location"] = context_parts[-1]
+            result = await self.food_query(ctx, provider_args)
+            return self._plain(
+                event,
+                self._contract_result_text(result, action="query", request=request),
+            )
+        if action == "locations":
+            query = _text(rest)
+            if not query:
+                return self._plain(event, "用法：/food 位置 <地名>，例如 /food 位置 南关区")
+            result = await self.food_locations(ctx, {"query": query, "limit": 20})
+            return self._plain(
+                event,
+                self._contract_result_text(result, action="locations", request={"query": query}),
+            )
+        if action == "tags":
+            query = _text(rest)
+            if not query:
+                return self._plain(event, "用法：/food 标签 <标签名>，例如 /food 标签 火锅")
+            result = await self.food_tags(ctx, {"query": query, "limit": 50})
+            return self._plain(
+                event,
+                self._contract_result_text(result, action="tags", request={"query": query}),
+            )
+        if action == "submit":
+            try:
+                draft_args = self._parse_draft_command_args(rest)
+            except ValueError as exc:
+                return self._plain(event, f"提交参数不合法：{exc}")
+            if not draft_args:
+                return self._plain(
+                    event,
+                    "用法：/food 提交 店名=... 位置=... 味道=4.5 性价比=3.5 评价=...",
+                )
+            created = await self.food_draft_create(ctx, draft_args)
+            if _text(created.get("status")) != "ok":
+                return self._plain(event, self._contract_error_text(created))
+            data = created.get("data") if isinstance(created.get("data"), Mapping) else {}
+            if _text(data.get("status")) == "collecting":
+                return self._plain(
+                    event, self._contract_result_text(created, action="draft_create")
+                )
+            draft_id = _text(data.get("draft_id"))
+            preview = await self.food_draft_preview(ctx, {"draft_id": draft_id})
+            if _text(preview.get("status")) != "ok":
+                return self._plain(event, self._contract_error_text(preview))
+            return self._plain(
+                event, self._contract_result_text(preview, action="draft_preview")
+            )
+        if action == "confirm":
+            tokens = rest.split()
+            if not tokens:
+                return self._plain(event, "用法：/food 确认 <DRAFT_ID> [确认令牌]")
+            draft_id = tokens[0]
+            confirmation_ref = tokens[1] if len(tokens) > 1 else ""
+            result = await self.food_confirm(
+                ctx,
+                {"draft_id": draft_id, "confirmation_ref": confirmation_ref},
+            )
+            return self._plain(
+                event, self._contract_result_text(result, action="confirm")
+            )
+        if action == "cancel":
+            draft_id = _text(rest.split()[0] if rest.split() else "")
+            if not draft_id:
+                return self._plain(event, "用法：/food 取消 <DRAFT_ID>")
+            result = await self.food_cancel(ctx, {"draft_id": draft_id})
+            text = self._contract_result_text(result, action="cancel")
+            return self._plain(event, text)
+        if action == "status":
+            op_id = _text(rest.split()[0] if rest.split() else "")
+            if not op_id:
+                return self._plain(event, "用法：/food 状态 <OP_ID>")
+            result = await self.food_operation_status(ctx, {"op_id": op_id})
+            if _text(result.get("status")) != "ok":
+                return self._plain(event, self._contract_error_text(result))
+            return self._plain(
+                event, self._contract_result_text(result, action="status")
+            )
+        return None
+
+    # ------------------------------------------------------------------
     # AstrBot command handler
     # ------------------------------------------------------------------
-    @filter.command("food", alias={"吃什么", "饭店"}, priority=110)
+    @filter.command("food", alias={"美食", "吃什么", "饭店"}, priority=110)
     async def food_command(self, event: AstrMessageEvent):
         _call_shall_not_llm(event)
         try:
@@ -745,6 +1400,27 @@ class FoodPlugin(Star):
             raw_args = self._command_argument(event)
             if not raw_args:
                 result = self._plain(event, self._reply("food_usage_reply"))
+                if result is not None:
+                    yield result
+                return
+            action, rest = self._split_subcommand(raw_args)
+            if action:
+                # Canonical read/write subcommands are deterministic and do
+                # not invoke the chat model.  Query commands pass through the
+                # same cooldown as the legacy search form.
+                if action == "query":
+                    remaining = self._command_cooldown_remaining(event)
+                    if remaining > 0:
+                        result = self._plain(
+                            event,
+                            self._reply("food_cooldown_reply", seconds=remaining),
+                        )
+                        if result is not None:
+                            yield result
+                        return
+                result = await self._handle_canonical_command(
+                    event, action, rest
+                )
                 if result is not None:
                     yield result
                 return
