@@ -1,0 +1,45 @@
+name: publish-release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: verify committed artifacts match catalog
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          catalog = json.loads(Path("catalog.json").read_text(encoding="utf-8"))
+          assert catalog.get("schema_version") == 2, "unexpected catalog schema"
+          plugins = catalog["plugins"]
+          assert len(plugins) == 7, len(plugins)
+          for item in plugins:
+              archive = Path("artifacts") / f"{item['id']}-{item['version']}.zip"
+              assert archive.is_file(), archive
+              digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+              assert digest == item["sha256"], f"{archive.name}: sha256 mismatch"
+              assert archive.stat().st_size == item["size"], f"{archive.name}: size mismatch"
+          print(f"verified {len(plugins)} plugin archives")
+          PY
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true
