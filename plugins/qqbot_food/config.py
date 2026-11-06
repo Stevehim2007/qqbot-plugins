@@ -85,17 +85,8 @@ DEFAULTS: dict[str, Any] = {
     "food_submit_score_reply": "分数需要在 0.1-5 之间：{fields}。",
     "food_submit_ambiguous_location_reply": "「{location}」匹配到多个位置：{options}。请说得更具体一点，我再提交。",
     "food_submit_location_invalid_reply": "位置格式不合法，请不要带 URL 或控制字符，换个写法我再提交。",
-    "food_submit_image_prompt_reply": "这是美食图吗喵？想记录评价的话，告诉我店名、位置、味道分（0.1-5）、性价比分（0.1-5）和一段评价，我再帮你提交。",
     "food_submit_no_sender_reply": "无法确认你的身份，暂时不能提交评价；请稍后再试。",
     "food_submit_tool_rejected_reply": "这次提交没有生效：请用普通文字告诉我店名、位置、味道分（0.1-5）、性价比分（0.1-5）和评价内容，不要带链接、密码或额外参数。",
-    # ---- legacy natural-language participation knobs -------------------
-    "food_nl_enabled": True,
-    "food_nl_probability": 0.35,
-    "food_nl_cooldown_seconds": 120,
-    "food_nl_min_message_chars": 4,
-    "food_nl_image_enabled": True,
-    "food_nl_image_probability": 0.25,
-    "food_nl_image_without_caption_enabled": False,
     # ---- canonical ABI v1 groups (flat schema equivalents) -------------
     "provider_instance_id": "astrbot",
     "provider_owner_epoch": 1,

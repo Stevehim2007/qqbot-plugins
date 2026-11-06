@@ -1,4 +1,4 @@
-# qqbot_safe_tools 3.0.0
+# qqbot_safe_tools 3.0.1
 
 `qqbot_safe_tools` 是七插件运行时中**唯一的 `[[tool:...]]` marker owner**。
 它不调用 LLM，也不解析用户消息或工具返回文本；它只检查由 `qqbot_core_reply`

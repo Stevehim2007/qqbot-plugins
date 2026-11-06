@@ -1,10 +1,9 @@
 """Optional ``/记忆`` chat commands for AstrBot native long-term memory.
 
 Item 3 of ``docs/memory-management-plan.md``.  Everything here is opt-in:
-``memory_commands_enabled=false`` by default, and the destructive verbs
-(``忘记``/``删除``) need ``memory_commands_destructive_enabled=true`` as well.
-Only AstrBot admins, QQ group owners and the explicit
-``memory_commands_allow_user_ids`` allowlist may run them.
+``enabled=false`` by default, and the destructive verbs (``忘记``/``删除``)
+need ``destructive_enabled=true`` as well. Only AstrBot admins, QQ group owners
+and the explicit ``allow_user_ids`` allowlist may run them.
 
 Scope isolation is the whole point: a reply is bound to exactly one scope --
 the current group's ``group`` scope in a group chat, the sender's own ``user``
@@ -45,13 +44,9 @@ USAGE = (
     "用法：/记忆 状态；/记忆 搜索 <关键词>；/记忆 删除 <id>；"
     "/记忆 忘记 本群|我的；/记忆 整理（/记忆管理 为等价别名）"
 )
-DISABLED_REPLY = (
-    "记忆管理命令未启用（管理员可在插件配置开启 enabled；"
-    "旧配置 memory_commands_enabled 也兼容）。"
-)
+DISABLED_REPLY = "记忆管理命令未启用（管理员可在插件配置开启 enabled）。"
 DESTRUCTIVE_DISABLED_REPLY = (
-    "删除/忘记未启用（管理员可在插件配置开启 destructive_enabled；"
-    "旧配置 memory_commands_destructive_enabled 也兼容）。"
+    "删除/忘记未启用（管理员可在插件配置开启 destructive_enabled）。"
 )
 PERMISSION_REPLY = "只有群主/管理员或允许名单可以使用记忆管理命令。"
 UNPATCHED_REPLY = "当前 AstrBot 没有长期记忆服务（未安装记忆补丁），/记忆 命令不可用。"
@@ -131,67 +126,37 @@ class Options:
 
 
 def options_from_config(mapping: Mapping[str, Any] | None) -> Options:
-    """Build clamped options from canonical or legacy bot-1 config keys.
+    """Build clamped options from the canonical plugin config keys.
 
-    Canonical keys win when present.  Only a missing canonical key falls back
-    to its historical ``memory_commands_*`` spelling.  The helper is pure and
-    deliberately tolerant: a malformed value falls back to the safe default
-    (commands/destructive operations disabled) rather than raising.
+    A malformed value falls back to the safe default rather than raising.
     """
 
     data: Mapping[str, Any] = mapping if isinstance(mapping, Mapping) else {}
-
-    def choose(canonical: str, legacy: str, default: Any) -> Any:
-        if canonical in data:
-            return data[canonical]
-        if legacy in data:
-            return data[legacy]
-        return default
-
     return Options(
-        enabled=_config_bool(
-            choose("enabled", "memory_commands_enabled", False),
-            default=False,
-        ),
+        enabled=_config_bool(data.get("enabled", False), default=False),
         destructive_enabled=_config_bool(
-            choose(
-                "destructive_enabled",
-                "memory_commands_destructive_enabled",
-                False,
-            ),
-            default=False,
+            data.get("destructive_enabled", False), default=False
         ),
-        allow_user_ids=_config_ids(
-            choose("allow_user_ids", "memory_commands_allow_user_ids", "")
-        ),
+        allow_user_ids=_config_ids(data.get("allow_user_ids", "")),
         max_results=_config_int(
-            choose("max_results", "memory_commands_max_results", DEFAULT_MAX_RESULTS),
+            data.get("max_results", DEFAULT_MAX_RESULTS),
             default=DEFAULT_MAX_RESULTS,
             minimum=MIN_MAX_RESULTS,
             maximum=MAX_MAX_RESULTS,
         ),
         content_chars=_config_int(
-            choose(
-                "content_chars",
-                "memory_commands_content_chars",
-                DEFAULT_CONTENT_CHARS,
-            ),
+            data.get("content_chars", DEFAULT_CONTENT_CHARS),
             default=DEFAULT_CONTENT_CHARS,
             minimum=MIN_CONTENT_CHARS,
             maximum=MAX_CONTENT_CHARS,
         ),
         max_reply_chars=_config_int(
-            choose(
-                "max_reply_chars",
-                "memory_commands_max_reply_chars",
-                DEFAULT_REPLY_CHARS,
-            ),
+            data.get("max_reply_chars", DEFAULT_REPLY_CHARS),
             default=DEFAULT_REPLY_CHARS,
             minimum=MIN_REPLY_CHARS,
             maximum=MAX_REPLY_CHARS,
         ),
     )
-
 
 def _config_bool(value: Any, *, default: bool) -> bool:
     if isinstance(value, bool):

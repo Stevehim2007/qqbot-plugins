@@ -1,6 +1,6 @@
 {
   "enabled": {
-    "description": "启用核心回复（部署时请先停用旧 qqbot_enhancer）",
+    "description": "启用核心回复（唯一聊天控制器）。",
     "type": "bool",
     "default": false
   },
@@ -58,7 +58,7 @@
     }
   },
   "max_input_chars": {
-    "description": "送入 LLM 的用户文字最大长度（旧键）",
+    "description": "送入 LLM 的用户文字最大长度。",
     "type": "int",
     "default": 2000,
     "slider": {

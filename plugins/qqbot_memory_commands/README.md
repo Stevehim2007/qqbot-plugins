@@ -1,4 +1,4 @@
-# qqbot_memory_commands 4.0.0
+# qqbot_memory_commands 4.0.1
 
 面向 AstrBot `>=4.29,<5` 的独立长期记忆管理命令插件。命令完全确定性地读取、搜索和清理
 AstrBot 原生记忆服务；**不调用聊天模型**，也不导入 `qqbot_enhancer`、`qqbot_core_full`
@@ -47,17 +47,17 @@ AstrBot 原生记忆服务；**不调用聊天模型**，也不导入 `qqbot_enh
 配置由 AstrBot 以 `MemoryCommandsPlugin(context=..., config=plugin_config)` 注入；插件读取
 注入的 **plugin config**，不把 `context.get_config()` 的全局配置当作插件设置。
 
-| 新键 | 旧 bot-1 键（新键缺失时兼容） | 默认 | 说明 |
-| --- | --- | --- | --- |
-| `enabled` | `memory_commands_enabled` | `false` | 总开关；默认关闭 |
-| `destructive_enabled` | `memory_commands_destructive_enabled` | `false` | 删除/忘记第二道开关 |
-| `allow_user_ids` | `memory_commands_allow_user_ids` | `""` | 逗号分隔或列表 |
-| `max_results` | `memory_commands_max_results` | `5` | 限制到 1..10 |
-| `content_chars` | `memory_commands_content_chars` | `80` | 限制到 20..200 |
-| `max_reply_chars` | `memory_commands_max_reply_chars` | `900` | 限制到 200..2000 |
+| 键 | 默认 | 说明 |
+| --- | --- | --- |
+| `enabled` | `false` | 总开关；默认关闭 |
+| `destructive_enabled` | `false` | 删除/忘记第二道开关 |
+| `allow_user_ids` | `""` | 逗号分隔或列表 |
+| `max_results` | `5` | 限制到 1..10 |
+| `content_chars` | `80` | 限制到 20..200 |
+| `max_reply_chars` | `900` | 限制到 200..2000 |
 
-纯函数 `memory_commands.options_from_config(mapping)` 负责映射、类型容错和上下限裁剪；
-新键存在时优先使用新键，只有新键缺失才回退旧键。
+纯函数 `memory_commands.options_from_config(mapping)` 负责类型容错和上下限裁剪；
+不再读取 `memory_commands_*` 旧键。
 
 ## AstrBot 长期记忆补丁前提
 
@@ -88,15 +88,14 @@ handler 在每次执行时先调用 `event.should_call_llm(True)`（AstrBot 中�
 1. 停止 AstrBot；
 2. 备份 `data/cmd_config.json`、插件配置以及实际安装路径下的 `astrbot_memory.db`
    （常见为 `data/astrbot_memory.db`，以部署为准）；
-3. 记录当前 `enabled`、`destructive_enabled` 和允许名单，先以默认关闭状态安装 4.0.0；
+3. 记录当前 `enabled`、`destructive_enabled` 和允许名单，先以默认关闭状态安装 4.0.1；
 4. 启动后确认 patch 可用，再按需开启总开关和破坏性开关。
 
 回滚：
 
 1. 停止 AstrBot；
 2. 恢复旧版插件目录/配置和上述备份；
-3. 若旧版要读取 bot-1 键，保留 `memory_commands_*` 配置即可；
-4. 不要为了回滚插件而删除记忆库；只有发生数据损坏的灾难恢复才恢复数据库备份。
+3. 不要为了回滚插件而删除记忆库；只有发生数据损坏的灾难恢复才恢复数据库备份。
 
 ## 测试
 

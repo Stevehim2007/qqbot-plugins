@@ -59,8 +59,6 @@ class StickerPluginTests(unittest.TestCase):
             "sticker_cooldown_seconds": 0,
             "sticker_prevent_repeat": True,
             "sticker_decorate_probability": 1.0,
-            "sticker_probability": 1.0,
-            "collected_sticker_migration_enabled": False,
             "collected_sticker_max_count": 20,
             "collected_sticker_max_file_bytes": 100_000,
             "collected_sticker_max_dimension": 512,
@@ -293,10 +291,9 @@ class StickerPluginTests(unittest.TestCase):
         images = [item for item in event.result.chain if isinstance(item, fakes.Image)]
         self.assertEqual(len(images), 1)
 
-    def test_decoration_legacy_probability_zero_skips(self):
+    def test_decoration_probability_zero_skips(self):
         config = dict(self.cfg)
-        config.pop("sticker_decorate_probability", None)
-        config["sticker_probability"] = 0.0
+        config["sticker_decorate_probability"] = 0.0
         plugin = StickerPlugin(self.context, config=config)
         plugin.configure_paths(data_dir=self.base / "prob-data")
         self.seed(plugin, png(tag=150))
@@ -724,7 +721,7 @@ class StickerPluginTests(unittest.TestCase):
         import hashlib
 
         (legacy / "旧分类" / (hashlib.sha256(data).hexdigest() + ".png")).write_bytes(data)
-        plugin = self.make_plugin(collected_sticker_migration_enabled=True)
+        plugin = self.make_plugin()
         plugin.configure_paths(
             data_dir=self.data_dir,
             legacy_root=legacy,
@@ -752,7 +749,7 @@ class StickerPluginTests(unittest.TestCase):
         fakes.StarTools.data_dirs["qqbot_enhancer"] = legacy_data
         plugin = StickerPlugin(
             self.context,
-            config=dict(self.cfg, collected_sticker_migration_enabled=True),
+            config=dict(self.cfg),
         )
         entries = _run(plugin._entries())
         self.assertEqual(len(entries), 1)

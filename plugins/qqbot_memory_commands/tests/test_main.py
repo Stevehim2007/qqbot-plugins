@@ -346,7 +346,7 @@ class TestHandlerBehaviour(HandlerTestCase):
         self.assertEqual(event.call_llm_values, [True])
         self.assertEqual(event.stop_count, 1)
 
-    async def test_legacy_prefixed_injected_config_is_used_end_to_end(self):
+    async def test_injected_config_is_used_end_to_end(self):
         service = FakeService(
             [
                 record(1, "本群火锅"),
@@ -355,9 +355,9 @@ class TestHandlerBehaviour(HandlerTestCase):
         )
         plugin, _ = self.make_plugin(
             {
-                "memory_commands_enabled": True,
-                "memory_commands_allow_user_ids": "10001",
-                "memory_commands_max_results": 2,
+                "enabled": True,
+                "allow_user_ids": "10001",
+                "max_results": 2,
             }
         )
         event = FakeEvent("/记忆 搜索 火锅")
@@ -415,8 +415,8 @@ class TestHandlerBehaviour(HandlerTestCase):
         service = FakeService([record(7, "本群火锅")])
         plugin, _ = self.make_plugin(
             {
-                "memory_commands_enabled": True,
-                "memory_commands_destructive_enabled": True,
+                "enabled": True,
+                "destructive_enabled": True,
             }
         )
         event = FakeEvent("/记忆 删除 7")

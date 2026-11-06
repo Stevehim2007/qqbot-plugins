@@ -1,4 +1,4 @@
-# qqbot_core_reply
+# qqbot_core_reply 4.0.1
 
 `qqbot_core_reply` 是最终七插件架构里**唯一的主回复 / LLM owner**。它自包含、
 只依赖 Python 标准库和 AstrBot >= 4.29 公共插件 API；不导入 `qqbot_enhancer`、

@@ -9,16 +9,6 @@
     "type": "bool",
     "default": true
   },
-  "sticker_probability": {
-    "description": "结果装饰概率（0-1）；1 表示候选必装饰。",
-    "type": "float",
-    "default": 1.0,
-    "slider": {
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.05
-    }
-  },
   "sticker_decorate_enabled": {
     "description": "是否为显式标记的 core reply 追加至多一张表情。",
     "type": "bool",
@@ -447,12 +437,6 @@
     "description": "内存中最近图片缓存有效秒数。",
     "type": "int",
     "default": 300
-  },
-  "collected_sticker_migration_enabled": {
-    "description": "启动时一次性、幂等导入旧 qqbot_enhancer 收藏。",
-    "type": "bool",
-    "default": true,
-    "hint": "确定性本地路径优先；命令/解析阶段不会启动聊天模型。"
   },
   "collected_sticker_storage_unavailable_reply": {
     "description": "存储不可用时的回复。",

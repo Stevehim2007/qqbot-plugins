@@ -1,4 +1,4 @@
-# qqbot_stickers 3.0.0
+# qqbot_stickers 3.0.1
 
 AstrBot >= 4.29 的独立表情库插件。仅使用 Python 标准库与 AstrBot 公共 API，
 不导入 `qqbot_enhancer`、`qqbot_core_full` 或其他插件源码，也没有第三方依赖。

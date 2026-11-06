@@ -1,4 +1,4 @@
-# qqbot_food
+# qqbot_food 3.0.1
 
 Independent AstrBot >=4.29 plugin for searching `food.dlsz.top` and submitting a
 restaurant review. It uses only the Python standard library plus AstrBot's
@@ -102,8 +102,9 @@ See `_conf_schema.json`. It covers command enable/timeout/bytes/results/
 cooldowns/keyword/location limits, group locations/name inference, read
 replies, safe-tool search limits/sort defaults/replies, submit enable/timeout/
 bytes/cooldown/draft TTL, all field limits, confirmation/duplicate/error
-replies, and the legacy `food_nl_*` knobs (kept for config compatibility; this
-plugin itself does not run LLM-style natural-language participation).
+replies. Natural-language Food queries are owned by `qqbot_core_reply` /
+`qqbot_safe_tools`; this plugin exposes only the `tool_search_restaurants`
+provider entry.
 
 ## Canonical commands (ABI v1)
 

@@ -5,6 +5,8 @@ import types
 import unittest
 
 from support import FakeContext, FakeEvent, make_plugin
+from fake_astrbot import FakeResult, FakeStarMeta
+from reply_pipeline import CANDIDATE_EXTRA, MODEL_ROUND_EXTRA, TURN_EXTRA
 
 
 def run(coro):
@@ -37,6 +39,25 @@ class MemoryHookTests(unittest.TestCase):
         self.assertIn("Alice", req.system_prompt)
         self.assertIn("1001", req.system_prompt)
         self.assertTrue(event.get_extra("qqbot_core_reply_identity_injected"))
+
+    def test_safe_tools_catalog_injected(self):
+        class SafeStar:
+            def tool_instruction(self):
+                return "SAFE TOOLS CATALOG\n[[tool:search_food_restaurants name=\"火锅\"]]"
+
+        ctx = FakeContext(
+            registered_stars={
+                "qqbot_safe_tools": FakeStarMeta(SafeStar())
+            }
+        )
+        plugin, _, _ = make_plugin(context=ctx, overrides={"memory_mode": "astrbot"})
+        event = FakeEvent("hello", group_id=GROUP, sender_name="Alice", sender_id="1001")
+        plugin._mark_candidate(event, "hello", ambient=False)
+        req = types.SimpleNamespace(system_prompt="BASE")
+        run(plugin.inject_memory_mode_context(event, req))
+        self.assertIn("SAFE TOOLS CATALOG", req.system_prompt)
+        self.assertIn("search_food_restaurants", req.system_prompt)
+        self.assertTrue(event.get_extra("qqbot_core_reply_safe_tools_injected"))
 
     def test_non_candidate_has_no_injection(self):
         plugin, ctx, _ = make_plugin(overrides={"memory_mode": "astrbot"})
@@ -90,6 +111,44 @@ class MemoryHookTests(unittest.TestCase):
         self.assertFalse(
             event.get_extra("qqbot_core_reply_ambient_context_injected")
         )
+
+    def _claim_memory_turn(self, plugin, event):
+        context = plugin.pipeline.request_context(event)
+        record, _ = plugin.pipeline.state.claim_turn(
+            context, delivery_key=f"reply:{context.turn_id}"
+        )
+        event.set_extra(CANDIDATE_EXTRA, True)
+        event.set_extra(TURN_EXTRA, context.turn_id)
+        event.set_extra(MODEL_ROUND_EXTRA, 0)
+        return context, record
+
+    def test_empty_memory_output_releases_turn(self):
+        plugin, _, _ = make_plugin(overrides={"memory_mode": "astrbot"})
+        event = FakeEvent("https://example.com", private=True)
+        context, record = self._claim_memory_turn(plugin, event)
+        event.set_result(FakeResult("chain", chain=[]))
+        run(plugin.pipeline.handle_decorating_result(event))
+        self.assertEqual(record.status, "delivered")
+        self.assertNotIn(context.turn_id, plugin.pipeline.state.active_turns.values())
+
+    def test_missing_processor_releases_turn(self):
+        from astrbot.api import message_components as Comp
+
+        plugin, _, _ = make_plugin(overrides={"memory_mode": "astrbot"})
+        event = FakeEvent("hello", private=True)
+        context, record = self._claim_memory_turn(plugin, event)
+        event.set_result(FakeResult("chain", chain=[Comp.Plain("hello")]))
+        run(plugin.pipeline.handle_decorating_result(event))
+        self.assertEqual(record.status, "delivered")
+        self.assertNotIn(context.turn_id, plugin.pipeline.state.active_turns.values())
+
+    def test_memory_turn_watchdog_releases_stuck_turn(self):
+        plugin, _, _ = make_plugin(overrides={"memory_mode": "astrbot"})
+        event = FakeEvent("hello", private=True)
+        context, record = self._claim_memory_turn(plugin, event)
+        run(plugin.pipeline._expire_memory_turn(context.turn_id, 0))
+        self.assertEqual(record.status, "outcome_unknown")
+        self.assertNotIn(context.turn_id, plugin.pipeline.state.active_turns.values())
 
     def test_hook_never_calls_llm(self):
         plugin, ctx, _ = make_plugin(overrides={"memory_mode": "astrbot"})

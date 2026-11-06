@@ -135,9 +135,6 @@ class MetadataAndSchemaTests(unittest.TestCase):
             "food_search_name_max_chars",
             "food_search_tag_max_chars",
             "food_search_location_max_chars",
-            "food_nl_enabled",
-            "food_nl_probability",
-            "food_nl_cooldown_seconds",
         }
         self.assertTrue(required.issubset(schema))
 
@@ -174,13 +171,11 @@ class ConfigReaderTests(unittest.TestCase):
                 "food_enabled": "false",
                 "food_max_results": "3",
                 "food_timeout_seconds": 7,
-                "food_nl_probability": 2.5,
             }
         )
         self.assertFalse(config.bool("food_enabled"))
         self.assertEqual(config.int("food_max_results"), 3)
         self.assertEqual(config.int("food_timeout_seconds"), 7)
-        self.assertEqual(config.float("food_nl_probability"), 1.0)
         self.assertEqual(config.string("food_usage_reply"), DEFAULTS["food_usage_reply"])
 
     def test_plugin_uses_injected_config_not_context_global_config(self):

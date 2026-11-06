@@ -112,7 +112,6 @@ TOOL_MARKER_PRESENCE_RE = re.compile(
 DEFAULTS: dict[str, Any] = {
     "enabled": True,
     "sticker_enabled": True,
-    "sticker_probability": 1.0,
     "sticker_decorate_enabled": True,
     "sticker_decorate_probability": 1.0,
     "sticker_cooldown_seconds": 120,
@@ -155,7 +154,6 @@ DEFAULTS: dict[str, Any] = {
     "collected_sticker_max_tone_chars": 24,
     "collected_sticker_list_limit": 30,
     "pending_sticker_ttl_seconds": 300,
-    "collected_sticker_migration_enabled": True,
     "collected_sticker_storage_unavailable_reply": "收藏存储目录不可用，请检查 AstrBot 的 data/plugin_data 权限。",
     "collected_sticker_no_image_reply": "这条消息里没有可收藏的图片。请发送图片/表情包并同时使用 /收藏表情。",
     "collected_sticker_face_unsupported_reply": "QQ 原生 Face 表情没有可保存的图片文件，无法收藏；请发送图片/贴纸形式的 Image。",
@@ -664,8 +662,6 @@ class StickerPlugin(Star):
             return self._store
 
     async def _run_migration_once(self, store: CollectedStickerStore) -> None:
-        if not self._cfg_bool("collected_sticker_migration_enabled", True):
-            return
         legacy = self._resolve_legacy_root()
         if legacy is None:
             return
@@ -2653,10 +2649,8 @@ class StickerPlugin(Star):
             ai_enabled = self._cfg_bool("sticker_ai_decorate_enabled", False)
             if ai_enabled:
                 probability = self._cfg_float("sticker_ai_decorate_probability", 0.3)
-            elif "sticker_decorate_probability" in self._plugin_config:
-                probability = self._cfg_float("sticker_decorate_probability", 1.0)
             else:
-                probability = self._cfg_float("sticker_probability", 1.0)
+                probability = self._cfg_float("sticker_decorate_probability", 1.0)
             if probability < 1.0 and self._rng.random() >= probability:
                 return
             entries = await self._entries()

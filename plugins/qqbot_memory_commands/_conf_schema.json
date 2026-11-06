@@ -3,19 +3,19 @@
     "description": "启用 /记忆 与 /记忆管理 管理命令",
     "type": "bool",
     "default": false,
-    "hint": "默认关闭。只读取和操作当前群的 group 作用域，私聊只读取和操作发送者自己的 user 作用域；需要 AstrBot 已安装长期记忆补丁。旧版 memory_commands_enabled 键在缺少 enabled 时仍会被读取。"
+    "hint": "默认关闭。只读取和操作当前群的 group 作用域，私聊只读取和操作发送者自己的 user 作用域；需要 AstrBot 已安装长期记忆补丁。"
   },
   "destructive_enabled": {
     "description": "允许删除和忘记",
     "type": "bool",
     "default": false,
-    "hint": "破坏性操作的第二道开关；未开启时 /记忆 删除 与 /记忆 忘记 直接拒绝且不调用 memory service。旧版 memory_commands_destructive_enabled 键兼容。"
+    "hint": "破坏性操作的第二道开关；未开启时 /记忆 删除 与 /记忆 忘记 直接拒绝且不调用 memory service。"
   },
   "allow_user_ids": {
     "description": "允许使用命令的发送者 ID，逗号分隔",
     "type": "string",
     "default": "",
-    "hint": "AstrBot 管理员和群主/管理员始终可用；这里额外允许指定发送者。旧版 memory_commands_allow_user_ids 键兼容。"
+    "hint": "AstrBot 管理员和群主/管理员始终可用；这里额外允许指定发送者。"
   },
   "max_results": {
     "description": "搜索最多显示条数",
@@ -26,7 +26,7 @@
       "max": 10,
       "step": 1
     },
-    "hint": "硬限制为 1..10。旧版 memory_commands_max_results 键兼容。"
+    "hint": "硬限制为 1..10。"
   },
   "content_chars": {
     "description": "单条记忆内容最多字符数",
@@ -37,7 +37,7 @@
       "max": 200,
       "step": 10
     },
-    "hint": "硬限制为 20..200。旧版 memory_commands_content_chars 键兼容。"
+    "hint": "硬限制为 20..200。"
   },
   "max_reply_chars": {
     "description": "单条命令回复最大字符数",
@@ -48,7 +48,7 @@
       "max": 2000,
       "step": 100
     },
-    "hint": "硬限制为 200..2000；回复仍会统一清洗和截断。旧版 memory_commands_max_reply_chars 键兼容。"
+    "hint": "硬限制为 200..2000；回复仍会统一清洗和截断。"
   },
   "instance_id": {
     "description": "实例稳定 ID（用于 canonical scope 命名空间）",

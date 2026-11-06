@@ -409,6 +409,20 @@ class PersonaService:
                     bool(injected_ambient),
                 )
 
+    def inject_safe_tools_context(self, req: Any, instruction: str) -> bool:
+        """Append the safe-tools catalogue to an existing memory-mode request."""
+        text = str(instruction or "").strip()
+        if not text:
+            return False
+        try:
+            current = str(getattr(req, "system_prompt", "") or "")
+            req.system_prompt = persona_bridge_engine.inject_safe_tools_instruction(
+                current, text
+            )
+            return True
+        except Exception:
+            return False
+
     @staticmethod
     def _is_private(event: Any) -> bool:
         try:

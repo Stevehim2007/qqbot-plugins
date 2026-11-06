@@ -35,6 +35,7 @@ MODEL_ROUND_EXTRA = "qqbot_core_reply_model_round"
 MEMORY_MODE_EXTRA = "qqbot_core_reply_memory_mode"
 OUTPUT_PROCESSED_EXTRA = "qqbot_core_reply_output_processed"
 OUTPUT_ERROR_EXTRA = "qqbot_core_reply_output_error"
+MEMORY_TURN_GRACE_SECONDS = 15
 
 
 @dataclass
@@ -486,6 +487,22 @@ class ReplyPipeline:
             self.block_default_llm(event)
             return None
         self.mark_candidate(event, original_text, ambient=(mode == "ambient"))
+        if created:
+            timeout = self.config.effective_int(
+                "llm.timeout_seconds",
+                "llm_timeout_seconds",
+                default=45,
+                minimum=1,
+                maximum=300,
+            )
+            watchdog = asyncio.create_task(
+                self._expire_memory_turn(
+                    request_context.turn_id,
+                    float(timeout) + MEMORY_TURN_GRACE_SECONDS,
+                )
+            )
+            record.task = watchdog
+            self.state.register_task(watchdog)
         event.set_extra(MEMORY_MODE_EXTRA, True)
         event.set_extra(TURN_EXTRA, request_context.turn_id)
         event.set_extra(MODEL_ROUND_EXTRA, 0)
@@ -734,6 +751,22 @@ class ReplyPipeline:
                 continue
         return output
 
+    async def _expire_memory_turn(self, turn_id: str, delay: float) -> None:
+        try:
+            await asyncio.sleep(max(0.0, float(delay)))
+        except asyncio.CancelledError:
+            return
+        record = self.state.get_turn(turn_id)
+        if record is None or record.status != "running":
+            return
+        self._finish_memory_turn(turn_id, "outcome_unknown")
+
+    def _finish_memory_turn(self, turn_id: str, delivery_state: str) -> None:
+        try:
+            self.state.record_delivery(turn_id, delivery_state)
+        except Exception:
+            pass
+
     # ------------------------------------------------------------------
     # Memory-mode complete-output adapter
     # ------------------------------------------------------------------
@@ -752,56 +785,60 @@ class ReplyPipeline:
         fingerprint = f"{turn_id}:{model_round}"
         if not self.state.mark_output_processed(fingerprint):
             return
-        result = getattr(event, "get_result", lambda: None)()
-        chain = getattr(result, "chain", None)
-        if not isinstance(chain, list):
-            return
-        plain_text = ""
         try:
-            from astrbot.api import message_components as Comp
+            result = getattr(event, "get_result", lambda: None)()
+            chain = getattr(result, "chain", None)
+            if not isinstance(chain, list):
+                self._finish_memory_turn(turn_id, "outcome_unknown")
+                return
+            plain_text = ""
+            try:
+                from astrbot.api import message_components as Comp
+            except Exception:
+                Comp = None
+            for component in chain:
+                if Comp is not None and isinstance(component, Comp.Plain):
+                    plain_text += str(getattr(component, "text", "") or "")
+            if not plain_text:
+                self._finish_memory_turn(turn_id, "delivered")
+                return
+            processor = self.gateway.safe_tools_star()
+            if processor is None or not callable(
+                getattr(processor, "process_model_output", None)
+            ):
+                self._finish_memory_turn(turn_id, "delivered")
+                return
+            raw_context = event.get_extra(REQUEST_CONTEXT_EXTRA, {})
+            try:
+                request_context = contracts.load_request_context(raw_context)
+                processed = await self.gateway.process_model_output(
+                    request_context,
+                    plain_text,
+                    expected_call_id=f"{turn_id}:{model_round}",
+                    expected_delivery_key=str(
+                        getattr(request_context, "delivery_key", "")
+                        or f"reply:{turn_id}"
+                    ),
+                )
+            except ContractError as exc:
+                event.set_extra(OUTPUT_ERROR_EXTRA, exc.error_code)
+                event.set_extra(OUTPUT_PROCESSED_EXTRA, False)
+                self._finish_memory_turn(turn_id, "delivered")
+                return
+            text = self.gateway.finalize_text(self.gateway.plan_text(processed.plan))
+            replacement = []
+            if text and Comp is not None:
+                replacement.append(Comp.Plain(text))
+            replacement.extend(self.media_components(processed.plan.media_segments))
+            if replacement:
+                chain[:] = replacement
+            elif Comp is not None:
+                chain[:] = [Comp.Plain(self.gateway.finalize_text(""))]
+            event.set_extra(OUTPUT_PROCESSED_EXTRA, True)
+            event.set_extra("qqbot_core_reply_safe_tools_processed", True)
+            self._finish_memory_turn(turn_id, "delivered")
         except Exception:
-            Comp = None
-        for component in chain:
-            if Comp is not None and isinstance(component, Comp.Plain):
-                plain_text += str(getattr(component, "text", "") or "")
-        if not plain_text:
-            return
-        processor = self.gateway.safe_tools_star()
-        if processor is None or not callable(
-            getattr(processor, "process_model_output", None)
-        ):
-            return
-        raw_context = event.get_extra(REQUEST_CONTEXT_EXTRA, {})
-        try:
-            request_context = contracts.load_request_context(raw_context)
-            processed = await self.gateway.process_model_output(
-                request_context,
-                plain_text,
-                expected_call_id=f"{turn_id}:{model_round}",
-                expected_delivery_key=str(
-                    getattr(request_context, "delivery_key", "")
-                    or f"reply:{turn_id}"
-                ),
-            )
-        except ContractError as exc:
-            event.set_extra(OUTPUT_ERROR_EXTRA, exc.error_code)
-            event.set_extra(OUTPUT_PROCESSED_EXTRA, False)
-            return
-        text = self.gateway.finalize_text(self.gateway.plan_text(processed.plan))
-        replacement = []
-        if text and Comp is not None:
-            replacement.append(Comp.Plain(text))
-        replacement.extend(self.media_components(processed.plan.media_segments))
-        if replacement:
-            chain[:] = replacement
-        elif Comp is not None:
-            chain[:] = [Comp.Plain(self.gateway.finalize_text(""))]
-        event.set_extra(OUTPUT_PROCESSED_EXTRA, True)
-        event.set_extra("qqbot_core_reply_safe_tools_processed", True)
-        try:
-            self.state.record_delivery(turn_id, "delivered")
-        except Exception:
-            pass
+            self._finish_memory_turn(turn_id, "outcome_unknown")
 
     # ------------------------------------------------------------------
     # Memory request hook + lifecycle
@@ -818,6 +855,12 @@ class ReplyPipeline:
             self.persona.inject_memory_context(event, req)
         except Exception:
             event.set_extra("qqbot_core_reply_ambient_context_injected", False)
+        try:
+            instruction = await self.gateway.safe_tools_instruction()
+            injected = self.persona.inject_safe_tools_context(req, instruction)
+            event.set_extra("qqbot_core_reply_safe_tools_injected", bool(injected))
+        except Exception:
+            event.set_extra("qqbot_core_reply_safe_tools_injected", False)
 
     def record_delivery(self, turn_id: str, delivery_state: str = "delivered") -> None:
         try:

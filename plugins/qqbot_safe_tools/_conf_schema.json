@@ -270,7 +270,7 @@
     "default": "default"
   },
   "marker_protocol_version": {
-    "description": "marker协议版本（仅支持v1兼容解析）",
+    "description": "marker 协议版本（当前 v1）。",
     "type": "int",
     "default": 1,
     "slider": {

@@ -349,11 +349,6 @@
     "type": "text",
     "default": "位置格式不合法，请不要带 URL 或控制字符，换个写法我再提交。"
   },
-  "food_submit_image_prompt_reply": {
-    "description": "只有美食图没有文字时的旧追问模板（保留配置兼容）",
-    "type": "text",
-    "default": "这是美食图吗喵？想记录评价的话，告诉我店名、位置、味道分（0.1-5）、性价比分（0.1-5）和一段评价，我再帮你提交。"
-  },
   "food_submit_no_sender_reply": {
     "description": "发送者身份为空时拒绝提交的回复",
     "type": "text",
@@ -363,41 +358,6 @@
     "description": "safe-tool 参数非法/额外参数时的固定回复",
     "type": "text",
     "default": "这次提交没有生效：请用普通文字告诉我店名、位置、味道分（0.1-5）、性价比分（0.1-5）和评价内容，不要带链接、密码或额外参数。"
-  },
-  "food_nl_enabled": {
-    "description": "保留旧自然语言美食参与开关（本插件不调用 LLM）",
-    "type": "bool",
-    "default": true
-  },
-  "food_nl_probability": {
-    "description": "保留旧自然语言参与概率配置",
-    "type": "float",
-    "default": 0.35
-  },
-  "food_nl_cooldown_seconds": {
-    "description": "保留旧自然语言参与冷却配置",
-    "type": "int",
-    "default": 120
-  },
-  "food_nl_min_message_chars": {
-    "description": "保留旧自然语言最短消息配置",
-    "type": "int",
-    "default": 4
-  },
-  "food_nl_image_enabled": {
-    "description": "保留旧美食图参与开关",
-    "type": "bool",
-    "default": true
-  },
-  "food_nl_image_probability": {
-    "description": "保留旧美食图参与概率",
-    "type": "float",
-    "default": 0.25
-  },
-  "food_nl_image_without_caption_enabled": {
-    "description": "保留旧无描述美食图参与开关",
-    "type": "bool",
-    "default": false
   },
   "provider_instance_id": {
     "description": "ABI provider 的稳定实例ID（登记引用，不是路径）",

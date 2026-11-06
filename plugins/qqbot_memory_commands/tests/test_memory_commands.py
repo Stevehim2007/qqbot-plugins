@@ -774,7 +774,7 @@ class TestOptionsFromConfig(unittest.TestCase):
                 self.assertEqual(opts.content_chars, 80)
                 self.assertEqual(opts.max_reply_chars, 900)
 
-    def test_legacy_prefixed_keys_are_used_when_canonical_missing(self):
+    def test_legacy_prefixed_keys_are_ignored(self):
         opts = MC.options_from_config(
             {
                 "memory_commands_enabled": True,
@@ -785,24 +785,20 @@ class TestOptionsFromConfig(unittest.TestCase):
                 "memory_commands_max_reply_chars": 1400,
             }
         )
-        self.assertTrue(opts.enabled)
-        self.assertTrue(opts.destructive_enabled)
-        self.assertEqual(opts.allow_user_ids, ("10001", "10002"))
-        self.assertEqual(opts.max_results, 8)
-        self.assertEqual(opts.content_chars, 120)
-        self.assertEqual(opts.max_reply_chars, 1400)
+        self.assertFalse(opts.enabled)
+        self.assertFalse(opts.destructive_enabled)
+        self.assertEqual(opts.allow_user_ids, ())
+        self.assertEqual(opts.max_results, 5)
+        self.assertEqual(opts.content_chars, 80)
+        self.assertEqual(opts.max_reply_chars, 900)
 
-    def test_canonical_keys_win_over_legacy_names(self):
+    def test_canonical_keys_are_read(self):
         opts = MC.options_from_config(
             {
                 "enabled": False,
-                "memory_commands_enabled": True,
                 "destructive_enabled": False,
-                "memory_commands_destructive_enabled": True,
                 "allow_user_ids": "canonical",
-                "memory_commands_allow_user_ids": "legacy",
                 "max_results": 2,
-                "memory_commands_max_results": 9,
             }
         )
         self.assertFalse(opts.enabled)
@@ -857,7 +853,6 @@ class TestOptionsFromConfig(unittest.TestCase):
     def test_helper_is_pure_and_does_not_mutate_input(self):
         source = {
             "enabled": True,
-            "memory_commands_enabled": False,
             "max_results": 3,
         }
         before = dict(source)
