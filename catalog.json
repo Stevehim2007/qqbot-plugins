@@ -44,7 +44,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "f43e5044d4355ee8c0e701090666a6ac8db986d3140e11bd7101bb241786ff63",
+      "sha256": "c26efdf66bf9bff5bac8334927be18733f116321fe4369a6a278433e35a28d58",
       "size": 99575,
       "root": "qqbot_core_reply",
       "download": "qqbot_core_reply-4.0.0.zip"
@@ -110,7 +110,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "ab2af9aee367a5aa04ed47b1afd89dc180e53c5965e1dcbd98e9a328989c8cdd",
+      "sha256": "8e2876eeb186e110f5d6a768101733ce9acc5f0e2530e35c16d074c1ec499de5",
       "size": 93548,
       "root": "qqbot_safe_tools",
       "download": "qqbot_safe_tools-3.0.0.zip"
@@ -153,7 +153,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "643862944e28e677e38003773a68292688ab574c918d3980132d1f84918e1424",
+      "sha256": "4f266c9a3711b5df6dda7956b05c9d948577035913f1991ee91d54da4ca5b803",
       "size": 39871,
       "root": "qqbot_web_reader",
       "download": "qqbot_web_reader-2.0.0.zip"
@@ -207,7 +207,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "4fe3557a853dbc096a759dd8b3dbaec0b5e77b21e7150cb23c6b5da6b92aeec6",
+      "sha256": "21713cd044dfab50eabb1c29e81c70d4ca8c4e4594aa4bbf5df29ffdfc307366",
       "size": 57675,
       "root": "qqbot_image_search",
       "download": "qqbot_image_search-2.0.0.zip"
@@ -266,7 +266,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "b607fe9c1c532e364052efcd1c61117585e94c18f649c4cf2210215beb545889",
+      "sha256": "0c6bab630b1fc60f80342ffba84d102d56df9a1bd25581ab8d3b8af7e199aee2",
       "size": 103711,
       "root": "qqbot_food",
       "download": "qqbot_food-3.0.0.zip"
@@ -317,8 +317,8 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "31255cddb4bf069404092d4001004cf6fee44fba5a4f0daffd4742a590514ce8",
-      "size": 99013,
+      "sha256": "63e92d7e50ecdc09c2e9020d93b7e642d9eb61f9c3e9003511783599386c46a7",
+      "size": 100331,
       "root": "qqbot_stickers",
       "download": "qqbot_stickers-3.0.0.zip"
     },
@@ -372,7 +372,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "439dc24337ead440a76374eb20f3f9bad204b8db6fc8e8537930377cc44f893b",
+      "sha256": "9c5bd78035e11aa97064b1d46977c9c591738c57d20e342355a0454ef90b237e",
       "size": 75361,
       "root": "qqbot_memory_commands",
       "download": "qqbot_memory_commands-4.0.0.zip"

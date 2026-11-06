@@ -917,6 +917,7 @@ class StickerService:
         scope: str,
         name: str,
         actor_id: str,
+        enforce_limit: bool = True,
     ) -> dict[str, Any]:
         name = self._normalise_category_name(name)
         existing = self._find_category_locked(state, scope, name)
@@ -929,7 +930,7 @@ class StickerService:
             and not category.get("tombstone")
             and category.get("owner_scope") == scope
         )
-        if active_count >= self.max_categories:
+        if enforce_limit and active_count >= self.max_categories:
             raise ContractError("category limit reached")
         category_id = "cat_" + uuid.uuid4().hex
         now = float(self.clock())
@@ -1127,6 +1128,7 @@ class StickerService:
                         scope=LEGACY_SCOPE,
                         name=self._normalise_category_name(name),
                         actor_id="legacy-migration",
+                        enforce_limit=False,
                     )
                 except ContractError:
                     continue
@@ -1137,6 +1139,7 @@ class StickerService:
                     scope=LEGACY_SCOPE,
                     name=DEFAULT_CATEGORY,
                     actor_id="legacy-migration",
+                    enforce_limit=False,
                 )
                 category_ids = [str(category["category_id"])]
             sticker_id = "legacy_" + digest[:24]
