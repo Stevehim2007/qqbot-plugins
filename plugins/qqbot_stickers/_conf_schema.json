@@ -585,5 +585,97 @@
     "description": "兼容旧配置：用户表情反应是否可附加本地表情。",
     "type": "bool",
     "default": true
+  },
+  "collect_enabled": {
+    "description": "启用表情收藏总开关（协议字段）。",
+    "type": "bool",
+    "default": true
+  },
+  "collect_require_explicit": {
+    "description": "收藏必须带明确分类或指令，不自动猜分类。",
+    "type": "bool",
+    "default": true
+  },
+  "collect_max_bytes": {
+    "description": "单张收藏图片最大字节数。",
+    "type": "int",
+    "default": 20971520
+  },
+  "collect_allowed_types": {
+    "description": "允许收藏的图片 MIME 类型。",
+    "type": "list",
+    "default": [
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+      "image/bmp",
+      "image/avif"
+    ]
+  },
+  "collect_dedup_mode": {
+    "description": "收藏去重模式。",
+    "type": "string",
+    "default": "content_hash"
+  },
+  "categories_max_count": {
+    "description": "分类数量上限。",
+    "type": "int",
+    "default": 16
+  },
+  "categories_name_length": {
+    "description": "分类名最大字符数。",
+    "type": "int",
+    "default": 32
+  },
+  "index_schema_version": {
+    "description": "收藏索引 schema 版本。",
+    "type": "int",
+    "default": 3
+  },
+  "index_rebuild_batch_size": {
+    "description": "索引重建每批处理数量。",
+    "type": "int",
+    "default": 100
+  },
+  "send_max_segments": {
+    "description": "单次发送表情最大分段数。",
+    "type": "int",
+    "default": 1
+  },
+  "assets_store_id": {
+    "description": "资产存储注册表引用 ID，不是路径。",
+    "type": "string",
+    "default": "default"
+  },
+  "assets_tombstone_mode": {
+    "description": "资产删除模式；默认仅逻辑删除。",
+    "type": "string",
+    "default": "logical_only"
+  },
+  "policy_id": {
+    "description": "授权策略注册表引用 ID。",
+    "type": "string",
+    "default": "default"
+  },
+  "provider_id": {
+    "description": "provider 注册表引用 ID。",
+    "type": "string",
+    "default": "qqbot_stickers"
+  },
+  "store_id": {
+    "description": "数据存储注册表引用 ID。",
+    "type": "string",
+    "default": "default"
+  },
+  "index_owner_epoch": {
+    "description": "索引 owner epoch；用于单写者代际校验。",
+    "type": "int",
+    "default": 1
+  },
+  "confirmation_ttl_seconds": {
+    "description": "危险操作确认有效期秒数。",
+    "type": "int",
+    "default": 300
   }
 }
