@@ -21,21 +21,228 @@
     "description": "搜索最多显示条数",
     "type": "int",
     "default": 5,
-    "slider": {"min": 1, "max": 10, "step": 1},
+    "slider": {
+      "min": 1,
+      "max": 10,
+      "step": 1
+    },
     "hint": "硬限制为 1..10。旧版 memory_commands_max_results 键兼容。"
   },
   "content_chars": {
     "description": "单条记忆内容最多字符数",
     "type": "int",
     "default": 80,
-    "slider": {"min": 20, "max": 200, "step": 10},
+    "slider": {
+      "min": 20,
+      "max": 200,
+      "step": 10
+    },
     "hint": "硬限制为 20..200。旧版 memory_commands_content_chars 键兼容。"
   },
   "max_reply_chars": {
     "description": "单条命令回复最大字符数",
     "type": "int",
     "default": 900,
-    "slider": {"min": 200, "max": 2000, "step": 100},
+    "slider": {
+      "min": 200,
+      "max": 2000,
+      "step": 100
+    },
     "hint": "硬限制为 200..2000；回复仍会统一清洗和截断。旧版 memory_commands_max_reply_chars 键兼容。"
+  },
+  "instance_id": {
+    "description": "实例稳定 ID（用于 canonical scope 命名空间）",
+    "type": "string",
+    "default": "",
+    "hint": "留空时运行期回退 ASTRBOT_INSTANCE_ID 或 default；canonical ID 始终包含 instance/platform/bot。"
+  },
+  "bot_id": {
+    "description": "机器人稳定 ID（backend 未提供时补充）",
+    "type": "string",
+    "default": ""
+  },
+  "owner_epoch": {
+    "description": "当前 owner epoch（只读控制面写入）",
+    "type": "int",
+    "default": 0,
+    "slider": {
+      "min": 0,
+      "max": 2147483647,
+      "step": 1
+    },
+    "hint": "来自已提交迁移状态；客户端自报较新 epoch 会被拒绝。"
+  },
+  "backend_kind": {
+    "description": "后端类型（backend 组）",
+    "type": "string",
+    "options": [
+      "astrbot_public_api",
+      "registered_legacy_store_adapter"
+    ],
+    "default": "astrbot_public_api"
+  },
+  "backend_store_id": {
+    "description": "登记的后端 store 引用（backend 组）",
+    "type": "string",
+    "default": "memory_commands_ledger",
+    "hint": "这是登记引用，不是磁盘路径；不得填路径或连接秘密。"
+  },
+  "scope_allowed": {
+    "description": "允许的五类 canonical scope（scope 组）",
+    "type": "list",
+    "default": [
+      "global",
+      "persona",
+      "conversation",
+      "group",
+      "user"
+    ],
+    "items": {
+      "type": "string"
+    }
+  },
+  "scope_default": {
+    "description": "默认管理 scope（scope 组）",
+    "type": "string",
+    "options": [
+      "global",
+      "persona",
+      "conversation",
+      "group",
+      "user"
+    ],
+    "default": "conversation"
+  },
+  "policy_id": {
+    "description": "授权策略登记引用（scope 组）",
+    "type": "string",
+    "default": ""
+  },
+  "allowed_group_ids": {
+    "description": "额外允许的群稳定 ID，逗号分隔（scope 组）",
+    "type": "string",
+    "default": ""
+  },
+  "allowed_conversation_ids": {
+    "description": "额外允许的会话稳定 ID，逗号分隔（scope 组）",
+    "type": "string",
+    "default": ""
+  },
+  "allowed_persona_ids": {
+    "description": "显式授权的共享人格稳定 ID，逗号分隔（persona 组）",
+    "type": "string",
+    "default": ""
+  },
+  "allow_shared_persona": {
+    "description": "允许读取/切换已列出的共享人格（persona 组）",
+    "type": "bool",
+    "default": false
+  },
+  "allow_global_scope": {
+    "description": "policy 已授予本实例 global scope（scope 组）",
+    "type": "bool",
+    "default": false
+  },
+  "session_key_mode": {
+    "description": "会话键模式（session 组）",
+    "type": "string",
+    "options": [
+      "legacy_compatible",
+      "platform_bot_conversation"
+    ],
+    "default": "platform_bot_conversation"
+  },
+  "session_persona_isolation": {
+    "description": "会话按人格隔离（session 组）",
+    "type": "bool",
+    "default": true
+  },
+  "session_reset_confirm": {
+    "description": "会话重置需要确认令牌（session 组）",
+    "type": "bool",
+    "default": true
+  },
+  "memory_max_read_items": {
+    "description": "单次读取/搜索最多条数（memory 组）",
+    "type": "int",
+    "default": 50,
+    "slider": {
+      "min": 1,
+      "max": 100,
+      "step": 1
+    }
+  },
+  "memory_max_write_chars": {
+    "description": "单条新增/append 最大字符数（memory 组）",
+    "type": "int",
+    "default": 2000,
+    "slider": {
+      "min": 1,
+      "max": 10000,
+      "step": 100
+    }
+  },
+  "memory_clear_confirm": {
+    "description": "清空指定 scope 必须预览确认（memory 组）",
+    "type": "bool",
+    "default": true
+  },
+  "memory_retention_mode": {
+    "description": "保留策略（memory 组）",
+    "type": "string",
+    "options": [
+      "preserve",
+      "legacy_compatible"
+    ],
+    "default": "preserve"
+  },
+  "persona_switch_mode": {
+    "description": "切换人格时的在途 turn 策略（persona 组）",
+    "type": "string",
+    "options": [
+      "cancel_inflight",
+      "finish_bound_turn"
+    ],
+    "default": "finish_bound_turn"
+  },
+  "persona_admin_shared_edit": {
+    "description": "管理员可显式编辑已列出的共享人格（persona 组）",
+    "type": "bool",
+    "default": false
+  },
+  "operations_idempotency_ttl_seconds": {
+    "description": "业务幂等账本保留 TTL（operations 组）",
+    "type": "int",
+    "default": 86400,
+    "slider": {
+      "min": 60,
+      "max": 604800,
+      "step": 60
+    }
+  },
+  "operations_confirmation_ttl_seconds": {
+    "description": "确认令牌有效期秒数（operations 组）",
+    "type": "int",
+    "default": 300,
+    "slider": {
+      "min": 1,
+      "max": 600,
+      "step": 1
+    }
+  },
+  "operations_deadline_seconds": {
+    "description": "单次 provider 请求 deadline 秒数（operations 组）",
+    "type": "int",
+    "default": 30,
+    "slider": {
+      "min": 1,
+      "max": 300,
+      "step": 1
+    }
+  },
+  "default_persona_id": {
+    "description": "事件未提供人格绑定时的稳定默认人格 ID",
+    "type": "string",
+    "default": ""
   }
 }

@@ -693,7 +693,7 @@ class TestConfigContract(unittest.TestCase):
             "content_chars": 80,
             "max_reply_chars": 900,
         }
-        self.assertEqual(set(schema), set(expected))
+        self.assertTrue(set(expected).issubset(schema))
         for key, default in expected.items():
             with self.subTest(key=key):
                 self.assertIn(key, schema)
