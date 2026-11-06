@@ -9,9 +9,14 @@ plugin.  No model calls, dynamic code execution or shell access occur here.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import inspect
+import json
+import os
 import time
 from collections.abc import Mapping
+from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 from astrbot.api.event import AstrMessageEvent, filter
@@ -23,9 +28,32 @@ except ImportError:  # Keep import failure bounded; dispatch will still fail saf
     Comp = None  # type: ignore[assignment]
 
 try:  # Loaded as an AstrBot package in production.
-    from . import safe_tools
+    from . import (
+        auth,
+        call_ledger,
+        confirmation,
+        contracts,
+        control_server,
+        dispatcher,
+        output_gate,
+        registry as service_registry,
+        safe_tools,
+    )
 except ImportError:  # Loaded directly by a small test harness.
+    import auth  # type: ignore[no-redef]
+    import call_ledger  # type: ignore[no-redef]
+    import confirmation  # type: ignore[no-redef]
+    import contracts  # type: ignore[no-redef]
+    import control_server  # type: ignore[no-redef]
+    import dispatcher  # type: ignore[no-redef]
+    import output_gate  # type: ignore[no-redef]
+    import registry as service_registry  # type: ignore[no-redef]
     import safe_tools  # type: ignore[no-redef]
+
+try:  # AstrBot public data-dir helper; optional for direct unit imports.
+    from astrbot.api.star import StarTools
+except ImportError:
+    StarTools = None  # type: ignore[assignment]
 
 _PROCESSED_EXTRA = "qqbot_safe_tools_processed"
 _CANDIDATE_EXTRA = "qqbot_core_reply_candidate"
@@ -81,8 +109,74 @@ _FALLBACK_DEFAULTS: dict[str, str] = {
     "timeout": "工具执行超时，本次已回退为普通回复。",
     "failed": "工具执行失败，本次已回退为普通回复。",
     "empty": "工具没有返回可用结果，本次已回退为普通回复。",
+    "confirmation_required": "该操作需要预览确认，请先完成确认。",
+    "confirmation_expired": "确认凭证已过期，请重新预览。",
+    "revision_conflict": "操作内容或版本已变化，请重新预览确认。",
+    "unknown": "操作结果不明确，已停止自动重试。",
+    "limit": "工具调用次数已达到本轮上限。",
     "generic": "工具暂时不可用，本次已回退为普通回复。",
 }
+_MARKER_TO_OPERATION: dict[str, str] = {
+    "fetch_webpage": "web.read",
+    "search_images": "image.search",
+    "search_food_restaurants": "food.query",
+    "submit_food_review": "food.draft_create",
+    "send_sticker": "sticker.send_plan",
+    "collect_sticker": "sticker.collect_plan",
+    "list_sticker_categories": "category.list",
+}
+
+_ERROR_TO_REASON: dict[str, str] = {
+    "permission_denied": "permission",
+    "not_ready": "unavailable",
+    "dependency_missing": "unavailable",
+    "confirmation_required": "confirmation_required",
+    "confirmation_expired": "confirmation_expired",
+    "confirmation_invalid": "invalid",
+    "confirmation_replayed": "invalid",
+    "revision_conflict": "revision_conflict",
+    "idempotency_conflict": "revision_conflict",
+    "outcome_unknown": "unknown",
+    "deadline_exceeded": "timeout",
+    "round_limit_exceeded": "limit",
+    "owner_epoch_stale": "permission",
+    "abi_mismatch": "unavailable",
+    "invalid_args": "invalid",
+}
+
+_CONTROL_RPC_ARGUMENTS: dict[str, frozenset[str]] = {
+    "tool.catalog": frozenset({"include_unready", "conversation_id", "persona_id"}),
+    "tool.dispatch": frozenset(
+        {
+            "tool_id",
+            "args",
+            "confirmation_ref",
+            "idempotency_key",
+            "round_id",
+            "conversation_id",
+            "persona_id",
+        }
+    ),
+    "confirmation.preview": frozenset(
+        {"action", "payload", "revision", "conversation_id", "persona_id"}
+    ),
+    "confirmation.confirm": frozenset(
+        {
+            "confirmation_id",
+            "expected_payload",
+            "expected_revision",
+            "conversation_id",
+            "persona_id",
+        }
+    ),
+    "confirmation.cancel": frozenset(
+        {"confirmation_id", "conversation_id", "persona_id"}
+    ),
+    "tool.operation_status": frozenset(
+        {"operation_id", "conversation_id", "persona_id"}
+    ),
+}
+
 _FALLBACK_CONFIG_KEYS: dict[str, str] = {
     "disabled": "fallback_disabled",
     "marker_disabled": "fallback_marker_disabled",
@@ -94,8 +188,20 @@ _FALLBACK_CONFIG_KEYS: dict[str, str] = {
     "timeout": "fallback_timeout",
     "failed": "fallback_failed",
     "empty": "fallback_empty",
+    "confirmation_required": "fallback_confirmation_required",
+    "confirmation_expired": "fallback_confirmation_expired",
+    "revision_conflict": "fallback_revision_conflict",
+    "unknown": "fallback_outcome_unknown",
+    "limit": "fallback_limit",
     "generic": "fallback_generic",
 }
+
+
+class SafeToolsServiceError(ValueError):
+    def __init__(self, code: str, message: str = "") -> None:
+        self.code = str(code)
+        self.message = str(message or code)
+        super().__init__(self.message)
 
 
 class SafeToolsPlugin(Star):
@@ -109,6 +215,20 @@ class SafeToolsPlugin(Star):
         self._clock = time.monotonic
         self._last_tool_at: dict[tuple[str, str], float] = {}
         self._session_locks: dict[str, asyncio.Lock] = {}
+        self.registry = service_registry.get_or_create_registry(context)
+        try:
+            self._authorizer = self._build_authorizer()
+        except Exception:
+            self._authorizer = auth.Authorizer(auth.AuthorizationPolicy())
+        self.output_gate = output_gate.OneShotOutputGate()
+        self._ledger: call_ledger.CallLedger | None = None
+        self._dispatcher: dispatcher.Dispatcher | None = None
+        self._confirmation_manager: confirmation.ConfirmationManager | None = None
+        self._confirmation_error_code = ""
+        self._control_server: control_server.ControlServer | None = None
+        self._control_start_lock = asyncio.Lock()
+        self._control_error_code = ""
+        self._control_started = False
 
     # ------------------------------------------------------------------
     # Configuration helpers (injected, bounded, never raw exceptions)
@@ -219,10 +339,16 @@ class SafeToolsPlugin(Star):
             return []
         if self._effective_max_actions() < 1:
             return []
+        marker_allow = self._cfg_list("marker_allowed_tools")
+        if marker_allow:
+            configured_allow = set(marker_allow)
+        else:
+            configured_allow = set(safe_tools.ALLOWED_TOOLS)
         return [
             name
             for name in safe_tools.ALLOWED_TOOLS
-            if self._cfg_bool(_ALLOW_KEYS[name], True)
+            if name in configured_allow
+            and self._cfg_bool(_ALLOW_KEYS[name], True)
         ]
 
     def _permission_message(self, tool_name: str) -> str:
@@ -236,10 +362,297 @@ class SafeToolsPlugin(Star):
             return "permission"
         return "invalid"
 
+    # ------------------------------------------------------------------
+    # ABI v1 service setup (all local, no provider imports)
+    # ------------------------------------------------------------------
+    def _cfg_list(self, key: str, default: tuple[str, ...] = ()) -> tuple[str, ...]:
+        value = self._config_lookup(key, None)
+        if value is None:
+            return tuple(default)
+        if isinstance(value, (list, tuple)):
+            items = value
+        else:
+            text = str(value).strip()
+            if not text:
+                return tuple(default)
+            if text.startswith("["):
+                try:
+                    parsed = json.loads(text)
+                except ValueError:
+                    return tuple(default)
+                if not isinstance(parsed, list):
+                    return tuple(default)
+                items = parsed
+            else:
+                items = [part.strip() for part in text.split(",")]
+        result: list[str] = []
+        for item in list(items)[:128]:
+            text = str(item or "").strip()
+            if not text or len(text) > 256:
+                continue
+            if text not in result:
+                result.append(text)
+        return tuple(result)
+
+    def _build_authorizer(self) -> auth.Authorizer:
+        raw_rules = self._config_lookup("auth_rules", None)
+        if raw_rules is None:
+            raw_rules = json.dumps(
+                [
+                    {
+                        "actor_ids": ["*"],
+                        "scope_types": ["*"],
+                        "operations": ["*"],
+                        "allow_read": True,
+                        "allow_write": False,
+                        "cross_scope": False,
+                    }
+                ],
+                ensure_ascii=False,
+            )
+        policy_config = {
+            "auth_policy_version": self._config_lookup("auth_policy_version", 1),
+            "auth_rules": raw_rules,
+            "auth_admin_actor_ids": self._cfg_list("auth_admin_actor_ids"),
+            "auth_cross_scope_default": self._config_lookup(
+                "auth_cross_scope_default", "deny"
+            ),
+        }
+        return auth.Authorizer(auth.policy_from_config(policy_config))
+
+    def _data_dir(self) -> Path:
+        try:
+            if StarTools is not None:
+                raw = StarTools.get_data_dir("qqbot_safe_tools")
+                if raw:
+                    return Path(str(raw)).expanduser()
+        except Exception:
+            pass
+        return Path.cwd() / ".qqbot_safe_tools_data"
+
+    def _ensure_ledger(self) -> call_ledger.CallLedger:
+        if self._ledger is not None:
+            return self._ledger
+        data_dir = self._data_dir()
+        data_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(data_dir, 0o700)
+        except OSError:
+            pass
+        busy_timeout = self._cfg_int(
+            "ledger_busy_timeout_ms", 5000, minimum=100, maximum=120000
+        )
+        self._ledger = call_ledger.CallLedger(
+            data_dir / "safe_tools_ledger.sqlite3",
+            busy_timeout_ms=busy_timeout,
+        )
+        return self._ledger
+
+    def _confirmation_secret(self) -> bytes:
+        try:
+            return control_server.load_control_secret(data_dir=self._data_dir())
+        except control_server.ControlConfigError as exc:
+            self._confirmation_error_code = exc.code
+            raise SafeToolsServiceError("dependency_missing", "confirmation secret unavailable") from exc
+
+    def _ensure_confirmation_manager(self) -> confirmation.ConfirmationManager:
+        if self._confirmation_manager is not None:
+            return self._confirmation_manager
+        secret = self._confirmation_secret()
+        ttl = self._cfg_int(
+            "confirmation_ttl_seconds", 120, minimum=1, maximum=600
+        )
+        self._confirmation_manager = confirmation.ConfirmationManager(
+            secret,
+            ttl_seconds=ttl,
+            ledger=self._ensure_ledger(),
+            clock=time.time,
+        )
+        return self._confirmation_manager
+
+    def _ensure_dispatcher(self) -> dispatcher.Dispatcher:
+        if self._dispatcher is not None:
+            return self._dispatcher
+        limits = dispatcher.DispatchLimits(
+            deadline_seconds=float(
+                self._cfg_int(
+                    "dispatch_deadline_seconds", 30, minimum=1, maximum=600
+                )
+            ),
+            max_parallel=self._cfg_int(
+                "dispatch_max_parallel", 4, minimum=1, maximum=64
+            ),
+            max_rounds=self._cfg_int(
+                "dispatch_max_rounds", 3, minimum=1, maximum=64
+            ),
+        )
+        try:
+            confirmation_manager = self._ensure_confirmation_manager()
+        except Exception:
+            confirmation_manager = None
+        self._dispatcher = dispatcher.Dispatcher(
+            self.registry,
+            self._authorizer,
+            limits=limits,
+            ledger=self._ensure_ledger(),
+            confirmation_manager=confirmation_manager,
+            clock=self._clock,
+        )
+        return self._dispatcher
+
+    def _abi_mode(self, strict_abi: bool | None = None) -> bool:
+        if strict_abi is not None:
+            return bool(strict_abi)
+        return bool(
+            self.registry.has_providers()
+            and self._cfg_int("registry_abi_version", 1, minimum=1, maximum=1)
+            == contracts.ABI_VERSION
+        )
+
+    def _marker_tool_ready(self, marker_tool: str) -> bool:
+        operation = _MARKER_TO_OPERATION.get(marker_tool)
+        if operation is None:
+            return False
+        spec = contracts.PROVIDER_OPERATION_SPECS[operation]
+        descriptor = self.registry.get_registered_provider(spec.provider_id)
+        if descriptor is None or not descriptor.ready:
+            return False
+        return operation in descriptor.methods
+
+    def _advertised_tool_names(self) -> list[str]:
+        configured = self._enabled_tool_names()
+        if not self.registry.has_providers():
+            return configured
+        return [name for name in configured if self._marker_tool_ready(name)]
+
+    def _safe_identity(self, raw: Any, prefix: str, *, length: int = 64) -> str:
+        text = str(raw or "").strip()
+        if (
+            text
+            and len(text) <= 200
+            and all(
+                char.isalnum() or char in "_.:@/-"
+                for char in text
+            )
+        ):
+            return text
+        digest = hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()
+        return f"{prefix}_{digest[:length]}"
+
+    def _event_turn_id(self, event: AstrMessageEvent) -> str:
+        for key in ("qqbot_core_reply_turn_id", "qqbot_turn_id"):
+            value = self._get_extra(event, key, None)
+            if value:
+                return self._safe_identity(value, "turn")
+        return "legacy_" + hashlib.sha256(
+            str(id(event)).encode("ascii")
+        ).hexdigest()[:24]
+
+    def _event_model_round(self, event: AstrMessageEvent) -> int:
+        value = self._get_extra(event, "qqbot_core_reply_model_round", 0)
+        if isinstance(value, bool):
+            return 0
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return 0
+        return max(0, min(number, 10_000))
+
+    def _event_request_context(
+        self, event: AstrMessageEvent, capability: str = "tool.process_model_output"
+    ) -> contracts.RequestContext:
+        sender = None
+        getter = getattr(event, "get_sender_id", None)
+        if callable(getter):
+            try:
+                sender = getter()
+            except Exception:
+                sender = None
+        if sender in (None, ""):
+            sender = getattr(event, "sender_id", None)
+        if sender in (None, ""):
+            raise SafeToolsServiceError("permission_denied", "actor is unavailable")
+        instance_id = self._safe_identity(
+            self._config_lookup("instance_id", None)
+            or self._get_extra(event, "qqbot_instance_id", None)
+            or "default",
+            "instance",
+        )
+        platform = self._safe_identity(
+            self._get_extra(event, "qqbot_platform", None) or "aiocqhttp",
+            "platform",
+        )
+        bot_id = self._safe_identity(
+            self._get_extra(event, "qqbot_bot_id", None)
+            or getattr(event, "self_id", None)
+            or "bot",
+            "bot",
+        )
+        conversation = self._safe_identity(
+            getattr(event, "unified_msg_origin", None)
+            or getattr(event, "session_id", None)
+            or getattr(event, "group_id", None)
+            or "conversation",
+            "conversation",
+        )
+        persona_id = self._safe_identity(
+            self._get_extra(event, "qqbot_persona_id", None) or "default",
+            "persona",
+        )
+        source_message_id = self._safe_identity(
+            self._get_extra(event, "qqbot_source_message_id", None)
+            or getattr(getattr(event, "message_obj", None), "message_id", None)
+            or getattr(event, "message_id", None)
+            or "legacy_" + hashlib.sha256(str(id(event)).encode("ascii")).hexdigest()[:20],
+            "message",
+        )
+        requested_scope = str(
+            self._get_extra(event, "qqbot_requested_scope", None) or ""
+        ).strip()
+        if requested_scope not in contracts.SCOPE_TYPES:
+            requested_scope = "conversation"
+            try:
+                if callable(getattr(event, "is_private_chat", None)) and event.is_private_chat():
+                    requested_scope = "user"
+            except Exception:
+                pass
+        owner_epoch = self._get_extra(event, "qqbot_owner_epoch", 0)
+        if isinstance(owner_epoch, bool) or not isinstance(owner_epoch, int):
+            owner_epoch = 0
+        deadline = self._clock() + float(
+            self._cfg_int("dispatch_deadline_seconds", 30, minimum=1, maximum=600)
+        )
+        return contracts.RequestContext(
+            protocol_version=contracts.ABI_VERSION,
+            instance_id=instance_id,
+            platform=platform,
+            bot_id=bot_id,
+            actor_id=self._safe_identity(sender, "actor"),
+            conversation_id=conversation,
+            persona_id=persona_id,
+            source_message_id=source_message_id,
+            turn_id=self._event_turn_id(event),
+            capability=capability,
+            requested_scope=requested_scope,
+            owner_epoch=max(0, owner_epoch),
+            deadline=deadline,
+        )
+
+    def _context_for_operation(
+        self, request_context: contracts.RequestContext, operation: str
+    ) -> contracts.RequestContext:
+        spec = contracts.operation_spec(operation)
+        epoch = self.registry.current_owner_epoch(spec.provider_id)
+        return replace(
+            request_context,
+            capability=operation,
+            owner_epoch=int(epoch) if epoch is not None else request_context.owner_epoch,
+        )
+
     def tool_instruction(self, enabled_tools: list[str] | None = None) -> str:
         """Expose marker grammar/catalog for core_reply; no execution."""
 
-        available = self._enabled_tool_names()
+        available = self._advertised_tool_names()
         if enabled_tools is not None:
             requested = {str(name or "") for name in enabled_tools}
             available = [name for name in available if name in requested]
@@ -515,6 +928,632 @@ class SafeToolsPlugin(Star):
         return await self._execute_intent(event, intent, parsed.clean_text)
 
     # ------------------------------------------------------------------
+    # Single complete-output gate and ABI dispatch
+    # ------------------------------------------------------------------
+    def _canonical_operation_args(
+        self, marker_tool: str, intent: safe_tools.ToolIntent
+    ) -> tuple[str, dict[str, Any]]:
+        operation = _MARKER_TO_OPERATION[marker_tool]
+        args = dict(intent.args)
+        if marker_tool == "fetch_webpage":
+            max_chars = str(args.get("max_chars", "") or "").strip()
+            canonical: dict[str, Any] = {
+                "url": str(args.get("url", "") or "").strip(),
+                "max_chars": int(max_chars) if max_chars else 0,
+            }
+        elif marker_tool == "search_images":
+            canonical = {
+                "keyword": str(args.get("keyword", "") or "").strip(),
+                "count": int(str(args.get("count", "1") or "1")),
+            }
+        elif marker_tool == "search_food_restaurants":
+            canonical = {str(key): str(value) for key, value in args.items()}
+            if "limit" in canonical:
+                canonical["limit"] = int(canonical["limit"])
+        elif marker_tool == "submit_food_review":
+            canonical = {str(key): str(value) for key, value in args.items()}
+        elif marker_tool == "send_sticker":
+            canonical = {
+                "category": str(args.get("category", "") or "").strip(),
+                "emotion": str(args.get("emotion", "") or "").strip(),
+                "tag": str(args.get("tag", "") or "").strip(),
+            }
+        elif marker_tool == "collect_sticker":
+            canonical = {"category": str(args.get("category", "") or "").strip()}
+        elif marker_tool == "list_sticker_categories":
+            canonical = {}
+        else:
+            raise SafeToolsServiceError("invalid_args", "unknown marker tool")
+        return operation, canonical
+
+    async def _handle_marker_abi(
+        self,
+        request_context: contracts.RequestContext,
+        parsed: safe_tools.ToolParseResult,
+        *,
+        model_round: int,
+    ) -> tuple[bool, contracts.ToolResult | None, str]:
+        if not self._cfg_bool("enabled", True):
+            return False, None, "disabled"
+        if not self._cfg_bool("marker_enabled", True):
+            return False, None, "marker_disabled"
+        if self._effective_max_actions() < 1:
+            return False, None, "marker_disabled"
+        if len(parsed.intents) != 1:
+            return False, None, "too_many" if parsed.intents else "invalid"
+        intent = parsed.intents[0]
+        if not intent.valid:
+            return False, None, "invalid"
+        enabled = self._enabled_tool_names()
+        if intent.name not in enabled:
+            return False, None, self._permission_message(intent.name)
+        if intent.name not in _MARKER_TO_OPERATION:
+            return False, None, "invalid"
+        if not self._marker_tool_ready(intent.name):
+            return False, None, "unavailable"
+        try:
+            operation, canonical_args = self._canonical_operation_args(
+                intent.name, intent
+            )
+            operation_context = self._context_for_operation(
+                request_context, operation
+            )
+            call = contracts.ToolCall.create(
+                operation_context, operation, canonical_args
+            )
+        except (SafeToolsServiceError, contracts.ContractError):
+            return False, None, "invalid"
+        idempotency_key = (
+            f"model:{request_context.turn_id}:{model_round}:"
+            f"{operation.replace('.', '_')}:{call.args_hash[:16]}"
+        )
+        try:
+            engine = self._ensure_dispatcher()
+            result = await engine.dispatch(
+                call,
+                round_id=model_round,
+                idempotency_key=idempotency_key,
+            )
+        except Exception:
+            return False, None, "failed"
+        if result.status in {"success", "ok"}:
+            return True, result, ""
+        reason = _ERROR_TO_REASON.get(str(result.error_code or ""), "failed")
+        return False, result, reason
+
+    def _reply_plan_delivery_key(
+        self,
+        context: contracts.RequestContext,
+        model_round: int,
+        status: str,
+        call_id: str = "",
+    ) -> str:
+        digest = hashlib.sha256(
+            (
+                f"{context.instance_id}:{context.turn_id}:{model_round}:"
+                f"{status}:{call_id}"
+            ).encode("utf-8")
+        ).hexdigest()[:40]
+        return f"reply_{digest}"
+
+    def _safe_result_text(self, value: Any, *, limit: int = 8_000) -> str:
+        def scrub(item: Any, depth: int = 0) -> Any:
+            if depth > 5:
+                return "[truncated]"
+            if isinstance(item, Mapping):
+                out: dict[str, Any] = {}
+                for index, (key, child) in enumerate(item.items()):
+                    if index >= 32:
+                        out["..."] = "[truncated]"
+                        break
+                    key_text = str(key)[:64]
+                    if any(
+                        token in key_text.casefold()
+                        for token in (
+                            "secret",
+                            "password",
+                            "token",
+                            "api_key",
+                            "authorization",
+                            "cookie",
+                        )
+                    ):
+                        out[key_text] = "[redacted]"
+                    else:
+                        out[key_text] = scrub(child, depth + 1)
+                return out
+            if isinstance(item, (list, tuple)):
+                return [scrub(child, depth + 1) for child in list(item)[:32]]
+            if isinstance(item, str):
+                return item[:2_000]
+            return item
+
+        if isinstance(value, str):
+            return value[:limit]
+        try:
+            rendered = json.dumps(
+                scrub(value),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        except (TypeError, ValueError):
+            return ""
+        return rendered[:limit]
+
+    def _plan_from_abi_result(
+        self,
+        context: contracts.RequestContext,
+        result: contracts.ToolResult,
+        clean_text: str,
+        model_round: int,
+    ) -> contracts.ReplyPlan:
+        delivery_key = self._reply_plan_delivery_key(
+            context, model_round, result.status, result.call_id
+        )
+        if result.status in {"success", "ok"}:
+            data = result.data
+            if isinstance(data, contracts.ReplyPlan):
+                return data
+            if isinstance(data, Mapping) and (
+                "text_segments" in data or "media_segments" in data
+            ):
+                try:
+                    plan = contracts.ReplyPlan(
+                        request_context=context,
+                        text_segments=[
+                            str(item)
+                            for item in list(data.get("text_segments", []))[:64]
+                        ],
+                        media_segments=list(data.get("media_segments", []))[:16],
+                        terminal=bool(data.get("terminal", True)),
+                        delivery_key=str(data.get("delivery_key") or delivery_key),
+                    )
+                    plan.validate()
+                    return plan
+                except contracts.ContractError:
+                    pass
+            text = self._safe_result_text(data)
+            if not text and clean_text:
+                text = clean_text
+            return contracts.ReplyPlan(
+                request_context=context,
+                text_segments=[text] if text else [],
+                media_segments=[],
+                terminal=True,
+                delivery_key=delivery_key,
+            )
+        reason = _ERROR_TO_REASON.get(str(result.error_code or ""), "failed")
+        fallback_text = self._build_fallback_text(clean_text, reason)
+        return contracts.ReplyPlan(
+            request_context=context,
+            text_segments=[fallback_text] if fallback_text else [],
+            media_segments=[],
+            terminal=True,
+            delivery_key=delivery_key,
+        )
+
+    async def _process_output_once(
+        self,
+        request_context: contracts.RequestContext,
+        text: str,
+        *,
+        event: AstrMessageEvent | None,
+        model_round: int,
+        strict_abi: bool | None,
+    ) -> output_gate.GateOutcome:
+        raw_text = str(text or "")
+        if not isinstance(text, str):
+            raw_text = str(text)
+        marker_max_bytes = self._cfg_int(
+            "marker_max_bytes", 65_536, minimum=256, maximum=65_536
+        )
+        oversized = len(raw_text.encode("utf-8", "replace")) > marker_max_bytes
+        try:
+            parsed = safe_tools.parse_tool_markers(
+                raw_text,
+                max_keyword_chars=self._max_keyword_chars(),
+                max_count=self._max_image_count(),
+                max_web_chars=self._max_web_chars(),
+            )
+        except Exception:
+            if not safe_tools._LOOSE_MARKER_RE.search(raw_text):  # noqa: SLF001
+                return output_gate.GateOutcome(
+                    reply_plan=contracts.ReplyPlan.from_text(
+                        request_context,
+                        raw_text[:marker_max_bytes],
+                        delivery_key=self._reply_plan_delivery_key(
+                            request_context, model_round, "text"
+                        ),
+                    ),
+                    had_marker=False,
+                )
+            parsed = safe_tools.ToolParseResult(
+                clean_text=self._bounded_plain_text(
+                    safe_tools.strip_tool_markers(raw_text[:marker_max_bytes]),
+                    max_chars=self._max_fallback_chars(),
+                ),
+                intents=[
+                    safe_tools.ToolIntent(
+                        name="", args={}, valid=False, error="标记格式无效"
+                    )
+                ],
+                had_marker=True,
+            )
+        if not parsed.had_marker:
+            return output_gate.GateOutcome(
+                reply_plan=contracts.ReplyPlan.from_text(
+                    request_context,
+                    raw_text,
+                    delivery_key=self._reply_plan_delivery_key(
+                        request_context, model_round, "text"
+                    ),
+                ),
+                had_marker=False,
+            )
+        if oversized:
+            fallback_text = self._build_fallback_text(parsed.clean_text, "invalid")
+            return output_gate.GateOutcome(
+                reply_plan=contracts.ReplyPlan(
+                    request_context=request_context,
+                    text_segments=[fallback_text],
+                    media_segments=[],
+                    terminal=True,
+                    delivery_key=self._reply_plan_delivery_key(
+                        request_context, model_round, "invalid"
+                    ),
+                ),
+                had_marker=True,
+                reason="invalid",
+            )
+        if self._abi_mode(strict_abi):
+            ok, result, reason = await self._handle_marker_abi(
+                request_context, parsed, model_round=model_round
+            )
+            if ok and isinstance(result, contracts.ToolResult):
+                return output_gate.GateOutcome(
+                    reply_plan=self._plan_from_abi_result(
+                        request_context, result, parsed.clean_text, model_round
+                    ),
+                    had_marker=True,
+                )
+            if isinstance(result, contracts.ToolResult):
+                return output_gate.GateOutcome(
+                    reply_plan=self._plan_from_abi_result(
+                        request_context, result, parsed.clean_text, model_round
+                    ),
+                    had_marker=True,
+                    reason=reason or "failed",
+                )
+            fallback_text = self._build_fallback_text(parsed.clean_text, reason)
+            return output_gate.GateOutcome(
+                reply_plan=contracts.ReplyPlan(
+                    request_context=request_context,
+                    text_segments=[fallback_text],
+                    media_segments=[],
+                    terminal=True,
+                    delivery_key=self._reply_plan_delivery_key(
+                        request_context, model_round, "fallback"
+                    ),
+                ),
+                had_marker=True,
+                reason=reason,
+            )
+
+        if event is None:
+            fallback_text = self._build_fallback_text(
+                parsed.clean_text, "dependency_missing"
+            )
+            return output_gate.GateOutcome(
+                reply_plan=contracts.ReplyPlan(
+                    request_context=request_context,
+                    text_segments=[fallback_text],
+                    media_segments=[],
+                    terminal=True,
+                    delivery_key=self._reply_plan_delivery_key(
+                        request_context, model_round, "fallback"
+                    ),
+                ),
+                had_marker=True,
+                reason="dependency_missing",
+            )
+        try:
+            ok, legacy_result, reason = await self._handle_parsed_marker(
+                event, parsed
+            )
+            legacy_chain = self._result_chain(legacy_result) if ok else None
+            if ok and legacy_chain is None:
+                reason = "empty"
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            ok, legacy_chain, reason = False, None, "failed"
+        if legacy_chain:
+            text_segments = [
+                str(getattr(component, "text", "") or "")
+                for component in legacy_chain
+                if self._is_plain_component(component)
+                and str(getattr(component, "text", "") or "")
+            ]
+            media_segments = [
+                component
+                for component in legacy_chain
+                if not self._is_plain_component(component)
+            ]
+            plan = contracts.ReplyPlan(
+                request_context=request_context,
+                text_segments=text_segments,
+                media_segments=media_segments,
+                terminal=True,
+                delivery_key=self._reply_plan_delivery_key(
+                    request_context, model_round, "success"
+                ),
+            )
+            plan.validate()
+            return output_gate.GateOutcome(
+                reply_plan=plan,
+                had_marker=True,
+                legacy_chain=list(legacy_chain),
+            )
+        fallback_text = self._build_fallback_text(parsed.clean_text, reason)
+        return output_gate.GateOutcome(
+            reply_plan=contracts.ReplyPlan(
+                request_context=request_context,
+                text_segments=[fallback_text],
+                media_segments=[],
+                terminal=True,
+                delivery_key=self._reply_plan_delivery_key(
+                    request_context, model_round, "fallback"
+                ),
+            ),
+            had_marker=True,
+            reason=reason,
+        )
+
+    async def _run_output_gate(
+        self,
+        request_context: contracts.RequestContext,
+        text: str,
+        *,
+        event: AstrMessageEvent | None = None,
+        model_round: int = 0,
+        strict_abi: bool | None = None,
+    ) -> output_gate.GateOutcome:
+        request_context.validate()
+        fingerprint = self.output_gate.fingerprint(request_context, model_round)
+        return await self.output_gate.process(
+            fingerprint,
+            lambda: self._process_output_once(
+                request_context,
+                text,
+                event=event,
+                model_round=model_round,
+                strict_abi=strict_abi,
+            ),
+        )
+
+    async def process_model_output(
+        self,
+        request_context: contracts.RequestContext,
+        text: str,
+        *,
+        model_round: int = 0,
+        event: AstrMessageEvent | None = None,
+        strict_abi: bool | None = None,
+    ) -> contracts.ReplyPlan:
+        """Process one complete model output exactly once for its turn/round."""
+
+        outcome = await self._run_output_gate(
+            request_context,
+            text,
+            event=event,
+            model_round=model_round,
+            strict_abi=strict_abi,
+        )
+        return outcome.reply_plan
+
+    async def tool_process_model_output(
+        self,
+        request_context: contracts.RequestContext,
+        text: str,
+        *,
+        model_round: int = 0,
+        event: AstrMessageEvent | None = None,
+        strict_abi: bool | None = None,
+    ) -> contracts.ReplyPlan:
+        return await self.process_model_output(
+            request_context,
+            text,
+            model_round=model_round,
+            event=event,
+            strict_abi=strict_abi,
+        )
+
+    def tool_catalog(
+        self,
+        request_context: contracts.RequestContext | None = None,
+        *,
+        include_unready: bool = False,
+    ) -> dict[str, Any]:
+        if request_context is not None:
+            request_context.validate()
+        ready_marker_tools = self._advertised_tool_names()
+        tools: list[dict[str, Any]] = []
+        for marker_tool, operation in _MARKER_TO_OPERATION.items():
+            if marker_tool not in ready_marker_tools:
+                continue
+            spec = contracts.PROVIDER_OPERATION_SPECS[operation]
+            tools.append(
+                {
+                    "marker_tool": marker_tool,
+                    "operation": operation,
+                    "provider_id": spec.provider_id,
+                    "write": spec.write,
+                    "requires_confirmation": spec.requires_confirmation,
+                }
+            )
+        providers = self.registry.snapshot()
+        if not include_unready:
+            providers = [row for row in providers if row.get("ready")]
+        return {
+            "protocol_version": contracts.ABI_VERSION,
+            "marker_protocol_version": self._cfg_int(
+                "marker_protocol_version", 1, minimum=1, maximum=1
+            ),
+            "tools": tools,
+            "providers": providers,
+            "legacy_model": not self.registry.has_providers(),
+        }
+
+    async def tool_dispatch(
+        self,
+        request_context: contracts.RequestContext,
+        tool_id: str | contracts.ToolCall,
+        canonical_args: Mapping[str, Any] | None = None,
+        *,
+        call_id: str | None = None,
+        confirmation_ref: str = "",
+        idempotency_key: str | None = None,
+        round_id: str | int | None = None,
+    ) -> contracts.ToolResult:
+        if isinstance(tool_id, contracts.ToolCall):
+            call = tool_id
+        else:
+            operation_context = self._context_for_operation(
+                request_context, str(tool_id)
+            )
+            call = contracts.ToolCall.create(
+                operation_context,
+                str(tool_id),
+                canonical_args or {},
+                call_id=call_id,
+                confirmation_ref=confirmation_ref,
+            )
+        key = idempotency_key or (
+            f"dispatch:{call.request_context.turn_id}:"
+            f"{call.tool_id.replace('.', '_')}:{call.args_hash[:16]}"
+        )
+        engine = self._ensure_dispatcher()
+        return await engine.dispatch(
+            call, round_id=round_id, idempotency_key=key
+        )
+
+    def confirmation_preview(
+        self,
+        request_context: contracts.RequestContext,
+        action: str,
+        payload: Mapping[str, Any] | None,
+        revision: int,
+    ) -> confirmation.ConfirmationPreview:
+        contracts.operation_spec(action)
+        self._authorizer.authorize(request_context, action)
+        manager = self._ensure_confirmation_manager()
+        return manager.preview(request_context, action, payload or {}, revision)
+
+    async def confirmation_confirm(
+        self,
+        request_context: contracts.RequestContext,
+        confirmation_id: str,
+        *,
+        expected_payload: Mapping[str, Any] | None = None,
+        expected_revision: int | None = None,
+    ) -> contracts.ToolResult:
+        manager = self._ensure_confirmation_manager()
+        try:
+            decision = manager.confirm(
+                confirmation_id,
+                request_context,
+                expected_payload=expected_payload,
+                expected_revision=expected_revision,
+            )
+        except confirmation.ConfirmationError as exc:
+            return contracts.ToolResult.failure(
+                f"confirm_{hashlib.sha256(str(confirmation_id).encode()).hexdigest()[:16]}",
+                exc.code,
+            )
+        return await self._confirm_and_dispatch(request_context, decision)
+
+    async def _confirm_and_dispatch(
+        self,
+        request_context: contracts.RequestContext,
+        decision: confirmation.ConfirmationDecision,
+    ) -> contracts.ToolResult:
+        try:
+            operation_context = self._context_for_operation(
+                request_context, decision.action
+            )
+            call = contracts.ToolCall.create(
+                operation_context,
+                decision.action,
+                decision.canonical_args,
+                confirmation_ref=decision.confirmation_ref,
+            )
+        except contracts.ContractError as exc:
+            return contracts.ToolResult.failure(
+                f"confirm_{hashlib.sha256(decision.confirmation_id.encode()).hexdigest()[:16]}",
+                exc.code,
+            )
+        engine = self._ensure_dispatcher()
+        return await engine.dispatch(
+            call,
+            round_id=None,
+            idempotency_key=f"confirm:{decision.confirmation_id}",
+        )
+
+    def confirmation_cancel(
+        self,
+        request_context: contracts.RequestContext,
+        confirmation_id: str,
+    ) -> confirmation.ConfirmationDecision:
+        manager = self._ensure_confirmation_manager()
+        return manager.cancel(confirmation_id, request_context)
+
+    def tool_operation_status(
+        self,
+        request_context: contracts.RequestContext,
+        operation_id: str,
+    ) -> contracts.ToolResult:
+        request_context.validate()
+        ledger = self._ensure_ledger()
+        record = ledger.get_call(str(operation_id))
+        if record is None:
+            return contracts.ToolResult(
+                status="unknown",
+                call_id=str(operation_id),
+                result_type="status",
+                data={"status": "unknown"},
+                error_code="not_found",
+                retryable=False,
+                side_effect_state="unknown",
+            )
+        is_admin = request_context.actor_id in self._authorizer.policy.admin_actor_ids
+        same_actor = (
+            record.get("actor_id") == request_context.actor_id
+            and record.get("instance_id") == request_context.instance_id
+            and record.get("bot_id") == request_context.bot_id
+            and record.get("scope") == request_context.requested_scope
+        )
+        if not is_admin and not same_actor:
+            return contracts.ToolResult.failure(
+                str(operation_id),
+                "permission_denied",
+                status="denied",
+            )
+        return contracts.ToolResult.success(
+            str(operation_id),
+            {
+                "operation": record.get("operation"),
+                "status": record.get("status"),
+                "error_code": record.get("error_code"),
+                "retryable": bool(record.get("retryable")),
+                "side_effect_state": record.get("side_effect_state"),
+                "provider_operation_id": record.get("provider_operation_id", ""),
+                "updated_at": record.get("updated_at"),
+            },
+            result_type="operation_status",
+        )
+
+    # ------------------------------------------------------------------
     # Result chain and fallback formatting
     # ------------------------------------------------------------------
     def _get_extra(self, event: AstrMessageEvent, key: str, default: Any = None) -> Any:
@@ -635,12 +1674,32 @@ class SafeToolsPlugin(Star):
         )
         return f"{clean}\n{reason_text}" if clean else reason_text
 
+    def _chain_from_reply_plan(self, plan: contracts.ReplyPlan) -> list[Any]:
+        plan.validate()
+        chain: list[Any] = []
+        for text in plan.text_segments:
+            chain.append(self._plain_component(str(text)))
+        chain.extend(plan.media_segments[:16])
+        return chain
+
+    def _fallback_chain_for_text(self, chain: list[Any], text: str) -> list[Any]:
+        try:
+            return [self._plain_component(text)]
+        except Exception:
+            plain_components = [
+                component for component in chain if self._is_plain_component(component)
+            ]
+            if plain_components:
+                plain_components[0].text = text
+                return [plain_components[0]]
+            return []
+
     # ------------------------------------------------------------------
-    # Sole marker-consuming decorating hook
+    # Sole marker-consuming decorating hook (compatibility adapter only)
     # ------------------------------------------------------------------
     @filter.on_decorating_result(priority=200)
     async def consume_safe_tools_marker(self, event: AstrMessageEvent):
-        """Consume a marker only from a core-reply candidate, exactly once."""
+        """Compatibility adapter that delegates to the same one-shot gate."""
 
         if self._get_extra(event, _CANDIDATE_EXTRA, False) is not True:
             return
@@ -653,7 +1712,6 @@ class SafeToolsPlugin(Star):
         chain = getattr(result, "chain", None) if result is not None else None
         if not isinstance(chain, list):
             return
-
         plain_text = "".join(
             str(getattr(component, "text", "") or "")
             for component in chain
@@ -661,74 +1719,468 @@ class SafeToolsPlugin(Star):
         )
         if not plain_text:
             return
+
         try:
-            parsed = safe_tools.parse_tool_markers(
-                plain_text,
-                max_keyword_chars=self._max_keyword_chars(),
-                max_count=self._max_image_count(),
-                max_web_chars=self._max_web_chars(),
-            )
+            request_context = self._event_request_context(event)
         except Exception:
-            # Any marker-looking text must fail closed even if parsing failed.
-            if not safe_tools._LOOSE_MARKER_RE.search(plain_text):  # noqa: SLF001
+            # No authenticated actor means no tool may execute.  Still remove
+            # marker-looking text from the visible compatibility reply.
+            try:
+                parsed = safe_tools.parse_tool_markers(
+                    plain_text,
+                    max_keyword_chars=self._max_keyword_chars(),
+                    max_count=self._max_image_count(),
+                    max_web_chars=self._max_web_chars(),
+                )
+            except Exception:
+                parsed = safe_tools.ToolParseResult(
+                    clean_text=safe_tools.strip_tool_markers(plain_text),
+                    intents=[],
+                    had_marker=bool(safe_tools._LOOSE_MARKER_RE.search(plain_text)),
+                )
+            if not parsed.had_marker:
                 return
-            parsed = safe_tools.ToolParseResult(
-                clean_text=self._bounded_plain_text(
-                    safe_tools.strip_tool_markers(plain_text),
-                    max_chars=self._max_fallback_chars(),
-                ),
-                intents=[
-                    safe_tools.ToolIntent(
-                        name="", args={}, valid=False, error="标记格式无效"
-                    )
-                ],
-                had_marker=True,
+            self._set_extra(event, _PROCESSED_EXTRA, True)
+            self._set_extra(event, _ALLOW_STICKER_EXTRA, False)
+            fallback_text = self._build_fallback_text(
+                parsed.clean_text, "permission"
             )
-        if not parsed.had_marker:
+            chain[:] = self._fallback_chain_for_text(chain, fallback_text)
+            await self._stop_event(event)
             return
 
-        # Set the terminal handshake before awaiting plugin code so neither this
-        # decorator nor the sticker decorator can ever consume the result twice.
-        self._set_extra(event, _PROCESSED_EXTRA, True)
-        self._set_extra(event, _ALLOW_STICKER_EXTRA, False)
+        model_round = self._event_model_round(event)
         try:
-            ok, tool_result, reason = await self._handle_parsed_marker(
-                event, parsed
+            outcome = await self._run_output_gate(
+                request_context,
+                plain_text,
+                event=event,
+                model_round=model_round,
             )
-            replacement = self._result_chain(tool_result) if ok else None
-            if ok and replacement is None:
-                reason = "empty"
         except asyncio.CancelledError:
             raise
         except Exception:
-            replacement = None
-            reason = "failed"
-        if replacement is None:
+            outcome = None
+        if outcome is None:
             try:
-                fallback_text = self._build_fallback_text(parsed.clean_text, reason)
+                parsed = safe_tools.parse_tool_markers(plain_text)
             except Exception:
-                fallback_text = _FALLBACK_DEFAULTS["generic"]
+                parsed = safe_tools.ToolParseResult(
+                    clean_text=safe_tools.strip_tool_markers(plain_text),
+                    intents=[],
+                    had_marker=bool(safe_tools._LOOSE_MARKER_RE.search(plain_text)),
+                )
+            if not parsed.had_marker:
+                return
+            self._set_extra(event, _PROCESSED_EXTRA, True)
+            self._set_extra(event, _ALLOW_STICKER_EXTRA, False)
+            fallback_text = self._build_fallback_text(parsed.clean_text, "failed")
+            chain[:] = self._fallback_chain_for_text(chain, fallback_text)
+            await self._stop_event(event)
+            return
+        if not outcome.had_marker:
+            return
+
+        # Terminal handshake before any provider work is awaited.
+        self._set_extra(event, _PROCESSED_EXTRA, True)
+        self._set_extra(event, _ALLOW_STICKER_EXTRA, False)
+        replacement: list[Any] | None = None
+        if outcome.legacy_chain is not None:
+            replacement = list(outcome.legacy_chain)
+        else:
             try:
-                replacement = [self._plain_component(fallback_text)]
+                replacement = self._chain_from_reply_plan(outcome.reply_plan)
             except Exception:
-                # Last-resort chain surgery: the marker text came from a Plain
-                # component, so reusing that component guarantees it is removed
-                # even if the component API is temporarily unavailable.
-                plain_components = [
-                    component
-                    for component in chain
-                    if self._is_plain_component(component)
-                ]
-                if plain_components:
-                    plain_components[0].text = fallback_text
-                    replacement = [plain_components[0]]
-                else:
-                    replacement = []
-        chain[:] = replacement
+                fallback_text = (
+                    outcome.reply_plan.text_segments[0]
+                    if outcome.reply_plan.text_segments
+                    else _FALLBACK_DEFAULTS["generic"]
+                )
+                replacement = self._fallback_chain_for_text(
+                    chain, fallback_text
+                )
+        chain[:] = replacement or []
         try:
             await self._stop_event(event)
         except Exception:
             pass
+
+    # ------------------------------------------------------------------
+    # In-plugin loopback control bridge lifecycle
+    # ------------------------------------------------------------------
+    def _instance_id(self) -> str:
+        return self._safe_identity(
+            self._config_lookup("instance_id", None) or "default", "instance"
+        )
+
+    def _control_context(self, request: control_server.ControlRequest) -> contracts.RequestContext:
+        body = request.body
+        conversation_id = self._safe_identity(
+            body.get("conversation_id", "control"), "conversation"
+        )
+        persona_id = self._safe_identity(
+            body.get("persona_id", "control"), "persona"
+        )
+        epoch = self.registry.current_owner_epoch("qqbot_safe_tools")
+        return contracts.RequestContext(
+            protocol_version=contracts.ABI_VERSION,
+            instance_id=request.instance_id,
+            platform="control",
+            bot_id="control",
+            actor_id=request.actor_id,
+            conversation_id=conversation_id,
+            persona_id=persona_id,
+            source_message_id=self._safe_identity(request.request_id, "request"),
+            turn_id=self._safe_identity("control_" + request.request_id, "turn"),
+            capability=request.method,
+            requested_scope=request.scope,
+            owner_epoch=int(epoch) if epoch is not None else 0,
+            deadline=self._clock()
+            + float(
+                self._cfg_int(
+                    "dispatch_deadline_seconds", 30, minimum=1, maximum=600
+                )
+            ),
+        )
+
+    async def _control_rpc(self, request: control_server.ControlRequest) -> dict[str, Any]:
+        allowed_keys = _CONTROL_RPC_ARGUMENTS.get(request.method)
+        if allowed_keys is None:
+            raise control_server.ControlError(
+                "unsupported_method", http_status=400
+            )
+        unknown = set(request.body) - set(allowed_keys)
+        if unknown:
+            raise control_server.ControlError("invalid_args", http_status=400)
+        context = self._control_context(request)
+        body = request.body
+        try:
+            if request.method == "tool.catalog":
+                include_unready = body.get("include_unready", False)
+                if not isinstance(include_unready, bool):
+                    raise control_server.ControlError(
+                        "invalid_args", http_status=400
+                    )
+                return self.tool_catalog(
+                    context, include_unready=include_unready
+                )
+            if request.method == "tool.dispatch":
+                tool_id = body.get("tool_id")
+                args = body.get("args", {})
+                if not isinstance(tool_id, str) or not isinstance(args, Mapping):
+                    raise control_server.ControlError(
+                        "invalid_args", http_status=400
+                    )
+                confirmation_ref = str(body.get("confirmation_ref", "") or "")
+                idempotency_key = body.get("idempotency_key")
+                if idempotency_key is not None:
+                    idempotency_key = str(idempotency_key)
+                round_id = body.get("round_id")
+                result = await self.tool_dispatch(
+                    context,
+                    tool_id,
+                    dict(args),
+                    confirmation_ref=confirmation_ref,
+                    idempotency_key=idempotency_key,
+                    round_id=round_id,
+                )
+                return result.to_dict()
+            if request.method == "confirmation.preview":
+                action = body.get("action")
+                payload = body.get("payload", {})
+                revision = body.get("revision")
+                if not isinstance(action, str) or not isinstance(payload, Mapping):
+                    raise control_server.ControlError(
+                        "invalid_args", http_status=400
+                    )
+                if isinstance(revision, bool) or not isinstance(revision, int):
+                    raise control_server.ControlError(
+                        "invalid_args", http_status=400
+                    )
+                preview = self.confirmation_preview(
+                    context, action, dict(payload), revision
+                )
+                return preview.to_dict()
+            if request.method == "confirmation.confirm":
+                confirmation_id = body.get("confirmation_id")
+                if not isinstance(confirmation_id, str):
+                    raise control_server.ControlError(
+                        "invalid_args", http_status=400
+                    )
+                expected_payload = body.get("expected_payload")
+                if expected_payload is not None and not isinstance(
+                    expected_payload, Mapping
+                ):
+                    raise control_server.ControlError(
+                        "invalid_args", http_status=400
+                    )
+                expected_revision = body.get("expected_revision")
+                if expected_revision is not None and (
+                    isinstance(expected_revision, bool)
+                    or not isinstance(expected_revision, int)
+                ):
+                    raise control_server.ControlError(
+                        "invalid_args", http_status=400
+                    )
+                result = await self.confirmation_confirm(
+                    context,
+                    confirmation_id,
+                    expected_payload=(
+                        dict(expected_payload)
+                        if expected_payload is not None
+                        else None
+                    ),
+                    expected_revision=expected_revision,
+                )
+                return result.to_dict()
+            if request.method == "confirmation.cancel":
+                confirmation_id = body.get("confirmation_id")
+                if not isinstance(confirmation_id, str):
+                    raise control_server.ControlError(
+                        "invalid_args", http_status=400
+                    )
+                decision = self.confirmation_cancel(context, confirmation_id)
+                return decision.to_dict()
+            if request.method == "tool.operation_status":
+                operation_id = body.get("operation_id")
+                if not isinstance(operation_id, str):
+                    raise control_server.ControlError(
+                        "invalid_args", http_status=400
+                    )
+                result = self.tool_operation_status(context, operation_id)
+                return result.to_dict()
+        except control_server.ControlError:
+            raise
+        except contracts.ContractError as exc:
+            raise control_server.ControlError(exc.code, http_status=400) from exc
+        except auth.AuthorizationError as exc:
+            raise control_server.ControlError(exc.code, http_status=403) from exc
+        except confirmation.ConfirmationError as exc:
+            raise control_server.ControlError(
+                exc.code, http_status=exc.http_status
+            ) from exc
+        except SafeToolsServiceError as exc:
+            raise control_server.ControlError(exc.code, http_status=409) from exc
+        except Exception as exc:
+            raise control_server.ControlError(
+                "internal_error", http_status=500
+            ) from exc
+        raise control_server.ControlError("unsupported_method", http_status=400)
+
+    async def _register_self_provider(self) -> None:
+        if self.registry.get_registered_provider("qqbot_safe_tools") is not None:
+            return
+        owner_epoch = self._cfg_int(
+            "safe_tools_owner_epoch", 1, minimum=0, maximum=2**31 - 1
+        )
+        methods = {
+            "tool.catalog": self.tool_catalog,
+            "tool.process_model_output": self.tool_process_model_output,
+            "tool.dispatch": self.tool_dispatch,
+            "confirmation.preview": self.confirmation_preview,
+            "confirmation.confirm": self.confirmation_confirm,
+            "confirmation.cancel": self.confirmation_cancel,
+            "tool.operation_status": self.tool_operation_status,
+        }
+        try:
+            self.registry.register_provider(
+                "qqbot_safe_tools",
+                methods,
+                owner_epoch=owner_epoch,
+                ready=True,
+                exclusive=True,
+            )
+            self._self_provider_registered = True
+        except service_registry.RegistryError as exc:
+            self._control_error_code = exc.code
+
+    async def start_control_bridge(self) -> dict[str, Any]:
+        async with self._control_start_lock:
+            if self._control_server is not None and self._control_server.running:
+                return self._control_server.status()
+            self._control_started = True
+            if not self._cfg_bool("control_bridge_enabled", False):
+                return {
+                    "running": False,
+                    "state": "disabled",
+                    "protocol_version": control_server.CONTROL_PROTOCOL_VERSION,
+                }
+            try:
+                secret = control_server.load_control_secret(
+                    data_dir=self._data_dir()
+                )
+            except control_server.ControlConfigError as exc:
+                self._control_error_code = exc.code
+                return {
+                    "running": False,
+                    "state": "blocked",
+                    "error": exc.code,
+                    "protocol_version": control_server.CONTROL_PROTOCOL_VERSION,
+                }
+            instance_id = self._instance_id()
+            allowed_instances = self._cfg_list(
+                "control_bridge_instance_allowlist", (instance_id,)
+            )
+            allowed_actors = self._cfg_list("control_bridge_actor_allowlist")
+            if not allowed_actors:
+                allowed_actors = self._cfg_list("auth_admin_actor_ids")
+            allowed_scopes = self._cfg_list(
+                "control_bridge_scope_allowlist", ("global",)
+            )
+            if not allowed_actors:
+                self._control_error_code = "control_actor_allowlist_empty"
+                return {
+                    "running": False,
+                    "state": "blocked",
+                    "error": self._control_error_code,
+                    "protocol_version": control_server.CONTROL_PROTOCOL_VERSION,
+                }
+            port = self._cfg_int(
+                "control_bridge_port",
+                control_server.CONTROL_DEFAULT_PORT,
+                minimum=0,
+                maximum=65_535,
+            )
+            server = control_server.ControlServer(
+                secret,
+                self._control_rpc,
+                port=port,
+                expected_instance=instance_id,
+                allowed_instances=allowed_instances,
+                allowed_actors=allowed_actors,
+                allowed_scopes=allowed_scopes,
+            )
+            try:
+                status = await server.start()
+            except Exception:
+                self._control_error_code = "control_bind_failed"
+                await server.stop()
+                return {
+                    "running": False,
+                    "state": "blocked",
+                    "error": self._control_error_code,
+                    "protocol_version": control_server.CONTROL_PROTOCOL_VERSION,
+                }
+            self._control_server = server
+            self._control_error_code = ""
+            return status
+
+    async def initialize(self) -> dict[str, Any]:
+        """Idempotent AstrBot startup hook: register services and bridge."""
+
+        self._self_provider_registered = getattr(
+            self, "_self_provider_registered", False
+        )
+        await self._register_self_provider()
+        return await self.start_control_bridge()
+
+    async def terminate(self) -> None:
+        """Stop owned bridge/ledger and unregister this plugin's capability."""
+
+        server = self._control_server
+        self._control_server = None
+        if server is not None:
+            try:
+                await server.stop()
+            except Exception:
+                pass
+        if self._ledger is not None:
+            try:
+                self._ledger.close()
+            except Exception:
+                pass
+            self._ledger = None
+        self._dispatcher = None
+        self._confirmation_manager = None
+        if getattr(self, "_self_provider_registered", False):
+            try:
+                self.registry.unregister_provider("qqbot_safe_tools")
+            except Exception:
+                pass
+            self._self_provider_registered = False
+        self._control_started = False
+
+    def _format_tool_result(self, result: contracts.ToolResult) -> str:
+        if result.status in {"success", "ok"}:
+            text = self._safe_result_text(result.data, limit=2_000)
+            return text or "操作已完成。"
+        reason = _ERROR_TO_REASON.get(str(result.error_code or ""), "failed")
+        reason_text, _ = self._fallback_reason(reason)
+        if result.error_code == "outcome_unknown":
+            reason_text = "操作结果不明确，已停止自动重试；请查询操作状态。"
+        return f"{reason_text}（{result.error_code or 'error'}）"
+
+    def _format_confirmation_decision(
+        self, decision: confirmation.ConfirmationDecision
+    ) -> str:
+        if decision.status == "cancelled":
+            return f"已取消确认 {decision.confirmation_id}。"
+        return f"已确认 {decision.confirmation_id}。"
+
+    def _command_context(
+        self, event: AstrMessageEvent, capability: str
+    ) -> contracts.RequestContext:
+        return self._event_request_context(event, capability=capability)
+
+    @filter.command("工具", alias={"tools"}, priority=110)
+    async def tools_command(self, event: AstrMessageEvent):
+        raw = str(getattr(event, "message_str", "") or "").strip()
+        tokens = raw.split()
+        body = tokens[1:] if tokens else []
+        if body and body[0].lstrip("/") in {"工具", "tools"}:
+            body = body[1:]
+        subcommand = body[0] if body else ""
+        reply: str
+        try:
+            if subcommand == "状态":
+                context = self._command_context(event, "tool.catalog")
+                reply = self._diagnostic_text()
+            elif subcommand == "调用":
+                if len(body) != 2 or not body[1]:
+                    raise SafeToolsServiceError("invalid_args", "缺少 OP_ID")
+                operation = body[1]
+                contracts.operation_spec(operation)
+                context = self._command_context(event, "tool.dispatch")
+                result = await self.tool_dispatch(
+                    context,
+                    operation,
+                    {},
+                    idempotency_key=f"command:{context.turn_id}:{operation.replace('.', '_')}",
+                    round_id=0,
+                )
+                reply = self._format_tool_result(result)
+            elif subcommand == "确认":
+                if len(body) != 2 or not body[1]:
+                    raise SafeToolsServiceError("invalid_args", "缺少 CONFIRM_ID")
+                context = self._command_context(event, "confirmation.confirm")
+                result = await self.confirmation_confirm(context, body[1])
+                reply = self._format_tool_result(result)
+            elif subcommand == "取消":
+                if len(body) != 2 or not body[1]:
+                    raise SafeToolsServiceError("invalid_args", "缺少 CONFIRM_ID")
+                context = self._command_context(event, "confirmation.cancel")
+                decision = self.confirmation_cancel(context, body[1])
+                reply = self._format_confirmation_decision(decision)
+            else:
+                reply = (
+                    "用法：/工具 状态 | 调用 OP_ID | 确认 CONFIRM_ID | "
+                    "取消 CONFIRM_ID；别名 /tools"
+                )
+        except contracts.ContractError:
+            reply = "操作ID必须是固定方法表中的安全业务操作。"
+        except SafeToolsServiceError as exc:
+            reply = self._fallback_reason(
+                _ERROR_TO_REASON.get(exc.code, "invalid")
+            )[0]
+        except confirmation.ConfirmationError as exc:
+            reason = _ERROR_TO_REASON.get(exc.code, "invalid")
+            reply = self._fallback_reason(reason)[0]
+        except auth.AuthorizationError:
+            reply = self._fallback_reason("permission")[0]
+        except Exception:
+            reply = self._fallback_reason("failed")[0]
+        yield event.plain_result(reply)
+        await self._stop_event(event)
 
     # ------------------------------------------------------------------
     # /工具协议 diagnostic command
@@ -756,6 +2208,11 @@ class SafeToolsPlugin(Star):
                 f"{plugin_id}={state(ready)}"
                 for plugin_id, ready in availability.items()
             ),
+            f"ABI：v{contracts.ABI_VERSION}；"
+            f"registry={len(self.registry.snapshot())} 个 provider；"
+            f"ready_tools={len(self._advertised_tool_names())}；"
+            f"control_bridge={'运行中' if self._control_server and self._control_server.running else '未运行'}"
+            + (f"（{self._control_error_code}）" if self._control_error_code else ""),
         ]
         instruction = self.tool_instruction(active)
         if instruction:
