@@ -228,5 +228,240 @@
     "description": "工具返回 None 或空结果时的原因",
     "type": "string",
     "default": "工具没有返回可用结果，本次已回退为普通回复。"
+  },
+  "fallback_confirmation_required": {
+    "description": "危险写操作需要预览确认时的原因",
+    "type": "string",
+    "default": "该操作需要预览确认，请先完成确认。"
+  },
+  "fallback_confirmation_expired": {
+    "description": "确认凭证过期时的原因",
+    "type": "string",
+    "default": "确认凭证已过期，请重新预览。"
+  },
+  "fallback_revision_conflict": {
+    "description": "payload 或 revision 变化时的原因",
+    "type": "string",
+    "default": "操作内容或版本已变化，请重新预览确认。"
+  },
+  "fallback_outcome_unknown": {
+    "description": "provider 结果不明时的原因",
+    "type": "string",
+    "default": "操作结果不明确，已停止自动重试。"
+  },
+  "fallback_limit": {
+    "description": "工具轮次或并发达到上限时的原因",
+    "type": "string",
+    "default": "工具调用次数已达到本轮上限。"
+  },
+  "config_version": {
+    "description": "配置schema版本",
+    "type": "int",
+    "default": 1,
+    "slider": {
+      "min": 1,
+      "max": 1,
+      "step": 1
+    }
+  },
+  "instance_id": {
+    "description": "本实例稳定ID（控制桥/授权范围绑定）",
+    "type": "string",
+    "default": "default"
+  },
+  "marker_protocol_version": {
+    "description": "marker协议版本（仅支持v1兼容解析）",
+    "type": "int",
+    "default": 1,
+    "slider": {
+      "min": 1,
+      "max": 1,
+      "step": 1
+    }
+  },
+  "marker_max_bytes": {
+    "description": "单次完整模型输出的marker处理上限字节",
+    "type": "int",
+    "default": 65536,
+    "slider": {
+      "min": 256,
+      "max": 65536,
+      "step": 256
+    }
+  },
+  "marker_max_calls": {
+    "description": "每轮最多工具调用数；单条回复仍硬限制1个marker",
+    "type": "int",
+    "default": 8,
+    "slider": {
+      "min": 1,
+      "max": 8,
+      "step": 1
+    }
+  },
+  "marker_allowed_tools": {
+    "description": "允许的marker工具名，逗号分隔",
+    "type": "string",
+    "default": "fetch_webpage,search_images,search_food_restaurants,submit_food_review,send_sticker,collect_sticker,list_sticker_categories"
+  },
+  "auth_policy_version": {
+    "description": "服务端授权策略版本",
+    "type": "int",
+    "default": 1,
+    "slider": {
+      "min": 1,
+      "max": 100,
+      "step": 1
+    }
+  },
+  "auth_rules": {
+    "description": "服务端授权规则JSON；默认仅本人scope只读，跨scope拒绝",
+    "type": "string",
+    "default": "[{\"actor_ids\":[\"*\"],\"scope_types\":[\"*\"],\"operations\":[\"*\"],\"allow_read\":true,\"allow_write\":false,\"cross_scope\":false}]"
+  },
+  "auth_admin_actor_ids": {
+    "description": "管理员actor稳定ID JSON/逗号列表",
+    "type": "string",
+    "default": "[]"
+  },
+  "auth_cross_scope_default": {
+    "description": "跨scope默认策略，固定deny",
+    "type": "string",
+    "default": "deny"
+  },
+  "confirmation_ttl_seconds": {
+    "description": "确认凭证有效期秒数（最长600）",
+    "type": "int",
+    "default": 120,
+    "slider": {
+      "min": 1,
+      "max": 600,
+      "step": 1
+    }
+  },
+  "confirmation_required_actions": {
+    "description": "需要确认的固定操作，JSON/逗号/星号",
+    "type": "string",
+    "default": "*"
+  },
+  "dispatch_deadline_seconds": {
+    "description": "单次provider调用deadline秒数",
+    "type": "int",
+    "default": 30,
+    "slider": {
+      "min": 1,
+      "max": 600,
+      "step": 1
+    }
+  },
+  "dispatch_max_parallel": {
+    "description": "并发工具调用上限",
+    "type": "int",
+    "default": 4,
+    "slider": {
+      "min": 1,
+      "max": 64,
+      "step": 1
+    }
+  },
+  "dispatch_max_rounds": {
+    "description": "单turn工具续轮上限",
+    "type": "int",
+    "default": 3,
+    "slider": {
+      "min": 1,
+      "max": 64,
+      "step": 1
+    }
+  },
+  "network_host_allowlist": {
+    "description": "web provider主机允许列表；safe_tools不打开任意端点",
+    "type": "string",
+    "default": "[]"
+  },
+  "network_reject_private": {
+    "description": "拒绝内网/回环网络目标（不允许QQ用户关闭）",
+    "type": "bool",
+    "default": true
+  },
+  "audit_retention_days": {
+    "description": "调用/确认审计保留天数",
+    "type": "int",
+    "default": 30,
+    "slider": {
+      "min": 1,
+      "max": 3650,
+      "step": 1
+    }
+  },
+  "audit_ledger_enabled": {
+    "description": "启用调用/确认/幂等SQLite账本",
+    "type": "bool",
+    "default": true
+  },
+  "audit_redact_keys": {
+    "description": "审计脱敏键名，逗号分隔",
+    "type": "string",
+    "default": "password,secret,token,api_key,authorization,cookie"
+  },
+  "ledger_busy_timeout_ms": {
+    "description": "SQLite busy_timeout毫秒",
+    "type": "int",
+    "default": 5000,
+    "slider": {
+      "min": 100,
+      "max": 120000,
+      "step": 100
+    }
+  },
+  "registry_abi_version": {
+    "description": "服务注册ABI版本，仅支持v1",
+    "type": "int",
+    "default": 1,
+    "slider": {
+      "min": 1,
+      "max": 1,
+      "step": 1
+    }
+  },
+  "safe_tools_owner_epoch": {
+    "description": "safe_tools服务owner_epoch（服务端登记，不由QQ用户设置）",
+    "type": "int",
+    "default": 1,
+    "slider": {
+      "min": 0,
+      "max": 2147483647,
+      "step": 1
+    }
+  },
+  "control_bridge_enabled": {
+    "description": "启用127.0.0.1回环控制桥（秘密仅从0600文件读取）",
+    "type": "bool",
+    "default": false
+  },
+  "control_bridge_port": {
+    "description": "控制桥固定回环端口",
+    "type": "int",
+    "default": 6198,
+    "slider": {
+      "min": 0,
+      "max": 65535,
+      "step": 1
+    }
+  },
+  "control_bridge_instance_allowlist": {
+    "description": "控制桥允许实例ID，JSON/逗号列表",
+    "type": "string",
+    "default": "default"
+  },
+  "control_bridge_actor_allowlist": {
+    "description": "控制桥允许actor ID，JSON/逗号列表；空则使用auth_admin_actor_ids",
+    "type": "string",
+    "default": "[]"
+  },
+  "control_bridge_scope_allowlist": {
+    "description": "控制桥允许scope，JSON/逗号列表",
+    "type": "string",
+    "default": "global"
   }
 }

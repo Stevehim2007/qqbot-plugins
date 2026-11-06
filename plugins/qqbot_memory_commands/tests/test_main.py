@@ -272,11 +272,14 @@ class TestRegistrationAndInjection(HandlerTestCase):
         registration = registrations[0]
         self.assertEqual(registration["function"], "memory_command")
         self.assertEqual(registration["name"], "记忆")
-        self.assertEqual(registration["aliases"], {"记忆管理"})
+        self.assertEqual(
+            registration["aliases"],
+            {"记忆管理", "memory", "会话", "session", "人格", "persona"},
+        )
         self.assertEqual(registration["priority"], 110)
         self.assertEqual(
             {registration["name"], *registration["aliases"]},
-            {"记忆", "记忆管理"},
+            {"记忆", "记忆管理", "memory", "会话", "session", "人格", "persona"},
         )
 
     def test_source_has_no_duplicate_memory_handlers(self):

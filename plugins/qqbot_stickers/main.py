@@ -33,6 +33,23 @@ try:  # Loaded as a package by AstrBot.
         inspect_image_bytes,
     )
     from .migration import MigrationResult, migrate_legacy_stickers
+    from .contracts import (
+        CAPABILITY_STICKERS,
+        DuplicateOwnerError,
+        ProviderRegistration,
+        RequestContext,
+        canonical_scope,
+        close_context_registry,
+        error_result,
+        get_registry,
+    )
+    from .sticker_service import (
+        ASSET_CATEGORY,
+        LEGACY_SCOPE,
+        SecondWriterActive,
+        StickerService,
+        StickerServiceError,
+    )
     from .sticker_store import (
         COLLECTED_CATEGORY_RE,
         COLLECTED_STICKER_DIR_NAME,
@@ -51,6 +68,23 @@ except ImportError:  # Loaded directly by a unit-test harness.
     import sticker_reclassify as sticker_reclassify_engine
     from media import ImageValidationError, decode_base64_payload, inspect_image_bytes
     from migration import MigrationResult, migrate_legacy_stickers
+    from contracts import (
+        CAPABILITY_STICKERS,
+        DuplicateOwnerError,
+        ProviderRegistration,
+        RequestContext,
+        canonical_scope,
+        close_context_registry,
+        error_result,
+        get_registry,
+    )
+    from sticker_service import (
+        ASSET_CATEGORY,
+        LEGACY_SCOPE,
+        SecondWriterActive,
+        StickerService,
+        StickerServiceError,
+    )
     from sticker_store import (
         COLLECTED_CATEGORY_RE,
         COLLECTED_STICKER_DIR_NAME,
@@ -177,6 +211,27 @@ DEFAULTS.update({
         '表情包已收到，嘿嘿～',
     ],
     'user_sticker_reaction_attach_sticker': True,
+    # Canonical flat groups from the migration contract.  provider_id/store_id
+    # are registry references, never filesystem paths.
+    'collect_enabled': True,
+    'collect_require_explicit': True,
+    'collect_max_bytes': 20 * 1024 * 1024,
+    'collect_allowed_types': [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/avif'
+    ],
+    'collect_dedup_mode': 'content_hash',
+    'categories_max_count': 16,
+    'categories_name_length': 32,
+    'index_schema_version': 3,
+    'index_rebuild_batch_size': 100,
+    'send_max_segments': 1,
+    'assets_store_id': 'default',
+    'assets_tombstone_mode': 'logical_only',
+    'policy_id': 'default',
+    'provider_id': 'qqbot_stickers',
+    'store_id': 'default',
+    'index_owner_epoch': 1,
+    'confirmation_ttl_seconds': 300,
 })
 
 
@@ -284,6 +339,10 @@ class StickerPlugin(Star):
         # diagnostics without ever reading the *global* context config.
         self.config = injected
         self._store: CollectedStickerStore | None = None
+        self._service: StickerService | None = None
+        self._provider_registration: ProviderRegistration | None = None
+        self._provider_error: Exception | None = None
+        self._message_counter = 0
         self._data_dir: Path | None = None
         self.legacy_root_override: Path | None = None
         self.data_dir_override: Path | None = None
@@ -373,7 +432,42 @@ class StickerPlugin(Star):
         except (OSError, ValueError):
             return None
 
+    def _validate_reference_setting(self, key: str, default: str) -> str:
+        value = self._cfg_str(key, default).strip() or default
+        if (
+            len(value) > 64
+            or "/" in value
+            or "\\" in value
+            or ".." in value
+            or any(ord(char) < 32 or ord(char) == 127 for char in value)
+        ):
+            raise StickerStoreError(f"{key} must be a registered reference, not a path")
+        return value
+
+    def _effective_max_file_bytes(self) -> int:
+        old = self._cfg_int("collected_sticker_max_file_bytes", 8 * 1024 * 1024, 1)
+        policy = self._cfg_int("collect_max_bytes", 20 * 1024 * 1024, 1)
+        return max(1, min(old, policy))
+
+    def _effective_max_categories(self) -> int:
+        old = self._cfg_int("collected_sticker_max_categories", 8, 1)
+        canonical = self._cfg_int("categories_max_count", 16, 1)
+        return max(1, min(32, old, canonical))
+
+    def _effective_category_chars(self) -> int:
+        old = self._cfg_int("collected_sticker_category_max_chars", 32, 1)
+        canonical = self._cfg_int("categories_name_length", 32, 1)
+        return max(1, min(32, old, canonical))
+
     def _build_store(self) -> CollectedStickerStore:
+        self._validate_reference_setting("assets_store_id", "default")
+        self._validate_reference_setting("store_id", "default")
+        self._validate_reference_setting("provider_id", PLUGIN_NAME)
+        self._validate_reference_setting("policy_id", "default")
+        if self._cfg_str("assets_tombstone_mode", "logical_only") != "logical_only":
+            raise StickerStoreError("assets_tombstone_mode must be logical_only")
+        if self._cfg_str("collect_dedup_mode", "content_hash") != "content_hash":
+            raise StickerStoreError("collect_dedup_mode must be content_hash")
         data_dir = self._resolve_data_dir()
         try:
             data_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
@@ -388,9 +482,7 @@ class StickerPlugin(Star):
             raise StickerStoreError("sticker root must not be a symlink")
         store = CollectedStickerStore(
             root,
-            max_file_bytes=self._cfg_int(
-                "collected_sticker_max_file_bytes", 8 * 1024 * 1024, 1
-            ),
+            max_file_bytes=self._effective_max_file_bytes(),
             category_normalizer=self._normalize_category,
             default_category=DEFAULT_COLLECTED_CATEGORY,
             log_warning=lambda message: logger.warning("%s", message),
@@ -400,9 +492,7 @@ class StickerPlugin(Star):
                 "collected_sticker_max_meaning_chars", 200, 1
             ),
             max_tone_chars=self._cfg_int("collected_sticker_max_tone_chars", 24, 1),
-            max_categories=self._cfg_int(
-                "collected_sticker_max_categories", 8, 1
-            ),
+            max_categories=self._effective_max_categories(),
             max_count=self._cfg_int("collected_sticker_max_count", 200, 1),
             max_dimension=self._cfg_int(
                 "collected_sticker_max_dimension", 4096, 1
@@ -427,14 +517,106 @@ class StickerPlugin(Star):
         return store
 
     async def initialize(self) -> None:
-        """AstrBot lifecycle hook; all failures degrade to command-time errors."""
+        """Register the provider in a non-ready state, then become ready."""
 
         await self._ensure_ready()
 
     async def terminate(self) -> None:
-        """AstrBot lifecycle hook; there are no background tasks to cancel."""
+        """Clean up registry capability and release the exclusive writer lock."""
 
-        return None
+        registration, self._provider_registration = self._provider_registration, None
+        if registration is not None:
+            try:
+                registration.mark_not_ready()
+            except Exception:
+                pass
+            try:
+                registration.close()
+            except Exception:
+                pass
+        service, self._service = self._service, None
+        if service is not None:
+            try:
+                await service.terminate_async()
+            except Exception:
+                pass
+        self._ready = False
+        self._provider_error = None
+
+    @property
+    def is_ready(self) -> bool:
+        return bool(
+            self._ready
+            and self._service is not None
+            and self._service.ready
+            and self._provider_registration is not None
+            and self._provider_registration.ready
+        )
+
+    @property
+    def provider_registration(self) -> ProviderRegistration | None:
+        return self._provider_registration
+
+    @property
+    def owner_epoch(self) -> int:
+        return self._cfg_int("index_owner_epoch", 1, 0)
+
+    def set_owner_epoch(self, owner_epoch: int) -> None:
+        """Migration/control-plane hook; providers must reject stale epochs."""
+
+        epoch = max(0, int(owner_epoch))
+        self._plugin_config["index_owner_epoch"] = epoch
+        if self._service is not None:
+            self._service.set_owner_epoch(epoch)
+        if self._provider_registration is not None:
+            try:
+                self._provider_registration.set_owner_epoch(epoch)
+            except Exception:
+                pass
+
+    async def _register_provider(self, service: StickerService) -> None:
+        if (
+            self._provider_registration is not None
+            and self._provider_registration.record.active
+            and self._provider_registration.record.provider_id
+            == self._cfg_str("provider_id", PLUGIN_NAME)
+        ):
+            self._provider_registration.mark_ready(service.owner_epoch)
+            return
+        registry = get_registry(self.context)
+        methods = {
+            name: getattr(self, name)
+            for name in (
+                "sticker_collect_plan",
+                "sticker_collect_commit",
+                "category_list",
+                "category_create",
+                "category_rename",
+                "category_remove",
+                "sticker_categorize",
+                "sticker_search",
+                "sticker_send_plan",
+                "sticker_remove",
+                "index_rebuild_plan",
+                "index_rebuild_commit",
+            )
+        }
+        provider_id = self._cfg_str("provider_id", PLUGIN_NAME) or PLUGIN_NAME
+        registration = registry.register_provider(
+            provider_id,
+            CAPABILITY_STICKERS,
+            methods,
+            abi_version=1,
+            owner_epoch=service.owner_epoch,
+            ready=False,
+            metadata={
+                "store_id": self._cfg_str("store_id", "default"),
+                "policy_id": self._cfg_str("policy_id", "default"),
+                "plugin_version": PLUGIN_VERSION,
+            },
+        )
+        self._provider_registration = registration
+        registration.mark_ready(service.owner_epoch)
 
     async def _ensure_ready(self) -> CollectedStickerStore:
         if self._store is not None and self._ready:
@@ -444,6 +626,42 @@ class StickerPlugin(Star):
                 self._store = self._build_store()
             if not self._ready:
                 await self._run_migration_once(self._store)
+                if self._service is None:
+                    self._service = StickerService(
+                        self._store.root,
+                        store=self._store,
+                        clock=self._clock,
+                        category_normalizer=self._normalize_category,
+                        max_file_bytes=self._effective_max_file_bytes(),
+                        max_count=self._cfg_int(
+                            "collected_sticker_max_count", 200, 1
+                        ),
+                        max_dimension=self._cfg_int(
+                            "collected_sticker_max_dimension", 4096, 1
+                        ),
+                        max_pixels=self._cfg_int(
+                            "collected_sticker_max_pixels", 16_777_216, 1
+                        ),
+                        max_categories=self._effective_max_categories(),
+                        max_category_chars=self._effective_category_chars(),
+                        confirmation_ttl_seconds=self._cfg_int(
+                            "confirmation_ttl_seconds", 300, 1
+                        ),
+                        send_cooldown_seconds=self._cfg_int(
+                            "sticker_cooldown_seconds", 120, 0
+                        ),
+                        owner_epoch=self.owner_epoch,
+                    )
+                    await self._service.initialize(owner_epoch=self.owner_epoch)
+                try:
+                    await self._register_provider(self._service)
+                except Exception as exc:
+                    self._provider_error = exc
+                    try:
+                        await self._service.terminate_async()
+                    finally:
+                        self._service = None
+                    raise
                 self._ready = True
             return self._store
 
@@ -458,9 +676,7 @@ class StickerPlugin(Star):
                 migrate_legacy_stickers,
                 legacy,
                 store,
-                max_file_bytes=self._cfg_int(
-                    "collected_sticker_max_file_bytes", 8 * 1024 * 1024, 1
-                ),
+                max_file_bytes=self._effective_max_file_bytes(),
                 max_dimension=self._cfg_int(
                     "collected_sticker_max_dimension", 4096, 1
                 ),
@@ -479,9 +695,7 @@ class StickerPlugin(Star):
         return normalize_category_name(
             raw,
             default_category=DEFAULT_COLLECTED_CATEGORY,
-            max_chars=self._cfg_int(
-                "collected_sticker_category_max_chars", 32, 1
-            ),
+            max_chars=self._effective_category_chars(),
         )
 
     def _parse_collect_categories(self, raw: str) -> list[str] | None:
@@ -513,8 +727,11 @@ class StickerPlugin(Star):
         return categories
 
     async def _entries(self) -> list[dict[str, Any]]:
-        store = await self._ensure_ready()
-        return await asyncio.to_thread(store.load_index)
+        await self._ensure_ready()
+        service = self._service
+        if service is None:
+            return []
+        return await asyncio.to_thread(service.legacy_entries)
 
     def _format(self, template: str, **kwargs: Any) -> str:
         try:
@@ -523,7 +740,7 @@ class StickerPlugin(Star):
             return str(template)
 
     def _category_max_chars(self) -> int:
-        return min(32, self._cfg_int("collected_sticker_category_max_chars", 32, 1))
+        return self._effective_category_chars()
 
     # ------------------------------------------------------------------
     # Event / result helpers
@@ -559,6 +776,172 @@ class StickerPlugin(Star):
         if isinstance(value, (list, tuple)):
             return list(value)
         return []
+
+    def _next_message_ref(self, event: AstrMessageEvent) -> str:
+        for attr in ("message_id", "msg_id", "event_id"):
+            value = str(getattr(event, attr, "") or "").strip()
+            if value:
+                return value[:256]
+        getter = getattr(event, "get_message_id", None)
+        if callable(getter):
+            try:
+                value = str(getter() or "").strip()
+                if value:
+                    return value[:256]
+            except Exception:
+                pass
+        try:
+            value = str(event.get_extra("qqbot_source_message_id", "") or "").strip()
+            if value:
+                return value[:256]
+        except Exception:
+            pass
+        self._message_counter += 1
+        return f"{self._session_key(event)}:{self._message_counter}"
+
+    def _event_actor_id(self, event: AstrMessageEvent) -> str:
+        try:
+            value = str(event.get_extra("qqbot_actor_id", "") or "").strip()
+            if value:
+                return value[:256]
+        except Exception:
+            pass
+        for attr in ("sender_id", "user_id", "actor_id", "qq_id"):
+            value = str(getattr(event, attr, "") or "").strip()
+            if value:
+                return value[:256]
+        for method_name in ("get_sender_id", "get_user_id"):
+            method = getattr(event, method_name, None)
+            if callable(method):
+                try:
+                    value = str(method() or "").strip()
+                    if value:
+                        return value[:256]
+                except Exception:
+                    pass
+        return "unknown-actor"
+
+    def _event_group_id(self, event: AstrMessageEvent) -> str:
+        try:
+            value = str(event.get_extra("qqbot_group_id", "") or "").strip()
+            if value:
+                return value[:256]
+        except Exception:
+            pass
+        for attr in ("group_id", "chat_id"):
+            value = str(getattr(event, attr, "") or "").strip()
+            if value:
+                return value[:256]
+        getter = getattr(event, "get_group_id", None)
+        if callable(getter):
+            try:
+                value = str(getter() or "").strip()
+                if value:
+                    return value[:256]
+            except Exception:
+                pass
+        return ""
+
+    def _event_bot_id(self, event: AstrMessageEvent) -> str:
+        for attr in ("self_id", "bot_id"):
+            value = str(getattr(event, attr, "") or "").strip()
+            if value:
+                return value[:256]
+        try:
+            value = str(event.get_extra("qqbot_bot_id", "") or "").strip()
+            if value:
+                return value[:256]
+        except Exception:
+            pass
+        return "self"
+
+    def _event_platform(self, event: AstrMessageEvent) -> str:
+        try:
+            getter = getattr(event, "get_platform_name", None)
+            if callable(getter):
+                value = str(getter() or "").strip()
+                if value:
+                    return value[:128]
+        except Exception:
+            pass
+        return "qq"
+
+    def _event_scope(self, event: AstrMessageEvent) -> str:
+        try:
+            explicit = event.get_extra("qqbot_requested_scope", None)
+            if explicit:
+                return canonical_scope(explicit)
+        except Exception:
+            pass
+        actor = self._event_actor_id(event)
+        try:
+            private = bool(
+                callable(getattr(event, "is_private_chat", None))
+                and event.is_private_chat()
+            )
+        except Exception:
+            private = False
+        if private:
+            return canonical_scope({"type": "user", "id": actor})
+        group_id = self._event_group_id(event)
+        if group_id:
+            return canonical_scope({"type": "group", "id": group_id})
+        return canonical_scope(
+            {"type": "conversation", "id": self._session_key(event)}
+        )
+
+    def _event_context(
+        self,
+        event: AstrMessageEvent,
+        *,
+        scope: str | None = None,
+        deadline_seconds: int = 60,
+    ) -> RequestContext:
+        actor = self._event_actor_id(event)
+        source_message_id = self._next_message_ref(event)
+        try:
+            turn_id = str(event.get_extra("qqbot_turn_id", "") or "").strip()
+        except Exception:
+            turn_id = ""
+        if not turn_id:
+            turn_id = source_message_id
+        instance_id = os.environ.get("ASTRBOT_INSTANCE_ID", "astrbot")[:256] or "astrbot"
+        try:
+            override_instance = str(
+                event.get_extra("qqbot_instance_id", "") or ""
+            ).strip()
+            if override_instance:
+                instance_id = override_instance[:256]
+        except Exception:
+            pass
+        try:
+            persona_id = str(event.get_extra("qqbot_persona_id", "") or "").strip()
+        except Exception:
+            persona_id = ""
+        return RequestContext.from_mapping(
+            {
+                "protocol_version": 1,
+                "instance_id": instance_id,
+                "platform": self._event_platform(event),
+                "bot_id": self._event_bot_id(event),
+                "actor_id": actor,
+                "conversation_id": self._session_key(event),
+                "persona_id": persona_id,
+                "source_message_id": source_message_id,
+                "turn_id": turn_id,
+                "capability": CAPABILITY_STICKERS,
+                "requested_scope": scope or self._event_scope(event),
+                "owner_epoch": (
+                    self._service.owner_epoch
+                    if self._service is not None
+                    else self.owner_epoch
+                ),
+                "deadline": self._clock() + max(1, int(deadline_seconds)),
+            }
+        )
+
+    def _legacy_context(self, event: AstrMessageEvent) -> RequestContext:
+        return self._event_context(event, scope=LEGACY_SCOPE)
 
     def _is_explicit_conversation(self, event: AstrMessageEvent) -> bool:
         try:
@@ -884,31 +1267,30 @@ class StickerPlugin(Star):
         tone: str = "",
     ) -> tuple[str, dict[str, Any] | None]:
         try:
-            store = await self._ensure_ready()
+            await self._ensure_ready()
         except Exception:
             return "storage", None
-        source = ""
-        try:
-            getter = getattr(event, "get_platform_name", None)
-            if callable(getter):
-                source = str(getter() or "")
-        except Exception:
-            source = ""
+        service = self._service
+        if service is None:
+            return "storage", None
         data = payload.get("data")
         if not isinstance(data, bytes):
             return "invalid_image", None
-        async with self._write_lock:
-            return await asyncio.to_thread(
-                store.add_sticker,
-                data,
-                category=category,
-                categories=list(categories or [category]),
-                tags=list(tags or []),
-                meaning=str(meaning or ""),
-                tone=str(tone or ""),
-                source=source,
-                merge_duplicate=False,
-            )
+        context = self._legacy_context(event)
+        try:
+            async with self._write_lock:
+                return await service.legacy_collect(
+                    context,
+                    data,
+                    category=category,
+                    categories=list(categories or [category]),
+                    tags=list(tags or []),
+                    meaning=str(meaning or ""),
+                    tone=str(tone or ""),
+                    idempotency_key=context.source_message_id,
+                )
+        except Exception:
+            return "storage", None
 
     def _entry_matches_tag(self, entry: dict[str, Any], term: str) -> bool:
         wanted = str(term or "").strip().casefold()
@@ -1767,22 +2149,23 @@ class StickerPlugin(Star):
                     ),
                 )
             if entry is not None:
-                store = await self._ensure_ready()
+                await self._ensure_ready()
+                service = self._service
+                if service is None:
+                    return self._plain_result(
+                        event,
+                        self._cfg_str(
+                            "sticker_natural_language_reclassify_failed_reply"
+                        ),
+                    )
+                context = self._legacy_context(event)
                 async with self._write_lock:
-                    if action == "add":
-                        status, updated = await asyncio.to_thread(
-                            store.add_categories,
-                            entries,
-                            entry["sha256"],
-                            categories,
-                        )
-                    else:
-                        status, updated = await asyncio.to_thread(
-                            store.remove_categories,
-                            entries,
-                            entry["sha256"],
-                            categories,
-                        )
+                    status, updated = await service.legacy_add_categories(
+                        context,
+                        str(entry["sha256"]),
+                        categories,
+                        remove=action == "remove",
+                    )
                 if status == "not_found":
                     return self._plain_result(
                         event,
@@ -1870,13 +2253,21 @@ class StickerPlugin(Star):
                 ),
             )
         if entry is not None:
-            store = await self._ensure_ready()
+            await self._ensure_ready()
+            service = self._service
+            if service is None:
+                return self._plain_result(
+                    event,
+                    self._cfg_str(
+                        "sticker_natural_language_reclassify_failed_reply"
+                    ),
+                )
             old_category = str(entry.get("category", ""))
+            context = self._legacy_context(event)
             async with self._write_lock:
-                status, updated = await asyncio.to_thread(
-                    store.update_metadata,
-                    entries,
-                    entry["sha256"],
+                status, updated = await service.legacy_update_sticker(
+                    context,
+                    content_hash=str(entry["sha256"]),
                     category=normalized["category"],
                     categories=normalized["categories"],
                     tags=normalized["tags"],
@@ -2109,6 +2500,106 @@ class StickerPlugin(Star):
                     pass
         except Exception:
             logger.warning("qqbot_stickers core-reply decoration skipped", exc_info=True)
+
+    # ------------------------------------------------------------------
+    # Fixed ABI-v1 provider methods (plain ToolResult/ReplyPlan dicts)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _provider_unavailable_result(
+        request_context: Any,
+        *,
+        error_code: str = "not_ready",
+        args: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        try:
+            context = RequestContext.from_mapping(request_context)
+            return error_result(
+                context,
+                error_code=error_code,
+                result_type="error",
+                data={"reason": error_code},
+                args=args or {},
+            )
+        except Exception:
+            return {
+                "status": "error",
+                "call_id": "unavailable",
+                "result_type": "error",
+                "data": {"reason": error_code},
+                "error_code": error_code,
+                "retryable": False,
+                "side_effect_state": "none",
+                "provider_operation_id": "",
+            }
+
+    async def _provider_call(
+        self,
+        method: str,
+        request_context: Any,
+        args: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        try:
+            await self._ensure_ready()
+            service = self._service
+            if service is None:
+                raise SecondWriterActive("sticker service unavailable")
+            return await getattr(service, method)(request_context, dict(args or {}))
+        except Exception:
+            return self._provider_unavailable_result(
+                request_context, error_code="dependency_missing", args=args
+            )
+
+    async def sticker_collect_plan(self, request_context, args=None):
+        return await self._provider_call("sticker_collect_plan", request_context, args)
+
+    async def sticker_collect_commit(self, request_context, args=None):
+        return await self._provider_call("sticker_collect_commit", request_context, args)
+
+    async def category_list(self, request_context, args=None):
+        return await self._provider_call("category_list", request_context, args)
+
+    async def category_create(self, request_context, args=None):
+        return await self._provider_call("category_create", request_context, args)
+
+    async def category_rename(self, request_context, args=None):
+        return await self._provider_call("category_rename", request_context, args)
+
+    async def category_remove(self, request_context, args=None):
+        return await self._provider_call("category_remove", request_context, args)
+
+    async def sticker_categorize(self, request_context, args=None):
+        return await self._provider_call("sticker_categorize", request_context, args)
+
+    async def sticker_search(self, request_context, args=None):
+        return await self._provider_call("sticker_search", request_context, args)
+
+    async def sticker_send_plan(self, request_context, args=None):
+        return await self._provider_call("sticker_send_plan", request_context, args)
+
+    async def sticker_remove(self, request_context, args=None):
+        return await self._provider_call("sticker_remove", request_context, args)
+
+    async def index_rebuild_plan(self, request_context, args=None):
+        return await self._provider_call("index_rebuild_plan", request_context, args)
+
+    async def index_rebuild_commit(self, request_context, args=None):
+        return await self._provider_call("index_rebuild_commit", request_context, args)
+
+    async def sticker_delivery_update(self, request_context, args=None):
+        """Non-provider helper used by a sender to report delivery state."""
+
+        try:
+            await self._ensure_ready()
+            service = self._service
+            if service is None:
+                raise SecondWriterActive("sticker service unavailable")
+            return await service.sticker_delivery_update(
+                request_context, dict(args or {})
+            )
+        except Exception:
+            return self._provider_unavailable_result(
+                request_context, error_code="dependency_missing", args=args
+            )
 
     # ------------------------------------------------------------------
     # Stable cross-plugin API used by qqbot_safe_tools

@@ -133,8 +133,11 @@ class ContractTests(unittest.TestCase):
             "base64",
             "binascii",
             "contextlib",
+            "copy",
             "dataclasses",
             "hashlib",
+            "hmac",
+            "secrets",
             "inspect",
             "json",
             "operator",
@@ -143,18 +146,22 @@ class ContractTests(unittest.TestCase):
             "re",
             "stat",
             "tempfile",
+            "threading",
             "time",
             "typing",
+            "uuid",
             "pathlib",
             "fcntl",
             "sys",
         }
         allowed_external = {"astrbot"}
         local = {
+            "contracts",
             "media",
             "migration",
             "sticker_intent",
             "sticker_reclassify",
+            "sticker_service",
             "sticker_store",
         }
         for path in PLUGIN_DIR.glob("*.py"):

@@ -10,7 +10,20 @@ import unittest
 
 from _support import PLUGIN_ROOT, main_module, safe_tools
 
-PRODUCTION_FILES = ("main.py", "safe_tools.py", "food.py", "web_fetch.py")
+PRODUCTION_FILES = (
+    "main.py",
+    "safe_tools.py",
+    "food.py",
+    "web_fetch.py",
+    "contracts.py",
+    "registry.py",
+    "auth.py",
+    "confirmation.py",
+    "call_ledger.py",
+    "dispatcher.py",
+    "output_gate.py",
+    "control_server.py",
+)
 ALLOW_KEYS = {
     "allow_fetch_webpage",
     "allow_search_images",
@@ -227,7 +240,19 @@ class StaticSecurityTests(unittest.TestCase):
 
     def test_imports_are_stdlib_astrbot_or_local(self):
         allowed = set(sys.stdlib_module_names) | {"astrbot", "__future__"}
-        allowed_local = {"safe_tools", "food", "web_fetch"}
+        allowed_local = {
+            "safe_tools",
+            "food",
+            "web_fetch",
+            "auth",
+            "call_ledger",
+            "confirmation",
+            "contracts",
+            "control_server",
+            "dispatcher",
+            "output_gate",
+            "registry",
+        }
         for name, tree in self._trees():
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
