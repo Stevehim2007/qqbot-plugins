@@ -10,7 +10,9 @@ markers.
 from __future__ import annotations
 
 import asyncio
+import base64
 import inspect
+import json
 import os
 import random
 import re
@@ -152,7 +154,6 @@ DEFAULTS: dict[str, Any] = {
     "collected_sticker_max_meaning_chars": 200,
     "collected_sticker_max_tone_chars": 24,
     "collected_sticker_list_limit": 30,
-    "collected_sticker_use_probability": 0.5,
     "pending_sticker_ttl_seconds": 300,
     "collected_sticker_migration_enabled": True,
     "collected_sticker_storage_unavailable_reply": "收藏存储目录不可用，请检查 AstrBot 的 data/plugin_data 权限。",
@@ -185,32 +186,29 @@ DEFAULTS: dict[str, Any] = {
     "safe_tools_allow_list_categories": True,
     "safe_tools_collect_cooldown_seconds": 30,
     "safe_tools_sticker_prefix": "给你一个表情：",
+    "sticker_ai_decorate_enabled": False,
+    "sticker_ai_decorate_probability": 0.3,
+    "sticker_ai_decorate_provider_id": "",
+    "sticker_ai_decorate_min_reply_chars": 4,
+    "sticker_ai_decorate_max_candidates": 20,
+    "sticker_ai_decorate_timeout_seconds": 12,
+    "sticker_ai_decorate_min_confidence": 0.45,
+    "sticker_ai_decorate_fallback": "deterministic",
+    "sticker_ai_collect_enabled": False,
+    "sticker_ai_collect_probability": 0.25,
+    "sticker_ai_collect_provider_id": "",
+    "sticker_ai_collect_min_confidence": 0.6,
+    "sticker_ai_collect_timeout_seconds": 15,
+    "sticker_ai_collect_default_category": "",
+    "sticker_ai_collect_fallback": "skip",
 }
 
 # Legacy-compatible settings kept in the schema so existing configuration can
 # be copied without an unknown-key failure.  This plugin never calls a
 # model for these flags; local deterministic behavior is the fallback.
 DEFAULTS.update({
-    'sticker_ai_select_enabled': True,
-    'sticker_ai_marker_enabled': True,
-    'sticker_ai_select_probability': 0.6,
-    'sticker_ai_auto_collect_probability': 0.2,
-    'sticker_ai_auto_collect_max_per_hour': 5,
-    'sticker_ai_auto_collect_default_category': '未分类',
     'sticker_ai_auto_collect_require_image': True,
-    'sticker_ai_auto_collect_provider_id': '',
-    'sticker_ai_auto_collect_min_confidence': 0.6,
     'sticker_ai_auto_collect_saved_reply': '这个表情我收下了（{category}）。',
-    'sticker_random_fallback_enabled': False,
-    'user_sticker_reaction_enabled': False,
-    'user_sticker_reaction_probability': 0.85,
-    'user_sticker_reaction_replies': [
-        '收到这张表情啦～',
-        '这个表情我收下啦！',
-        '好可爱，回你一张～',
-        '表情包已收到，嘿嘿～',
-    ],
-    'user_sticker_reaction_attach_sticker': True,
     # Canonical flat groups from the migration contract.  provider_id/store_id
     # are registry references, never filesystem paths.
     'collect_enabled': True,
@@ -1373,6 +1371,22 @@ class StickerPlugin(Star):
             ]
         return result
 
+    def _record_sent(self, event: AstrMessageEvent, chosen: dict[str, Any]) -> None:
+        session = self._session_key(event)
+        now = self._clock()
+        self._last_sent[session] = {
+            "at": now,
+            "filename": str(chosen.get("filename", "")),
+            "sha256": str(chosen.get("sha256", "")),
+        }
+        if len(self._last_sent) > 256:
+            ordered = sorted(
+                self._last_sent.items(),
+                key=lambda pair: float(pair[1].get("at", 0) or 0),
+            )
+            for key, _ in ordered[: len(self._last_sent) - 256]:
+                self._last_sent.pop(key, None)
+
     def _choose_entry(
         self, event: AstrMessageEvent, entries: list[dict[str, Any]]
     ) -> tuple[dict[str, Any] | None, str]:
@@ -1398,18 +1412,7 @@ class StickerPlugin(Star):
         if not candidates:
             return None, "no_match"
         chosen = self._rng.choice(candidates)
-        self._last_sent[session] = {
-            "at": now,
-            "filename": str(chosen.get("filename", "")),
-            "sha256": str(chosen.get("sha256", "")),
-        }
-        if len(self._last_sent) > 256:
-            ordered = sorted(
-                self._last_sent.items(),
-                key=lambda pair: float(pair[1].get("at", 0) or 0),
-            )
-            for key, _ in ordered[: len(self._last_sent) - 256]:
-                self._last_sent.pop(key, None)
+        self._record_sent(event, chosen)
         return chosen, "selected"
 
     def _remember_collected(
@@ -1818,9 +1821,12 @@ class StickerPlugin(Star):
                 "auto_collect_user_sticker_enabled", False
             )
             ai_auto = self._cfg_bool("sticker_ai_auto_collect_enabled", False)
-            if ai_auto or (user_auto and explicit):
+            ai_collect = self._cfg_bool("sticker_ai_collect_enabled", False)
+            if ai_collect or ai_auto or (user_auto and explicit):
                 handled = await self._maybe_auto_collect(
-                    event, user_mode=(user_auto and explicit) or not ai_auto
+                    event,
+                    user_mode=(user_auto and explicit) or not (ai_auto or ai_collect),
+                    ai_collect=ai_collect,
                 )
                 if handled is not None:
                     self._suppress_model(event)
@@ -1892,8 +1898,79 @@ class StickerPlugin(Star):
         except Exception:
             logger.warning("qqbot_stickers natural-language handling failed", exc_info=True)
 
+    async def _ai_judge_collect(
+        self, event: AstrMessageEvent, payload: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Ask a provider whether an image is worth keeping as a sticker."""
+
+        if not self._cfg_bool("sticker_ai_collect_enabled", False):
+            return None
+        raw = payload.get("data")
+        if not isinstance(raw, (bytes, bytearray)):
+            return None
+        provider_id = self._cfg_str("sticker_ai_collect_provider_id", "").strip()
+        if not provider_id:
+            try:
+                provider = self.context.get_using_provider(umo=self._session_key(event))
+                if provider is not None:
+                    provider_id = str(provider.meta().id)
+            except Exception:
+                provider_id = ""
+        generate = getattr(self.context, "llm_generate", None)
+        if not provider_id or not callable(generate):
+            return None
+        prompt = (
+            "判断这张聊天图片是否适合作为可复用表情收藏。只输出 JSON："
+            '{"collect":true或false,"confidence":0.0到1.0,'
+            '"category":"可选短分类","tags":["可选短标签"],'
+            '"meaning":"可选不超过200字","tone":"可选短语气"}。'
+            "截图、二维码、文件界面、低清无关图片通常不要收藏；"
+            "有趣、有情绪、可复用的表情/梗图可以收藏。不要输出路径、用户信息或凭据。"
+        )
+        try:
+            response = await asyncio.wait_for(
+                generate(
+                    chat_provider_id=provider_id,
+                    prompt=prompt,
+                    image_urls=["base64://" + base64.b64encode(bytes(raw)).decode("ascii")],
+                    system_prompt=(
+                        "只输出表情收藏判断 JSON。不得调用工具、读取文件、执行命令，"
+                        "不得输出路径、用户 ID 或凭据。"
+                    ),
+                ),
+                timeout=self._cfg_int("sticker_ai_collect_timeout_seconds", 15, 1),
+            )
+            if isinstance(response, str):
+                text = response
+            elif isinstance(response, dict):
+                text = str(response.get("completion_text", "") or "")
+            else:
+                text = str(getattr(response, "completion_text", "") or "")
+            text = text.strip()
+            if text.startswith("```"):
+                import re as _re
+                text = _re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=_re.IGNORECASE).strip()
+            judgement = json.loads(text)
+            if not isinstance(judgement, dict) or judgement.get("collect") is not True:
+                return {"collect": False}
+            confidence = float(judgement.get("confidence", 0.0))
+            if confidence < self._cfg_float("sticker_ai_collect_min_confidence", 0.6):
+                return {"collect": False}
+            metadata = self._normalize_semantic_metadata(judgement)
+            return {
+                "collect": True,
+                "confidence": confidence,
+                "category": str(judgement.get("category", "") or "").strip(),
+                "tags": list((metadata or {}).get("tags") or []),
+                "meaning": str((metadata or {}).get("meaning") or ""),
+                "tone": str((metadata or {}).get("tone") or ""),
+            }
+        except Exception:
+            logger.warning("qqbot_stickers AI collect judgement skipped", exc_info=True)
+            return None
+
     async def _maybe_auto_collect(
-        self, event: AstrMessageEvent, *, user_mode: bool = True
+        self, event: AstrMessageEvent, *, user_mode: bool = True, ai_collect: bool = False
     ):
         session = self._session_key(event)
         now = self._clock()
@@ -1916,37 +1993,56 @@ class StickerPlugin(Star):
             or max(width, height) / max(1, min(width, height)) > 2.5
         ):
             return None
-        user_auto_mode = bool(user_mode)
-        if user_auto_mode:
-            category_key = "auto_collect_sticker_default_category"
+        ai_metadata: dict[str, Any] = {}
+        if ai_collect:
+            probability = self._cfg_float("sticker_ai_collect_probability", 0.25)
+            if probability < 1.0 and self._rng.random() >= probability:
+                return None
+            judgement = await self._ai_judge_collect(event, payload)
+            if judgement is None:
+                if self._cfg_str("sticker_ai_collect_fallback", "skip") != "heuristic":
+                    return None
+            elif not judgement.get("collect"):
+                return None
+            else:
+                ai_metadata = dict(judgement)
+        user_auto_mode = bool(user_mode and not ai_collect)
+        if ai_collect:
+            category_name = str(ai_metadata.get("category", "") or "").strip()
+            if category_name:
+                category = self._normalize_category(category_name) or DEFAULT_COLLECTED_CATEGORY
+            else:
+                category = self._normalize_category(
+                    self._cfg_str("sticker_ai_collect_default_category", "")
+                ) or self._normalize_category(
+                    self._cfg_str("auto_collect_sticker_default_category", DEFAULT_COLLECTED_CATEGORY)
+                ) or DEFAULT_COLLECTED_CATEGORY
+        elif user_auto_mode:
+            category = self._normalize_category(
+                self._cfg_str("auto_collect_sticker_default_category", DEFAULT_COLLECTED_CATEGORY)
+            ) or DEFAULT_COLLECTED_CATEGORY
         else:
-            category_key = (
-                "sticker_ai_auto_collect_default_category"
-                if self._cfg_bool("sticker_ai_auto_collect_enabled", False)
-                else "auto_collect_sticker_default_category"
-            )
-        category = self._normalize_category(
-            self._cfg_str(category_key, DEFAULT_COLLECTED_CATEGORY)
-        ) or DEFAULT_COLLECTED_CATEGORY
+            category = self._normalize_category(
+                self._cfg_str("auto_collect_sticker_default_category", DEFAULT_COLLECTED_CATEGORY)
+            ) or DEFAULT_COLLECTED_CATEGORY
         self._last_auto_collect[session] = now
-        save_status, entry = await self._save_payload(event, payload, category)
+        save_status, entry = await self._save_payload(
+            event,
+            payload,
+            category,
+            tags=ai_metadata.get("tags") if ai_collect else None,
+            meaning=str(ai_metadata.get("meaning", "") or "") if ai_collect else "",
+            tone=str(ai_metadata.get("tone", "") or "") if ai_collect else "",
+        )
         if save_status != "saved" or entry is None:
             return None
         self._remember_collected(event, entry)
-        if user_auto_mode:
-            if not self._cfg_bool("auto_collect_sticker_reply_enabled", True):
-                return None
-            template = self._cfg_str(
-                "auto_collect_sticker_saved_reply",
-                "收下了，已收藏到「{category}」。",
-            )
-        else:
-            template = self._cfg_str(
-                "sticker_ai_auto_collect_saved_reply",
-                "这个表情我收下了（{category}）。",
-            )
-            if not template.strip():
-                return None
+        if not self._cfg_bool("auto_collect_sticker_reply_enabled", True):
+            return None
+        template = self._cfg_str(
+            "auto_collect_sticker_saved_reply",
+            "收下了，已收藏到「{category}」。",
+        )
         return self._plain_result(
             event,
             self._format(template, category=entry.get("category", category)),
@@ -2105,6 +2201,85 @@ class StickerPlugin(Star):
                 "qqbot_stickers optional semantic classification unavailable",
                 exc_info=True,
             )
+            return None
+
+    async def _ai_choose_sticker(
+        self,
+        event: AstrMessageEvent,
+        reply_text: str,
+        entries: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """Choose one local sticker from semantic metadata, never a path."""
+
+        if not self._cfg_bool("sticker_ai_decorate_enabled", False):
+            return None
+        text = str(reply_text or "").strip()
+        if len(text) < self._cfg_int("sticker_ai_decorate_min_reply_chars", 4, 0):
+            return None
+        candidates = list(entries)[: self._cfg_int("sticker_ai_decorate_max_candidates", 20, 1)]
+        if not candidates:
+            return None
+        provider_id = self._cfg_str("sticker_ai_decorate_provider_id", "").strip()
+        if not provider_id:
+            try:
+                provider = self.context.get_using_provider(umo=self._session_key(event))
+                if provider is not None:
+                    provider_id = str(provider.meta().id)
+            except Exception:
+                provider_id = ""
+        generate = getattr(self.context, "llm_generate", None)
+        if not provider_id or not callable(generate):
+            return None
+        catalog = []
+        for index, entry in enumerate(candidates, start=1):
+            tags = entry.get("tags")
+            tag_text = ",".join(str(item) for item in tags) if isinstance(tags, (list, tuple)) else ""
+            catalog.append(
+                f"{index}. 分类={str(entry.get('category', ''))[:40]}"
+                f" 标签={tag_text[:160]}"
+                f" 语气={str(entry.get('tone', ''))[:40]}"
+                f" 含义={str(entry.get('meaning', ''))[:200]}"
+            )
+        prompt = (
+            "你是表情选择器，只能从给定本地表情中选择一张，不能创建路径、工具或新表情。"
+            "根据机器人回复的语义、语气和候选标签选择最合适的一张；没有合适项就返回 0。"
+            '只输出 JSON：{"index":整数,"confidence":0.0到1.0}。\\n'
+            f"机器人回复：{text[:1200]}\\n"
+            "候选表情：\\n" + "\\n".join(catalog)
+        )
+        try:
+            response = await asyncio.wait_for(
+                generate(
+                    chat_provider_id=provider_id,
+                    prompt=prompt,
+                    system_prompt=(
+                        "只输出表情选择 JSON。不得调用工具、读取文件、执行命令或输出路径、"
+                        "用户 ID、凭据。只能返回候选列表中的 index，0 表示不选。"
+                    ),
+                ),
+                timeout=self._cfg_int("sticker_ai_decorate_timeout_seconds", 12, 1),
+            )
+            if isinstance(response, str):
+                raw = response
+            elif isinstance(response, dict):
+                raw = str(response.get("completion_text", "") or "")
+            else:
+                raw = str(getattr(response, "completion_text", "") or "")
+            raw = raw.strip()
+            if raw.startswith("```"):
+                raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE).strip()
+            payload = json.loads(raw)
+            if not isinstance(payload, dict):
+                return None
+            index = int(payload.get("index", 0))
+            confidence = float(payload.get("confidence", 0.0))
+            if index < 1 or index > len(candidates):
+                return None
+            if confidence < self._cfg_float("sticker_ai_decorate_min_confidence", 0.45):
+                return None
+            return candidates[index - 1]
+        except Exception:
+            logger.warning("qqbot_stickers AI sticker selection skipped", exc_info=True)
             return None
 
     async def _find_reclass_entry(
@@ -2475,7 +2650,10 @@ class StickerPlugin(Star):
                 return
             if _as_bool(getter("qqbot_stickers_decorated", False)):
                 return
-            if "sticker_decorate_probability" in self._plugin_config:
+            ai_enabled = self._cfg_bool("sticker_ai_decorate_enabled", False)
+            if ai_enabled:
+                probability = self._cfg_float("sticker_ai_decorate_probability", 0.3)
+            elif "sticker_decorate_probability" in self._plugin_config:
                 probability = self._cfg_float("sticker_decorate_probability", 1.0)
             else:
                 probability = self._cfg_float("sticker_probability", 1.0)
@@ -2484,7 +2662,15 @@ class StickerPlugin(Star):
             entries = await self._entries()
             if not entries:
                 return
-            chosen, _reason = self._choose_entry(event, entries)
+            chosen: dict[str, Any] | None = None
+            if ai_enabled:
+                chosen = await self._ai_choose_sticker(event, plain_text, entries)
+                if chosen is not None:
+                    self._record_sent(event, chosen)
+                elif self._cfg_str("sticker_ai_decorate_fallback", "deterministic") == "deterministic":
+                    chosen, _reason = self._choose_entry(event, entries)
+            else:
+                chosen, _reason = self._choose_entry(event, entries)
             if chosen is None:
                 return
             try:

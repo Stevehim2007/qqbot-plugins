@@ -34,6 +34,144 @@
       "step": 0.05
     }
   },
+  "sticker_ai_decorate_enabled": {
+    "description": "启用 AI 自动表情：回复后按概率让 AI 根据表情标签/含义/语气选择一张本地表情。默认关闭；不额外创建聊天控制器。",
+    "type": "bool",
+    "default": false,
+    "ui_group": "AI 自动表情"
+  },
+  "sticker_ai_decorate_probability": {
+    "description": "AI 自动表情触发概率（0-1）。",
+    "type": "float",
+    "default": 0.3,
+    "slider": {
+      "min": 0.0,
+      "max": 1.0,
+      "step": 0.05
+    },
+    "ui_group": "AI 自动表情"
+  },
+  "sticker_ai_decorate_provider_id": {
+    "description": "AI 选择使用的 Provider ID；留空使用当前会话 AstrBot Provider。",
+    "type": "text",
+    "default": "",
+    "ui_group": "AI 自动表情"
+  },
+  "sticker_ai_decorate_min_reply_chars": {
+    "description": "少于该字符数的回复不触发 AI 选表情。",
+    "type": "int",
+    "default": 4,
+    "slider": {
+      "min": 0,
+      "max": 200,
+      "step": 1
+    },
+    "ui_group": "AI 自动表情"
+  },
+  "sticker_ai_decorate_max_candidates": {
+    "description": "每次最多提供给 AI 的本地表情候选数。",
+    "type": "int",
+    "default": 20,
+    "slider": {
+      "min": 1,
+      "max": 100,
+      "step": 1
+    },
+    "ui_group": "AI 自动表情"
+  },
+  "sticker_ai_decorate_timeout_seconds": {
+    "description": "AI 选表情超时秒数；超时按 fallback 处理。",
+    "type": "int",
+    "default": 12,
+    "slider": {
+      "min": 1,
+      "max": 60,
+      "step": 1
+    },
+    "ui_group": "AI 自动表情"
+  },
+  "sticker_ai_decorate_min_confidence": {
+    "description": "AI 返回选择的最低置信度（0-1）。",
+    "type": "float",
+    "default": 0.45,
+    "slider": {
+      "min": 0.0,
+      "max": 1.0,
+      "step": 0.05
+    },
+    "ui_group": "AI 自动表情"
+  },
+  "sticker_ai_decorate_fallback": {
+    "description": "AI 失败/超时/低置信度时的处理。",
+    "type": "string",
+    "default": "deterministic",
+    "options": [
+      "deterministic",
+      "none"
+    ],
+    "ui_group": "AI 自动表情"
+  },
+  "sticker_ai_collect_enabled": {
+    "description": "启用 AI 自动收藏：图片消息按概率交给 AI 判断是否值得作为表情收藏。默认关闭，不处理带文字图片。",
+    "type": "bool",
+    "default": false,
+    "ui_group": "AI 自动收藏"
+  },
+  "sticker_ai_collect_probability": {
+    "description": "AI 自动收藏抽样概率（0-1）。",
+    "type": "float",
+    "default": 0.25,
+    "slider": {
+      "min": 0.0,
+      "max": 1.0,
+      "step": 0.05
+    },
+    "ui_group": "AI 自动收藏"
+  },
+  "sticker_ai_collect_provider_id": {
+    "description": "AI 判断使用的 Provider ID；留空使用当前会话 Provider。",
+    "type": "text",
+    "default": "",
+    "ui_group": "AI 自动收藏"
+  },
+  "sticker_ai_collect_min_confidence": {
+    "description": "AI 判断值得收藏的最低置信度。",
+    "type": "float",
+    "default": 0.6,
+    "slider": {
+      "min": 0.0,
+      "max": 1.0,
+      "step": 0.05
+    },
+    "ui_group": "AI 自动收藏"
+  },
+  "sticker_ai_collect_timeout_seconds": {
+    "description": "AI 收藏判断超时秒数。",
+    "type": "int",
+    "default": 15,
+    "slider": {
+      "min": 1,
+      "max": 60,
+      "step": 1
+    },
+    "ui_group": "AI 自动收藏"
+  },
+  "sticker_ai_collect_default_category": {
+    "description": "AI 收藏未返回分类时使用的分类；留空使用普通自动收藏分类。",
+    "type": "text",
+    "default": "",
+    "ui_group": "AI 自动收藏"
+  },
+  "sticker_ai_collect_fallback": {
+    "description": "AI 失败/超时/低置信度时的回退。",
+    "type": "string",
+    "default": "skip",
+    "options": [
+      "skip",
+      "heuristic"
+    ],
+    "ui_group": "AI 自动收藏"
+  },
   "sticker_cooldown_seconds": {
     "description": "同一会话发送表情的冷却秒数。",
     "type": "int",
@@ -290,16 +428,6 @@
       "step": 1
     }
   },
-  "collected_sticker_use_probability": {
-    "description": "兼容旧配置的收藏表情使用概率。",
-    "type": "float",
-    "default": 0.5,
-    "slider": {
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.05
-    }
-  },
   "pending_sticker_ttl_seconds": {
     "description": "内存中最近图片缓存有效秒数。",
     "type": "int",
@@ -478,113 +606,15 @@
     "type": "text",
     "default": "给你一个表情："
   },
-  "sticker_ai_select_enabled": {
-    "description": "兼容旧配置的 AI 选择开关；本插件使用确定性选择。",
-    "type": "bool",
-    "default": true
-  },
-  "sticker_ai_marker_enabled": {
-    "description": "兼容旧配置；本插件不解析模型 marker。",
-    "type": "bool",
-    "default": true
-  },
-  "sticker_ai_select_probability": {
-    "description": "兼容旧配置的 AI 选择概率。",
-    "type": "float",
-    "default": 0.6,
-    "slider": {
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.05
-    }
-  },
-  "sticker_ai_auto_collect_probability": {
-    "description": "兼容旧配置的自动收藏概率。",
-    "type": "float",
-    "default": 0.2,
-    "slider": {
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.05
-    }
-  },
-  "sticker_ai_auto_collect_max_per_hour": {
-    "description": "兼容旧配置的每小时自动收藏上限。",
-    "type": "int",
-    "default": 5,
-    "slider": {
-      "min": 0,
-      "max": 1000,
-      "step": 1
-    }
-  },
-  "sticker_ai_auto_collect_default_category": {
-    "description": "兼容旧配置的自动收藏默认分类。",
-    "type": "string",
-    "default": "未分类"
-  },
   "sticker_ai_auto_collect_require_image": {
     "description": "自动收藏必须包含图片。",
     "type": "bool",
     "default": true
   },
-  "sticker_ai_auto_collect_provider_id": {
-    "description": "兼容旧配置的可选视觉 Provider；本插件不会自动调用。",
-    "type": "string",
-    "default": ""
-  },
-  "sticker_ai_auto_collect_min_confidence": {
-    "description": "兼容旧配置的 AI 置信度阈值。",
-    "type": "float",
-    "default": 0.6,
-    "slider": {
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.05
-    }
-  },
   "sticker_ai_auto_collect_saved_reply": {
     "description": "自动收藏成功提示；留空可关闭提示。",
     "type": "text",
     "default": "这个表情我收下了（{category}）。"
-  },
-  "sticker_random_fallback_enabled": {
-    "description": "兼容旧配置；本插件不随机追加无关表情。",
-    "type": "bool",
-    "default": false
-  },
-  "user_sticker_reaction_enabled": {
-    "description": "兼容旧配置：用户发表情时的短句反应开关；本插件不主动产生聊天主回复。",
-    "type": "bool",
-    "default": false
-  },
-  "user_sticker_reaction_probability": {
-    "description": "兼容旧配置的用户表情反应概率。",
-    "type": "float",
-    "default": 0.85,
-    "slider": {
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.05
-    }
-  },
-  "user_sticker_reaction_replies": {
-    "description": "兼容旧配置的用户表情短句列表。",
-    "type": "list",
-    "default": [
-      "收到这张表情啦～",
-      "这个表情我收下啦！",
-      "好可爱，回你一张～",
-      "表情包已收到，嘿嘿～"
-    ],
-    "items": {
-      "type": "string"
-    }
-  },
-  "user_sticker_reaction_attach_sticker": {
-    "description": "兼容旧配置：用户表情反应是否可附加本地表情。",
-    "type": "bool",
-    "default": true
   },
   "collect_enabled": {
     "description": "启用表情收藏总开关（协议字段）。",

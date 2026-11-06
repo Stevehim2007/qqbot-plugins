@@ -138,3 +138,24 @@ owner 始终是 `qqbot_core_reply`。
 cd plugins/qqbot_stickers
 python3 -m unittest discover -s tests -q
 ```
+
+
+## AI 自动表情（可选）
+
+`sticker_ai_decorate_enabled` 默认关闭。开启后，core reply 生成本轮回复后按
+`sticker_ai_decorate_probability` 决定是否让 AI 从本地表情中选一张；AI 只看到
+标签、含义、语气等安全元数据，不接收文件路径，也不能执行工具。选择失败、超时或
+置信度不足时按 `sticker_ai_decorate_fallback` 回退到本地确定性选择或纯文本。
+
+相关配置：
+
+```text
+sticker_ai_decorate_enabled
+sticker_ai_decorate_probability
+sticker_ai_decorate_provider_id
+sticker_ai_decorate_min_reply_chars
+sticker_ai_decorate_max_candidates
+sticker_ai_decorate_timeout_seconds
+sticker_ai_decorate_min_confidence
+sticker_ai_decorate_fallback
+```

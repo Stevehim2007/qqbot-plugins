@@ -551,7 +551,7 @@ class StickerPluginTests(unittest.TestCase):
     def test_ai_auto_collect_uses_local_fallback_and_category(self):
         plugin = self.make_plugin(
             sticker_ai_auto_collect_enabled=True,
-            sticker_ai_auto_collect_default_category="AI本地",
+            auto_collect_sticker_default_category="AI本地",
         )
         event = fakes.FakeEvent(
             "",
