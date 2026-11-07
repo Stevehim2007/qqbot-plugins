@@ -83,6 +83,35 @@ async def tool_list_categories(self, event): ...
   `tool_timeout_seconds` 超时保护。
 - 无 `eval`、`exec`、`subprocess`、shell 或动态 import；没有 LLM 调用。
 
+## 插件工具声明与通用调用
+
+工具目录不再只能写死在 safe_tools。插件根目录可以放 `tools.json`：
+
+```json
+{
+  "schema_version": 1,
+  "plugin_id": "qqbot_example",
+  "tools": [
+    {
+      "name": "example_lookup",
+      "method": "tool_lookup",
+      "description": "查询示例数据。",
+      "parameters": {"query": {"type": "string", "required": true}},
+      "allow_key": "allow_example_lookup",
+      "cooldown_key": "example_lookup_cooldown_seconds",
+      "cooldown_default": 5,
+      "operation": "example.lookup",
+      "call_style": "kwargs",
+      "marker_example": "[[tool:example_lookup query=\"x\"]]"
+    }
+  ]
+}
+```
+
+safe_tools 在启动时扫描已注册插件目录，合并 `tools.json` 与内置 7 个工具；无文件时回退内置表。新增插件不需要改 core_reply，也不需要把插件名写进 core_reply。`operation` 用于 ABI 模式；没有对应 operation 的实验工具可以走 marker/原生调用的直接路径。
+
+safe_tools 同时注册一个 AstrBot 原生 function tool `qqbot_safe_tool(tool_name, args_json)`。模型在 function-calling 模式下可直接提交工具名和 JSON 参数，由同一套权限、冷却、参数校验与调度逻辑执行；`marker_enabled` 关闭时原生调用仍可用。
+
 ## 配置
 
 配置由 AstrBot 以 `config` 注入到

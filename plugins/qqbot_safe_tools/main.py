@@ -2330,7 +2330,10 @@ class SafeToolsPlugin(Star):
             "允许开关："
             + "；".join(
                 f"{name}={'开' if self._cfg_bool(key, True) else '关'}"
-                for name, key in _ALLOW_KEYS.items()
+                for name, key in (
+                    (descriptor.name, descriptor.allow_key)
+                    for descriptor in self._tool_registry().all()
+                )
             ),
             "依赖插件："
             + "；".join(

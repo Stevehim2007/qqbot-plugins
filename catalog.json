@@ -44,7 +44,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "8d5daa85998819fbf863274de4586fa690ff025dddb8bd05c6a1f5467bf2d458",
+      "sha256": "b4876b03990b23cd690106ca52afa0da4b0cf5681bf3696ed4f938e5a78cdc53",
       "size": 100618,
       "root": "qqbot_core_reply",
       "download": "qqbot_core_reply-4.0.1.zip"
@@ -110,8 +110,8 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "0a05c0abc310cc4f9c772f0393388b03dc863109bca7ff7b0532413eed34d5df",
-      "size": 102514,
+      "sha256": "5b13a19d715e0f0a287c2431785f5668821d7b9f7fadb458344cde224001a65c",
+      "size": 103173,
       "root": "qqbot_safe_tools",
       "download": "qqbot_safe_tools-3.1.0.zip"
     },
@@ -179,7 +179,7 @@
           "marker_example": "[[tool:fetch_webpage url=\"https://example.com/article\" max_chars=3000]]"
         }
       ],
-      "sha256": "fb2719716efe1d05e8062922b9f448690c04120b6e1ec5aa874c316b3690aeca",
+      "sha256": "2c1fa5ca82aecdc1848f44106bbf0949a1b1fdbe5dc46ca1ac1d099e8a1ac8f1",
       "size": 40447,
       "root": "qqbot_web_reader",
       "download": "qqbot_web_reader-2.0.1.zip"
@@ -259,7 +259,7 @@
           "marker_example": "[[tool:search_images keyword=\"关键词\" count=1]]"
         }
       ],
-      "sha256": "f74934194943c25d125514f04ffc82d2cc70fa79acdcbe07d1ec0166f156874e",
+      "sha256": "9f0396397fa37b7727de0ac43f9d3ff4775a4ee48d898b896cb157e5242ba007",
       "size": 58195,
       "root": "qqbot_image_search",
       "download": "qqbot_image_search-2.0.1.zip"
@@ -398,7 +398,7 @@
           "marker_example": "[[tool:submit_food_review restaurant=\"店名\" location=\"位置\" taste=\"4.5\" value=\"3.5\" comment=\"评价\" tags=\"火锅,夜宵\"]]"
         }
       ],
-      "sha256": "f7c622c426d13cfa7248878f3824f4279db5e6aac7431bb2772c53456497b7fd",
+      "sha256": "6af18c9c2cd4e1a8b782b1f7210c79ef329e66bf2725097dcd6ec89a2c239139",
       "size": 104062,
       "root": "qqbot_food",
       "download": "qqbot_food-3.0.2.zip"
@@ -512,7 +512,7 @@
           "marker_example": "[[tool:list_sticker_categories()]]"
         }
       ],
-      "sha256": "f5e39db4dbf55bb8c9244af8d5aa798eb46b12fdee25101324c04c3ca69a67a6",
+      "sha256": "ea94b9f076bb8c423a89859733faee0cb3469bbe24ccd5301340018a28bbfa93",
       "size": 103104,
       "root": "qqbot_stickers",
       "download": "qqbot_stickers-3.0.2.zip"
@@ -567,7 +567,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "8dfd7a21078038df4f4dc5b551482a12b99c4e89dc8e51c0b53c7d82b4c43997",
+      "sha256": "525d3e23b706e0ff0513ab25682ac8fe733b5dc6109b55c47603471dc8f7bd02",
       "size": 74892,
       "root": "qqbot_memory_commands",
       "download": "qqbot_memory_commands-4.0.1.zip"
