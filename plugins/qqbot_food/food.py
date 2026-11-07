@@ -1495,6 +1495,56 @@ def resolve_food_search_location(
                 for item, name in exact[:5]
             ]
         }
+
+    # A user normally says the city without its administrative suffix:
+    # "长春" should resolve to the existing location "长春市".  Keep the
+    # deliberate one-character behaviour below (it is ambiguous by design),
+    # and only add suffix-tolerant matching for real place names.
+    if len(needle) >= 2:
+        fuzzy: list[tuple[int, int, str, dict[str, Any], str]] = []
+        for item in valid:
+            name = str(item.get("name", "") or "").strip()
+            folded = name.casefold()
+            path_parts = _food_location_path_parts(item)
+            depth = len(path_parts)
+            name_match = folded.startswith(needle) and any(
+                folded[len(needle) :] == suffix
+                for suffix in FOOD_LOCATION_SUFFIXES
+            )
+            path_match = any(
+                part.startswith(needle) and any(
+                    part[len(needle) :] == suffix
+                    for suffix in FOOD_LOCATION_SUFFIXES
+                )
+                for part in path_parts
+            )
+            if name_match or path_match:
+                fuzzy.append(
+                    (
+                        depth,
+                        len(folded),
+                        str(item.get("path", "") or folded).strip(),
+                        item,
+                        name,
+                    )
+                )
+        if fuzzy:
+            fuzzy.sort(key=lambda entry: (entry[0], entry[1], entry[2]))
+            best = fuzzy[0]
+            best_key = (best[0], best[1])
+            tied = [entry for entry in fuzzy if (entry[0], entry[1]) == best_key]
+            unique_ids = {entry[3].get("id") for entry in tied}
+            if len(unique_ids) == 1:
+                return {
+                    "id": best[3].get("id"),
+                    "name": best[4] or best[2],
+                }
+            return {
+                "ambiguous": [
+                    entry[2] or entry[4] for entry in tied[:5] if entry[2] or entry[4]
+                ]
+            }
+
     if len(valid) == 1:
         return {
             "id": valid[0].get("id"),

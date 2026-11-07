@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -300,6 +301,25 @@ class CoreReplyPlugin(Star):
     # ------------------------------------------------------------------
     # Main event handler (single reply path)
     # ------------------------------------------------------------------
+    @filter.platform_adapter_type(_PLATFORM_TYPES, priority=99)
+    @filter.event_message_type(filter.EventMessageType.ALL, priority=99)
+    async def guard_english_help_phrase(self, event: AstrMessageEvent):
+        """Do not let an English sentence such as ``help me ...`` become /help.
+
+        AstrBot treats an @ mention as a command wake-up, so its built-in
+        ``help`` command matches the first word even without a slash.  This
+        guard runs before the built-in command and only clears the wake flag
+        for the conversational ``help <words>`` form; real ``/help`` commands
+        are left untouched.
+        """
+        if not self.config.bool("enabled", False):
+            return
+        text = str(getattr(event, "message_str", "") or "").strip()
+        if text.startswith(("/", "／")):
+            return
+        if re.match(r"(?i)^help\s+\S", text):
+            event.is_at_or_wake_command = False
+
     @filter.platform_adapter_type(_PLATFORM_TYPES, priority=100)
     @filter.event_message_type(filter.EventMessageType.ALL, priority=100)
     async def on_message(self, event: AstrMessageEvent):
@@ -324,6 +344,11 @@ class CoreReplyPlugin(Star):
     @filter.on_decorating_result()
     async def decorate_memory_result(self, event: AstrMessageEvent) -> None:
         await self.pipeline.handle_decorating_result(event)
+
+    @filter.after_message_sent()
+    async def release_memory_turn_after_send(self, event: AstrMessageEvent) -> None:
+        """Release the memory-mode turn even if a higher-priority decorator stops propagation."""
+        self.pipeline.release_memory_turn_after_send(event)
 
     # ------------------------------------------------------------------
     # Canonical commands

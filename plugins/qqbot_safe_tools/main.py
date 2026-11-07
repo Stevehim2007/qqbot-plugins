@@ -12,6 +12,7 @@ import asyncio
 import hashlib
 import inspect
 import json
+import logging
 import os
 import time
 from collections.abc import Mapping
@@ -58,6 +59,7 @@ except ImportError:
     StarTools = None  # type: ignore[assignment]
 
 _PROCESSED_EXTRA = "qqbot_safe_tools_processed"
+logger = logging.getLogger(__name__)
 _CANDIDATE_EXTRA = "qqbot_core_reply_candidate"
 _ALLOW_STICKER_EXTRA = "qqbot_core_reply_allow_sticker"
 
@@ -530,29 +532,51 @@ class SafeToolsPlugin(Star):
     def _abi_mode(self, strict_abi: bool | None = None) -> bool:
         if strict_abi is not None:
             return bool(strict_abi)
+        # The bridge registers itself as ``qqbot_safe_tools`` so that native
+        # callers can discover it.  That self-registration must not switch
+        # marker execution to ABI dispatch: marker providers are ordinary
+        # plugin stars and are not registered in this process registry.
+        provider_ids = self.registry.provider_ids()
+        external_provider = any(
+            provider_id != "qqbot_safe_tools" for provider_id in provider_ids
+        )
         return bool(
-            self.registry.has_providers()
+            external_provider
             and self._cfg_int("registry_abi_version", 1, minimum=1, maximum=1)
             == contracts.ABI_VERSION
         )
 
     def _marker_tool_ready(self, marker_tool: str) -> bool:
-        operation = self._operation_for(marker_tool)
-        if not operation:
-            return False
-        spec = contracts.PROVIDER_OPERATION_SPECS.get(operation)
-        if spec is None:
-            return False
-        descriptor = self.registry.get_registered_provider(spec.provider_id)
-        if descriptor is None or not descriptor.ready:
-            return False
-        return operation in descriptor.methods
+        """Marker tools dispatch directly to their provider plugin.
+
+        The service registry only owns the safe-tools bridge provider, so it
+        cannot be used to decide whether a marker provider (food, stickers,
+        web, image) is loaded.  Resolve the actual provider method instead.
+        """
+        return self._stable_method(marker_tool) is not None
 
     def _advertised_tool_names(self) -> list[str]:
         configured = self._enabled_tool_names()
         if not self.registry.has_providers():
             return configured
-        return [name for name in configured if self._marker_tool_ready(name)]
+        advertised = [name for name in configured if self._marker_tool_ready(name)]
+        if len(advertised) != len(configured):
+            for name in configured:
+                if name in advertised:
+                    continue
+                descriptor = self._tool_descriptor(name)
+                plugin_id = descriptor.plugin_id if descriptor is not None else "?"
+                method_name = descriptor.method if descriptor is not None else "?"
+                star = self._registered_star(plugin_id)
+                logger.debug(
+                    "safe_tools tool not ready: name=%s plugin=%s method=%s star=%s callable=%s",
+                    name,
+                    plugin_id,
+                    method_name,
+                    bool(star),
+                    callable(getattr(star, method_name, None)) if star is not None else False,
+                )
+        return advertised
 
     def _safe_identity(self, raw: Any, prefix: str, *, length: int = 64) -> str:
         text = str(raw or "").strip()
@@ -690,8 +714,17 @@ class SafeToolsPlugin(Star):
             requested = {str(name or "") for name in enabled_tools}
             available = [name for name in available if name in requested]
         try:
-            return safe_tools.tool_instruction(available, tool_specs=self._tool_specs())
+            text = safe_tools.tool_instruction(available, tool_specs=self._tool_specs())
+            logger.debug(
+                "safe_tools catalog: configured=%d advertised=%d chars=%d tools=%s",
+                len(self._enabled_tool_names()),
+                len(available),
+                len(text or ""),
+                ",".join(available),
+            )
+            return text
         except Exception:
+            logger.exception("safe_tools catalog failed")
             return ""
 
     # ------------------------------------------------------------------
@@ -2201,7 +2234,20 @@ class SafeToolsPlugin(Star):
             self, "_self_provider_registered", False
         )
         await self._register_self_provider()
+        try:
+            self.tool_instruction()
+            asyncio.create_task(self._delayed_catalog_check())
+        except Exception:
+            logger.exception("safe_tools startup catalog self-check failed")
         return await self.start_control_bridge()
+
+    async def _delayed_catalog_check(self) -> None:
+        """Log the catalogue after all sibling plugins have finished loading."""
+        await asyncio.sleep(3)
+        try:
+            self.tool_instruction()
+        except Exception:
+            logger.exception("safe_tools delayed catalog self-check failed")
 
     async def terminate(self) -> None:
         """Stop owned bridge/ledger and unregister this plugin's capability."""

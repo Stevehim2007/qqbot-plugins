@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import inspect
+import logging
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -36,6 +37,7 @@ MEMORY_MODE_EXTRA = "qqbot_core_reply_memory_mode"
 OUTPUT_PROCESSED_EXTRA = "qqbot_core_reply_output_processed"
 OUTPUT_ERROR_EXTRA = "qqbot_core_reply_output_error"
 MEMORY_TURN_GRACE_SECONDS = 15
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -487,6 +489,7 @@ class ReplyPipeline:
             self.block_default_llm(event)
             return None
         self.mark_candidate(event, original_text, ambient=(mode == "ambient"))
+        logger.debug("qqbot_core_reply memory turn: created=%s mode=%s", created, mode)
         if created:
             timeout = self.config.effective_int(
                 "llm.timeout_seconds",
@@ -846,10 +849,13 @@ class ReplyPipeline:
     async def handle_memory_context(self, event: Any, req: Any) -> None:
         if self.persona.memory_mode() != "astrbot":
             return
+        candidate = False
         try:
-            if event.get_extra(CANDIDATE_EXTRA) is not True:
-                return
+            candidate = event.get_extra(CANDIDATE_EXTRA) is True
         except Exception:
+            candidate = False
+        if not candidate:
+            logger.debug("qqbot_core_reply llm hook skipped: candidate=false")
             return
         try:
             self.persona.inject_memory_context(event, req)
@@ -859,8 +865,38 @@ class ReplyPipeline:
             instruction = await self.gateway.safe_tools_instruction()
             injected = self.persona.inject_safe_tools_context(req, instruction)
             event.set_extra("qqbot_core_reply_safe_tools_injected", bool(injected))
+            try:
+                prompt_len = len(str(getattr(req, "system_prompt", "") or ""))
+            except Exception:
+                prompt_len = -1
+            logger.debug(
+                "qqbot_core_reply llm hook: instruction_chars=%d injected=%s prompt_chars=%d",
+                len(instruction or ""),
+                bool(injected),
+                prompt_len,
+            )
         except Exception:
             event.set_extra("qqbot_core_reply_safe_tools_injected", False)
+            logger.exception("qqbot_core_reply llm hook failed")
+
+    def release_memory_turn_after_send(self, event: Any) -> None:
+        """Release a memory-mode turn after the response is actually sent.
+
+        The safe_tools decorator intentionally runs at a higher priority and
+        stops propagation, so ``handle_decorating_result`` may never run for
+        messages containing a tool marker.  The after-send hook is the
+        delivery confirmation that keeps the conversation from staying locked.
+        """
+        if self.persona.memory_mode() != "astrbot":
+            return
+        try:
+            if event.get_extra(MEMORY_MODE_EXTRA) is not True:
+                return
+            turn_id = str(event.get_extra(TURN_EXTRA, "") or "")
+            if turn_id:
+                self.record_delivery(turn_id, "delivered")
+        except Exception:
+            pass
 
     def record_delivery(self, turn_id: str, delivery_state: str = "delivered") -> None:
         try:

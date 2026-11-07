@@ -360,6 +360,14 @@ class SearchHelperTests(unittest.TestCase):
             {"id": 2, "name": "朝阳区", "path": "中国/吉林省/长春市/朝阳区"},
         ]
         self.assertEqual(f.resolve_food_search_location(items, "南关区")["id"], 1)
+        city_items = [
+            {"id": 10, "name": "长春市", "path": "中国/吉林省/长春市"},
+            {"id": 11, "name": "南关区", "path": "中国/吉林省/长春市/南关区"},
+            {"id": 12, "name": "朝阳区", "path": "中国/吉林省/长春市/朝阳区"},
+        ]
+        city = f.resolve_food_search_location(city_items, "长春")
+        self.assertEqual(city["id"], 10)
+        self.assertEqual(city["name"], "长春市")
         ambiguous = f.resolve_food_search_location(items, "区")
         self.assertIn("ambiguous", ambiguous)
         duplicate_exact = f.resolve_food_search_location(

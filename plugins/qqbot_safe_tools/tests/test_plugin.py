@@ -216,6 +216,26 @@ class DispatchTests(PluginTestBase):
             event, {"tag": "火锅", "limit": "3"}, "推荐"
         )
 
+    def test_food_dispatch_stays_legacy_when_bridge_provider_registered(self):
+        api = register(
+            self.plugin,
+            "qqbot_food",
+            tool_search_restaurants=Result([Plain("餐厅列表")]),
+        )
+        self.plugin.registry.register_provider(
+            "qqbot_safe_tools",
+            {"tool.catalog": lambda: None},
+            ready=True,
+            exclusive=True,
+        )
+        event = candidate_event(
+            '推荐\n[[tool:search_food_restaurants tag="火锅" limit=3]]'
+        )
+        run_decorate(self.plugin, event)
+        api.tool_search_restaurants.assert_awaited_once_with(
+            event, {"tag": "火锅", "limit": "3"}, "推荐"
+        )
+
     def test_submit_food_dispatch_exact_positional_args(self):
         api = register(
             self.plugin,

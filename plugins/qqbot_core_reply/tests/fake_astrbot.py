@@ -69,6 +69,13 @@ def install() -> None:
 
             return decorator
 
+        @staticmethod
+        def after_message_sent(*args: Any, **kwargs: Any):
+            def decorator(func):
+                return func
+
+            return decorator
+
     class AstrMessageEvent:
         pass
 

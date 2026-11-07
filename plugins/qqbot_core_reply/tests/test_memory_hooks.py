@@ -59,6 +59,22 @@ class MemoryHookTests(unittest.TestCase):
         self.assertIn("search_food_restaurants", req.system_prompt)
         self.assertTrue(event.get_extra("qqbot_core_reply_safe_tools_injected"))
 
+    def test_english_help_phrase_is_not_a_command(self):
+        plugin, _, _ = make_plugin(overrides={"enabled": True})
+        event = FakeEvent(
+            "help me find some good hot pot restaurants in Vancouver",
+            at_bot=True,
+            wake=True,
+        )
+        run(plugin.guard_english_help_phrase(event))
+        self.assertFalse(event.is_at_or_wake_command)
+
+    def test_slash_help_stays_a_command(self):
+        plugin, _, _ = make_plugin(overrides={"enabled": True})
+        event = FakeEvent("/help", wake=True)
+        run(plugin.guard_english_help_phrase(event))
+        self.assertTrue(event.is_at_or_wake_command)
+
     def test_non_candidate_has_no_injection(self):
         plugin, ctx, _ = make_plugin(overrides={"memory_mode": "astrbot"})
         event = FakeEvent("hello", group_id=GROUP)
@@ -148,6 +164,17 @@ class MemoryHookTests(unittest.TestCase):
         context, record = self._claim_memory_turn(plugin, event)
         run(plugin.pipeline._expire_memory_turn(context.turn_id, 0))
         self.assertEqual(record.status, "outcome_unknown")
+        self.assertNotIn(context.turn_id, plugin.pipeline.state.active_turns.values())
+
+    def test_after_message_sent_releases_turn(self):
+        from reply_pipeline import MEMORY_MODE_EXTRA
+
+        plugin, _, _ = make_plugin(overrides={"memory_mode": "astrbot"})
+        event = FakeEvent("hello", private=True)
+        context, record = self._claim_memory_turn(plugin, event)
+        event.set_extra(MEMORY_MODE_EXTRA, True)
+        plugin.pipeline.release_memory_turn_after_send(event)
+        self.assertEqual(record.status, "delivered")
         self.assertNotIn(context.turn_id, plugin.pipeline.state.active_turns.values())
 
     def test_hook_never_calls_llm(self):

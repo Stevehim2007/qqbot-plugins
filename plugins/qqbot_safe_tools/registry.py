@@ -226,6 +226,11 @@ class ServiceRegistry:
     # Read-only convenience alias; no provider object/method reflection occurs.
     get_provider = get_registered_provider
 
+    def provider_ids(self) -> tuple[str, ...]:
+        """Return registered provider ids without exposing provider internals."""
+        with self._lock:
+            return tuple(self._providers)
+
     def has_providers(self) -> bool:
         with self._lock:
             return bool(self._providers)

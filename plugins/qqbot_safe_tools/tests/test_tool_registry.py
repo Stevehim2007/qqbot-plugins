@@ -173,6 +173,45 @@ class PluginRegistryTests(unittest.TestCase):
             self.assertIn("demo_lookup", plugin.tool_instruction())
             self.assertIs(plugin._stable_method("demo_lookup"), star.tool_lookup)
 
+    def test_catalog_keeps_builtin_tools_when_bridge_provider_is_ready(self):
+        from _support import register
+
+        plugin = make_plugin()
+        register(plugin, "qqbot_web_reader", tool_fetch_webpage=lambda *a, **k: None)
+        register(plugin, "qqbot_image_search", tool_search_images=lambda *a, **k: None)
+        register(
+            plugin,
+            "qqbot_food",
+            tool_search_restaurants=lambda *a, **k: None,
+            tool_submit_food_review=lambda *a, **k: None,
+        )
+        register(
+            plugin,
+            "qqbot_stickers",
+            tool_send_sticker=lambda *a, **k: None,
+            tool_collect_sticker=lambda *a, **k: None,
+            tool_list_categories=lambda *a, **k: None,
+        )
+        plugin.registry.register_provider(
+            "qqbot_safe_tools",
+            {"tool.catalog": lambda: None},
+            ready=True,
+            exclusive=True,
+        )
+        self.assertTrue(plugin.registry.has_providers())
+        self.assertEqual(len(plugin._advertised_tool_names()), 7)
+        self.assertTrue(plugin.tool_instruction().strip())
+
+    def test_marker_mode_ignores_bridge_only_provider_registry(self):
+        plugin = make_plugin()
+        plugin.registry.register_provider(
+            "qqbot_safe_tools",
+            {"tool.catalog": lambda: None},
+            ready=True,
+            exclusive=True,
+        )
+        self.assertFalse(plugin._abi_mode())
+
 
 class DynamicIntentTests(unittest.TestCase):
     def test_spec_accepts_new_tool_and_rejects_unknown_args(self):
