@@ -1,7 +1,7 @@
 name: qqbot_web_reader
 display_name: 网页读取
 desc: 独立的公开 HTTPS 网页读取插件；ABI v1 web.read/web.next_page provider、opaque 分页游标与缓存，限制大小/超时/跳转/内容类型并拒绝内网/回环/保留地址。
-version: 2.0.0
+version: 2.0.1
 author: QQ Bot Studio
 support_platforms:
   - aiocqhttp

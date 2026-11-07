@@ -147,6 +147,33 @@ class DecorationOwnershipTests(PluginTestBase):
 
 
 class DispatchTests(PluginTestBase):
+    def test_native_tool_dispatches_manifest_tool(self):
+        api = register(
+            self.plugin,
+            "qqbot_stickers",
+            tool_list_categories=Result([Plain("分类：开心")]),
+        )
+        event = candidate_event("")
+        result = asyncio.run(
+            self.plugin.native_safe_tool(event, "list_sticker_categories", "{}")
+        )
+        self.assertEqual(result, "分类：开心")
+        api.tool_list_categories.assert_awaited_once_with(event)
+
+    def test_native_tool_works_independently_of_marker_switch(self):
+        plugin = make_plugin(config={**base_config(), "marker_enabled": False})
+        api = register(
+            plugin,
+            "qqbot_stickers",
+            tool_list_categories=Result([Plain("分类：开心")]),
+        )
+        event = candidate_event("")
+        result = asyncio.run(
+            plugin.native_safe_tool(event, "list_sticker_categories", "{}")
+        )
+        self.assertEqual(result, "分类：开心")
+        api.tool_list_categories.assert_awaited_once_with(event)
+
     def test_fetch_webpage_dispatch_exact_kwargs(self):
         api = register(
             self.plugin,

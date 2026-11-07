@@ -1,4 +1,4 @@
-# qqbot_web_reader 2.0.0
+# qqbot_web_reader 2.0.1
 
 独立的、仅使用 Python 标准库的公开网页读取插件（AstrBot >= 4.29）。
 不导入旧 `qqbot_enhancer`，不启动浏览器、不执行 JavaScript、不带 Cookie/Authorization。

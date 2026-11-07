@@ -79,9 +79,9 @@ class ImportContractTests(unittest.TestCase):
 
 class MetadataAndSchemaTests(unittest.TestCase):
     def test_version_files_are_3_0_0(self):
-        self.assertEqual((PLUGIN_DIR / "VERSION").read_text().strip(), "3.0.0")
+        self.assertEqual((PLUGIN_DIR / "VERSION").read_text().strip(), "3.0.2")
         metadata = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
-        self.assertIn("version: 3.0.0", metadata)
+        self.assertIn("version: 3.0.2", metadata)
         self.assertIn("astrbot_version:", metadata)
         self.assertIn(">=4.29", metadata)
 

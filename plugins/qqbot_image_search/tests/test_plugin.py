@@ -587,10 +587,10 @@ class SchemaAndMetadataTests(unittest.TestCase):
         self.assertEqual(slider["min"], 1)
         self.assertEqual(slider["max"], 5)
 
-    def test_version_files_are_2_0_0(self):
-        self.assertEqual((PLUGIN_ROOT / "VERSION").read_text("utf-8").strip(), "2.0.0")
+    def test_version_files_are_2_0_1(self):
+        self.assertEqual((PLUGIN_ROOT / "VERSION").read_text("utf-8").strip(), "2.0.1")
         metadata = (PLUGIN_ROOT / "metadata.yaml").read_text("utf-8")
-        self.assertRegex(metadata, r"(?m)^version:\s*2\.0\.0\s*$")
+        self.assertRegex(metadata, r"(?m)^version:\s*2\.0\.1\s*$")
         self.assertIn(">=4.29,<5", metadata)
 
     def test_readme_documents_commands_and_api(self):
@@ -601,7 +601,7 @@ class SchemaAndMetadataTests(unittest.TestCase):
             "/找图",
             "/搜图",
             "tool_search_images",
-            "2.0.0",
+            "2.0.1",
         ):
             self.assertIn(text, readme)
 

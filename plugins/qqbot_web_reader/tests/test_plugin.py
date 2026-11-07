@@ -289,10 +289,10 @@ class SchemaAndMetadataTests(unittest.TestCase):
         ):
             self.assertEqual(schema[key]["default"], main.DEFAULTS[key], key)
 
-    def test_version_files_are_2_0_0(self):
-        self.assertEqual((PLUGIN_ROOT / "VERSION").read_text("utf-8").strip(), "2.0.0")
+    def test_version_files_are_2_0_1(self):
+        self.assertEqual((PLUGIN_ROOT / "VERSION").read_text("utf-8").strip(), "2.0.1")
         metadata = (PLUGIN_ROOT / "metadata.yaml").read_text("utf-8")
-        self.assertRegex(metadata, r"(?m)^version:\s*2\.0\.0\s*$")
+        self.assertRegex(metadata, r"(?m)^version:\s*2\.0\.1\s*$")
         self.assertIn("astrbot_version:", metadata)
         self.assertIn(">=4.29,<5", metadata)
 
@@ -301,7 +301,7 @@ class SchemaAndMetadataTests(unittest.TestCase):
         self.assertIn("/网页", readme)
         self.assertIn("/读网页", readme)
         self.assertIn("tool_fetch_webpage", readme)
-        self.assertIn("2.0.0", readme)
+        self.assertIn("2.0.1", readme)
 
     def test_package_has_no_legacy_plugin_imports(self):
         for path in PLUGIN_ROOT.glob("*.py"):

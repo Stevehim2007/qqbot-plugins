@@ -17,9 +17,9 @@ PLUGIN_DIR = Path(__file__).resolve().parents[1]
 
 class ContractTests(unittest.TestCase):
     def test_version_files_are_3_0_0(self):
-        self.assertEqual((PLUGIN_DIR / "VERSION").read_text().strip(), "3.0.0")
+        self.assertEqual((PLUGIN_DIR / "VERSION").read_text().strip(), "3.0.2")
         metadata_text = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
-        self.assertIn("version: 3.0.0", metadata_text)
+        self.assertIn("version: 3.0.2", metadata_text)
         self.assertIn('astrbot_version: ">=4.29,<5"', metadata_text)
 
     def test_config_schema_is_valid_and_complete(self):

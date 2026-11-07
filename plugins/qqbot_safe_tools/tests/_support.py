@@ -94,6 +94,14 @@ class _Filter:
         return decorate
 
     @staticmethod
+    def llm_tool(*args, **kwargs):
+        def decorate(function):
+            function._qqbot_llm_tool = kwargs.get("name") or getattr(function, "__name__", "")
+            return function
+
+        return decorate
+
+    @staticmethod
     def on_decorating_result(*args, **kwargs):
         def decorate(function):
             function._qqbot_decorating_priority = kwargs.get("priority")

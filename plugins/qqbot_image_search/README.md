@@ -1,4 +1,4 @@
-# qqbot_image_search 2.0.0
+# qqbot_image_search 2.0.1
 
 独立、仅使用 Python 标准库的图片搜索插件（AstrBot >= 4.29）。
 不导入旧 `qqbot_enhancer`，不调用任何聊天模型，不执行网页脚本。

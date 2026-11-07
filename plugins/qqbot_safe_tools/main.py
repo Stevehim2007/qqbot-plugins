@@ -38,6 +38,7 @@ try:  # Loaded as an AstrBot package in production.
         output_gate,
         registry as service_registry,
         safe_tools,
+        tool_registry,
     )
 except ImportError:  # Loaded directly by a small test harness.
     import auth  # type: ignore[no-redef]
@@ -49,6 +50,7 @@ except ImportError:  # Loaded directly by a small test harness.
     import output_gate  # type: ignore[no-redef]
     import registry as service_registry  # type: ignore[no-redef]
     import safe_tools  # type: ignore[no-redef]
+    import tool_registry  # type: ignore[no-redef]
 
 try:  # AstrBot public data-dir helper; optional for direct unit imports.
     from astrbot.api.star import StarTools
@@ -229,6 +231,7 @@ class SafeToolsPlugin(Star):
         self._control_start_lock = asyncio.Lock()
         self._control_error_code = ""
         self._control_started = False
+        self._tool_registry_cache: tool_registry.ToolRegistry | None = None
 
     # ------------------------------------------------------------------
     # Configuration helpers (injected, bounded, never raw exceptions)
@@ -332,23 +335,47 @@ class SafeToolsPlugin(Star):
             "max_fallback_chars", 500, minimum=80, maximum=2_000
         )
 
+    def _tool_registry(self) -> tool_registry.ToolRegistry:
+        cached = self._tool_registry_cache
+        if cached is not None:
+            return cached
+        stars: Any = ()
+        getter = getattr(self.context, "get_all_stars", None)
+        if callable(getter):
+            try:
+                stars = getter() or ()
+            except Exception:
+                stars = ()
+        try:
+            cached = tool_registry.ToolRegistry.from_stars(stars)
+        except Exception:
+            cached = tool_registry.ToolRegistry(tool_registry.builtin_descriptors())
+        self._tool_registry_cache = cached
+        return cached
+
+    def _tool_descriptor(self, tool_name: str) -> tool_registry.ToolDescriptor | None:
+        return self._tool_registry().get(tool_name)
+
+    def _tool_specs(self) -> dict[str, dict[str, Any]]:
+        return self._tool_registry().specs()
+
+    def _operation_for(self, tool_name: str) -> str:
+        descriptor = self._tool_descriptor(tool_name)
+        if descriptor is not None and descriptor.operation:
+            return descriptor.operation
+        return str(_MARKER_TO_OPERATION.get(tool_name, "") or "")
+
     def _enabled_tool_names(self) -> list[str]:
         if not self._cfg_bool("enabled", True):
             return []
-        if not self._cfg_bool("marker_enabled", True):
-            return []
-        if self._effective_max_actions() < 1:
-            return []
         marker_allow = self._cfg_list("marker_allowed_tools")
-        if marker_allow:
-            configured_allow = set(marker_allow)
-        else:
-            configured_allow = set(safe_tools.ALLOWED_TOOLS)
+        descriptors = self._tool_registry().all()
+        configured_allow = set(marker_allow) if marker_allow else {d.name for d in descriptors}
         return [
-            name
-            for name in safe_tools.ALLOWED_TOOLS
-            if name in configured_allow
-            and self._cfg_bool(_ALLOW_KEYS[name], True)
+            descriptor.name
+            for descriptor in descriptors
+            if descriptor.name in configured_allow
+            and self._cfg_bool(descriptor.allow_key, True)
         ]
 
     def _permission_message(self, tool_name: str) -> str:
@@ -358,7 +385,7 @@ class SafeToolsPlugin(Star):
             return "marker_disabled"
         if self._effective_max_actions() < 1:
             return "marker_disabled"
-        if tool_name in safe_tools.ALLOWED_TOOLS:
+        if self._tool_descriptor(tool_name) is not None:
             return "permission"
         return "invalid"
 
@@ -510,10 +537,12 @@ class SafeToolsPlugin(Star):
         )
 
     def _marker_tool_ready(self, marker_tool: str) -> bool:
-        operation = _MARKER_TO_OPERATION.get(marker_tool)
-        if operation is None:
+        operation = self._operation_for(marker_tool)
+        if not operation:
             return False
-        spec = contracts.PROVIDER_OPERATION_SPECS[operation]
+        spec = contracts.PROVIDER_OPERATION_SPECS.get(operation)
+        if spec is None:
+            return False
         descriptor = self.registry.get_registered_provider(spec.provider_id)
         if descriptor is None or not descriptor.ready:
             return False
@@ -652,12 +681,16 @@ class SafeToolsPlugin(Star):
     def tool_instruction(self, enabled_tools: list[str] | None = None) -> str:
         """Expose marker grammar/catalog for core_reply; no execution."""
 
+        if not self._cfg_bool("marker_enabled", True):
+            return ""
+        if self._effective_max_actions() < 1:
+            return ""
         available = self._advertised_tool_names()
         if enabled_tools is not None:
             requested = {str(name or "") for name in enabled_tools}
             available = [name for name in available if name in requested]
         try:
-            return safe_tools.tool_instruction(available)
+            return safe_tools.tool_instruction(available, tool_specs=self._tool_specs())
         except Exception:
             return ""
 
@@ -694,10 +727,14 @@ class SafeToolsPlugin(Star):
         return star
 
     def _stable_method(self, tool_name: str) -> Any | None:
-        mapping = _PLUGIN_METHODS.get(tool_name)
-        if mapping is None:
-            return None
-        plugin_id, method_name = mapping
+        descriptor = self._tool_descriptor(tool_name)
+        if descriptor is not None:
+            plugin_id, method_name = descriptor.plugin_id, descriptor.method
+        else:
+            mapping = _PLUGIN_METHODS.get(tool_name)
+            if mapping is None:
+                return None
+            plugin_id, method_name = mapping
         star = self._registered_star(plugin_id)
         if star is None:
             return None
@@ -708,26 +745,15 @@ class SafeToolsPlugin(Star):
         return method if callable(method) else None
 
     def _plugin_availability(self) -> dict[str, bool]:
-        result = {
-            "qqbot_web_reader": False,
-            "qqbot_image_search": False,
-            "qqbot_food": False,
-            "qqbot_stickers": False,
-        }
-        for plugin_id in result:
-            star = self._registered_star(plugin_id)
+        descriptors = self._tool_registry().all()
+        plugin_ids = {descriptor.plugin_id for descriptor in descriptors}
+        result = {plugin_id: False for plugin_id in sorted(plugin_ids)}
+        for descriptor in descriptors:
+            star = self._registered_star(descriptor.plugin_id)
             if star is None:
-                result[plugin_id] = False
                 continue
-            methods = [
-                method_name
-                for owner, method_name in _PLUGIN_METHODS.values()
-                if owner == plugin_id
-            ]
-            result[plugin_id] = any(
-                callable(getattr(star, method_name, None))
-                for method_name in methods
-            )
+            if callable(getattr(star, descriptor.method, None)):
+                result[descriptor.plugin_id] = True
         return result
 
     async def _await_if_needed(self, value: Any) -> Any:
@@ -777,12 +803,14 @@ class SafeToolsPlugin(Star):
         return "default"
 
     def _cooldown_remaining(self, event: AstrMessageEvent, tool_name: str) -> int:
-        config_key = _COOLDOWN_KEYS.get(tool_name)
+        descriptor = self._tool_descriptor(tool_name)
+        config_key = descriptor.cooldown_key if descriptor is not None else _COOLDOWN_KEYS.get(tool_name)
         if config_key is None:
             return 0
+        default = descriptor.cooldown_default if descriptor is not None else _COOLDOWN_DEFAULTS.get(tool_name, 0)
         seconds = self._cfg_int(
             config_key,
-            _COOLDOWN_DEFAULTS.get(tool_name, 0),
+            default,
             minimum=0,
             maximum=86_400,
         )
@@ -798,13 +826,15 @@ class SafeToolsPlugin(Star):
         return max(1, int(remaining + 0.999))
 
     def _mark_tool_used(self, event: AstrMessageEvent, tool_name: str) -> None:
-        config_key = _COOLDOWN_KEYS.get(tool_name)
+        descriptor = self._tool_descriptor(tool_name)
+        config_key = descriptor.cooldown_key if descriptor is not None else _COOLDOWN_KEYS.get(tool_name)
         if config_key is None:
             return
+        default = descriptor.cooldown_default if descriptor is not None else _COOLDOWN_DEFAULTS.get(tool_name, 0)
         if (
             self._cfg_int(
                 config_key,
-                _COOLDOWN_DEFAULTS.get(tool_name, 0),
+                default,
                 minimum=0,
                 maximum=86_400,
             )
@@ -891,7 +921,20 @@ class SafeToolsPlugin(Star):
         elif name == "list_sticker_categories":
             kwargs = {}
         else:
-            return False, None, "invalid"
+            descriptor = self._tool_descriptor(name)
+            if descriptor is None or descriptor.call_style != "kwargs":
+                return False, None, "invalid"
+            for key, value in args.items():
+                param = descriptor.parameters.get(key)
+                if param is not None and param.type in {"integer", "number"}:
+                    try:
+                        kwargs[key] = int(value) if param.type == "integer" else float(value)
+                    except (TypeError, ValueError):
+                        return False, None, "invalid"
+                elif param is not None and param.type == "boolean":
+                    kwargs[key] = str(value).strip().casefold() in {"true", "1"}
+                else:
+                    kwargs[key] = str(value)
 
         # The timestamp is set before executing so a failing network-backed
         # tool cannot be hammered by a retry storm.  Resolution happens first:
@@ -933,7 +976,10 @@ class SafeToolsPlugin(Star):
     def _canonical_operation_args(
         self, marker_tool: str, intent: safe_tools.ToolIntent
     ) -> tuple[str, dict[str, Any]]:
-        operation = _MARKER_TO_OPERATION[marker_tool]
+        operation = self._operation_for(marker_tool)
+        if not operation:
+            raise SafeToolsServiceError("invalid_args", "unknown marker tool")
+        descriptor = self._tool_descriptor(marker_tool)
         args = dict(intent.args)
         if marker_tool == "fetch_webpage":
             max_chars = str(args.get("max_chars", "") or "").strip()
@@ -963,7 +1009,19 @@ class SafeToolsPlugin(Star):
         elif marker_tool == "list_sticker_categories":
             canonical = {}
         else:
-            raise SafeToolsServiceError("invalid_args", "unknown marker tool")
+            canonical = {}
+            params = descriptor.parameters if descriptor is not None else {}
+            for key, value in args.items():
+                param = params.get(key)
+                if param is not None and param.type in {"integer", "number"}:
+                    try:
+                        canonical[key] = int(value) if param.type == "integer" else float(value)
+                    except (TypeError, ValueError):
+                        raise SafeToolsServiceError("invalid_args", "invalid argument")
+                elif param is not None and param.type == "boolean":
+                    canonical[key] = str(value).strip().casefold() in {"true", "1"}
+                else:
+                    canonical[key] = str(value)
         return operation, canonical
 
     async def _handle_marker_abi(
@@ -987,7 +1045,7 @@ class SafeToolsPlugin(Star):
         enabled = self._enabled_tool_names()
         if intent.name not in enabled:
             return False, None, self._permission_message(intent.name)
-        if intent.name not in _MARKER_TO_OPERATION:
+        if not self._operation_for(intent.name):
             return False, None, "invalid"
         if not self._marker_tool_ready(intent.name):
             return False, None, "unavailable"
@@ -1155,6 +1213,7 @@ class SafeToolsPlugin(Star):
                 max_keyword_chars=self._max_keyword_chars(),
                 max_count=self._max_image_count(),
                 max_web_chars=self._max_web_chars(),
+                tool_specs=self._tool_specs(),
             )
         except Exception:
             if not safe_tools._LOOSE_MARKER_RE.search(raw_text):  # noqa: SLF001
@@ -1379,10 +1438,14 @@ class SafeToolsPlugin(Star):
             request_context.validate()
         ready_marker_tools = self._advertised_tool_names()
         tools: list[dict[str, Any]] = []
-        for marker_tool, operation in _MARKER_TO_OPERATION.items():
-            if marker_tool not in ready_marker_tools:
+        for marker_tool in ready_marker_tools:
+            descriptor = self._tool_descriptor(marker_tool)
+            operation = self._operation_for(marker_tool)
+            if descriptor is None or not operation:
                 continue
-            spec = contracts.PROVIDER_OPERATION_SPECS[operation]
+            spec = contracts.PROVIDER_OPERATION_SPECS.get(operation)
+            if spec is None:
+                continue
             tools.append(
                 {
                     "marker_tool": marker_tool,
@@ -1697,6 +1760,69 @@ class SafeToolsPlugin(Star):
     # ------------------------------------------------------------------
     # Sole marker-consuming decorating hook (compatibility adapter only)
     # ------------------------------------------------------------------
+    @filter.llm_tool(name="qqbot_safe_tool")
+    async def native_safe_tool(
+        self,
+        event: AstrMessageEvent,
+        tool_name: str,
+        args_json: str = "{}",
+    ) -> str:
+        """调用 QQ Bot 安全工具目录中的工具。
+
+        Args:
+            tool_name(string): 工具名，必须来自系统提示中的安全工具目录。
+            args_json(string): JSON 对象字符串，例如 {"query": "长春火锅"}。
+        """
+        if not self._cfg_bool("enabled", True):
+            return "工具功能当前未启用。"
+        name = str(tool_name or "").strip()
+        if name not in self._enabled_tool_names():
+            return "该工具未启用或不存在。"
+        try:
+            raw_args = json.loads(str(args_json or "{}"))
+        except (TypeError, ValueError):
+            return "工具参数不是合法 JSON。"
+        if not isinstance(raw_args, dict):
+            return "工具参数必须是 JSON 对象。"
+        args: dict[str, str] = {}
+        for key, value in raw_args.items():
+            if isinstance(value, bool):
+                args[str(key)] = "true" if value else "false"
+            elif isinstance(value, (str, int, float)):
+                args[str(key)] = str(value)
+            else:
+                return "工具参数只支持字符串、数字或布尔值。"
+        intent = safe_tools.validate_intent(
+            safe_tools.ToolIntent(name=name, args=args),
+            tool_specs=self._tool_specs(),
+        )
+        if not intent.valid:
+            return "工具参数无效。"
+        ok, result, reason = await self._execute_intent(event, intent, "")
+        if not ok:
+            reason_text, _ = self._fallback_reason(reason)
+            return reason_text or "工具执行失败。"
+        return self._native_result_text(result)
+
+    def _native_result_text(self, value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value[:8_000]
+        chain = getattr(value, "chain", None)
+        if isinstance(value, (list, tuple)) or isinstance(chain, (list, tuple)):
+            items = value if isinstance(value, (list, tuple)) else chain
+            parts = [
+                str(getattr(item, "text", item))
+                for item in items
+                if isinstance(getattr(item, "text", item), str)
+            ]
+            return "\n".join(parts)[:8_000]
+        text = getattr(value, "text", None)
+        if isinstance(text, str):
+            return text[:8_000]
+        return self._safe_result_text(value)[:8_000]
+
     @filter.on_decorating_result(priority=200)
     async def consume_safe_tools_marker(self, event: AstrMessageEvent):
         """Compatibility adapter that delegates to the same one-shot gate."""
@@ -1731,6 +1857,7 @@ class SafeToolsPlugin(Star):
                     max_keyword_chars=self._max_keyword_chars(),
                     max_count=self._max_image_count(),
                     max_web_chars=self._max_web_chars(),
+                    tool_specs=self._tool_specs(),
                 )
             except Exception:
                 parsed = safe_tools.ToolParseResult(
@@ -1763,7 +1890,9 @@ class SafeToolsPlugin(Star):
             outcome = None
         if outcome is None:
             try:
-                parsed = safe_tools.parse_tool_markers(plain_text)
+                parsed = safe_tools.parse_tool_markers(
+                    plain_text, tool_specs=self._tool_specs()
+                )
             except Exception:
                 parsed = safe_tools.ToolParseResult(
                     clean_text=safe_tools.strip_tool_markers(plain_text),

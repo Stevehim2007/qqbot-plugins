@@ -184,6 +184,27 @@ def validate_plugin(plugin_id: str) -> dict[str, Any]:
         if not isinstance(key, str) or not isinstance(item, dict):
             raise BuildError(f"{plugin_id} schema 字段 {key!r} 格式错误")
 
+    tools: list[dict[str, Any]] = []
+    tools_path = plugin_dir / "tools.json"
+    if tools_path.is_file():
+        try:
+            tools_doc = json.loads(_read_text(tools_path))
+        except ValueError as exc:
+            raise BuildError(f"{plugin_id} tools.json 不是合法 JSON") from exc
+        if (
+            not isinstance(tools_doc, dict)
+            or tools_doc.get("schema_version") != 1
+            or tools_doc.get("plugin_id") != plugin_id
+            or not isinstance(tools_doc.get("tools"), list)
+        ):
+            raise BuildError(f"{plugin_id} tools.json 结构无效")
+        tools = [dict(item) for item in tools_doc["tools"] if isinstance(item, dict)]
+        if len(tools) != len(tools_doc["tools"]):
+            raise BuildError(f"{plugin_id} tools.json 包含非对象工具")
+        for item in tools:
+            if not item.get("name") or not item.get("method"):
+                raise BuildError(f"{plugin_id} tools.json 工具缺少 name/method")
+
     py_files = []
     for path, rel in _iter_plugin_files(plugin_dir):
         if path.suffix == ".py":
@@ -216,6 +237,7 @@ def validate_plugin(plugin_id: str) -> dict[str, Any]:
         "config_schema_version": CONFIG_SCHEMA_VERSION,
         "data_schema_version": DATA_SCHEMA_VERSION,
         "recommended_groups": ["QQ Bot"],
+        **({"tools": tools} if tools else {}),
     }
 
 

@@ -1,7 +1,7 @@
 name: qqbot_image_search
 display_name: 图片搜索
 desc: 独立的有界图片搜索插件；ABI v1 image.search/image.next_page/image.collect_plan provider、opaque 分页游标与收藏计划路由，校验相关性/去重/SSRF/内容类型/图片魔数/大小，不调用聊天模型。
-version: 2.0.0
+version: 2.0.1
 author: QQ Bot Studio
 support_platforms:
   - aiocqhttp

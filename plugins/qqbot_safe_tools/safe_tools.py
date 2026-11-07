@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
 try:  # Loaded as a package by AstrBot.
     from . import food as food_engine
@@ -235,12 +237,79 @@ def _parse_bounded_int(
     return number
 
 
+def _validate_generic_intent(
+    intent: ToolIntent,
+    spec: Mapping[str, Any],
+) -> ToolIntent:
+    """Validate a manifest-declared tool without weakening built-in rules."""
+
+    params = spec.get("parameters") or {}
+    if not isinstance(params, Mapping):
+        return _invalid(intent, "工具参数声明无效")
+    allowed = {str(key) for key in params}
+    if set(intent.args) - allowed:
+        return _invalid(intent, "参数不在白名单")
+
+    constraints = spec.get("constraints") or {}
+    exactly_one = constraints.get("exactly_one") if isinstance(constraints, Mapping) else None
+    if exactly_one:
+        non_empty = [key for key in exactly_one if str(intent.args.get(key, "") or "").strip()]
+        if len(non_empty) != 1:
+            return _invalid(intent, "必须且只能指定一个参数")
+
+    for raw_key, raw_param in params.items():
+        key = str(raw_key)
+        if not isinstance(raw_param, Mapping):
+            return _invalid(intent, "工具参数声明无效")
+        value = str(intent.args.get(key, "") or "")
+        required = bool(raw_param.get("required", False))
+        if required and not value.strip():
+            return _invalid(intent, "缺少必填参数")
+        if not value:
+            continue
+        max_chars = raw_param.get("max_chars")
+        if max_chars is not None:
+            try:
+                limit = int(max_chars)
+            except (TypeError, ValueError):
+                return _invalid(intent, "工具参数声明无效")
+            if limit > 0 and len(value) > limit:
+                return _invalid(intent, "字段过长")
+        if _has_control_chars(value):
+            return _invalid(intent, "字段含控制字符")
+        ptype = str(raw_param.get("type") or "string").lower()
+        if ptype == "string":
+            enum = raw_param.get("enum") or ()
+            if enum and value not in {str(item) for item in enum}:
+                return _invalid(intent, "参数值不在允许范围")
+            if _contains_unsafe_reference(value):
+                return _invalid(intent, "禁止路径/URL/命令参数")
+        elif ptype in {"integer", "number"}:
+            try:
+                number = float(value) if ptype == "number" else int(value)
+            except (TypeError, ValueError):
+                return _invalid(intent, "参数必须是数字")
+            minimum = raw_param.get("min")
+            maximum = raw_param.get("max")
+            if minimum is not None and number < float(minimum):
+                return _invalid(intent, "参数低于下限")
+            if maximum is not None and number > float(maximum):
+                return _invalid(intent, "参数超出上限")
+        elif ptype == "boolean":
+            if value.strip().casefold() not in {"true", "false", "1", "0"}:
+                return _invalid(intent, "参数必须是布尔值")
+        else:
+            return _invalid(intent, "工具参数类型无效")
+    return intent
+
+
 def validate_intent(
     intent: ToolIntent,
     *,
     max_keyword_chars: int = 100,
     max_count: int = 5,
     max_web_chars: int = 4000,
+    tool_specs: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> ToolIntent:
     """Validate one whitelisted intent in place and return it."""
 
@@ -248,7 +317,10 @@ def validate_intent(
     if not intent.valid:
         return intent
     if intent.name not in TOOL_ARG_KEYS:
-        return _invalid(intent, "工具不在白名单")
+        spec = (tool_specs or {}).get(intent.name)
+        if spec is None:
+            return _invalid(intent, "工具不在白名单")
+        return _validate_generic_intent(intent, spec)
     allowed = TOOL_ARG_KEYS[intent.name]
     if set(intent.args) - allowed:
         return _invalid(intent, "参数不在白名单")
@@ -471,6 +543,7 @@ def parse_tool_markers(
     max_keyword_chars: int = 100,
     max_count: int = 5,
     max_web_chars: int = 4000,
+    tool_specs: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> ToolParseResult:
     """Parse at most one physical line per marker and sanitize the plain text.
 
@@ -500,6 +573,7 @@ def parse_tool_markers(
                 max_keyword_chars=max_keyword_chars,
                 max_count=max_count,
                 max_web_chars=max_web_chars,
+                tool_specs=tool_specs,
             )
         )
 
@@ -515,17 +589,54 @@ def parse_tool_markers(
     return ToolParseResult(clean, intents, True)
 
 
-def tool_instruction(enabled_tools: list[str] | None = None) -> str:
+def tool_instruction(
+    enabled_tools: list[str] | None = None,
+    tool_specs: Mapping[str, Mapping[str, Any]] | None = None,
+) -> str:
     """Return marker grammar/catalog for the enabled names; never executes."""
 
-    if enabled_tools is None:
-        selected = list(ALLOWED_TOOLS)
+    if tool_specs:
+        names = list(tool_specs)
+        if enabled_tools is None:
+            selected = names
+        else:
+            wanted = {str(name or "") for name in enabled_tools}
+            selected = [name for name in names if name in wanted]
     else:
-        selected = [
-            name for name in ALLOWED_TOOLS if str(name or "") in enabled_tools
-        ]
+        if enabled_tools is None:
+            selected = list(ALLOWED_TOOLS)
+        else:
+            selected = [
+                name for name in ALLOWED_TOOLS if str(name or "") in enabled_tools
+            ]
     if not selected:
         return ""
+
+    if tool_specs:
+        descriptions = []
+        for name in selected:
+            spec = tool_specs.get(name) or {}
+            example = str(spec.get("marker_example") or "").strip()
+            description = str(spec.get("description") or "").strip()
+            if not example:
+                example = f"[[tool:{name}()]]"
+            descriptions.append(example + (f" {description}" if description else ""))
+        marker = '[[tool:工具名 参数="值"]]'
+        url_rule = (
+            "只有 fetch_webpage 可携带公开网页 URL。"
+            if "fetch_webpage" in selected
+            else "当前工具均不接受 URL。"
+        )
+        return (
+            "安全工具协议：只可使用下列白名单工具。"
+            "每条回复最多一个工具标记，标记必须位于回复末尾；"
+            "不需要工具时不要写标记，也不要解释协议。"
+            "禁止文件路径、终端命令、系统控制；"
+            + url_rule
+            + "可选工具："
+            + "；".join(descriptions)
+            + f"。格式：{marker}"
+        )
 
     descriptions: list[str] = []
     if "fetch_webpage" in selected:

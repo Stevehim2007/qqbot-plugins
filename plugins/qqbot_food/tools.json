@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "plugin_id": "qqbot_food",
+  "tools": [
+    {
+      "name": "search_food_restaurants",
+      "method": "tool_search_restaurants",
+      "description": "查询美食店铺；name/tag/location 至少给一个。",
+      "parameters": {
+        "name": {
+          "type": "string",
+          "max_chars": 50
+        },
+        "tag": {
+          "type": "string",
+          "max_chars": 120
+        },
+        "location": {
+          "type": "string",
+          "max_chars": 30
+        },
+        "sort": {
+          "type": "string",
+          "max_chars": 12
+        },
+        "order": {
+          "type": "string",
+          "max_chars": 5
+        },
+        "limit": {
+          "type": "integer",
+          "min": 1,
+          "max": 5,
+          "default": 5
+        }
+      },
+      "allow_key": "allow_search_food_restaurants",
+      "cooldown_key": "food_search_cooldown_seconds",
+      "cooldown_default": 10,
+      "operation": "food.query",
+      "call_style": "food_positional",
+      "marker_example": "[[tool:search_food_restaurants name=\"店名\" tag=\"火锅\" location=\"南关区\" sort=\"total\" order=\"desc\" limit=5]]"
+    },
+    {
+      "name": "submit_food_review",
+      "method": "tool_submit_food_review",
+      "description": "仅在用户明确要求提交到 Food 时使用；缺项留空，不编造。",
+      "parameters": {
+        "restaurant": {
+          "type": "string",
+          "max_chars": 200
+        },
+        "location": {
+          "type": "string",
+          "max_chars": 60
+        },
+        "taste": {
+          "type": "string",
+          "max_chars": 8
+        },
+        "value": {
+          "type": "string",
+          "max_chars": 8
+        },
+        "comment": {
+          "type": "string",
+          "max_chars": 500
+        },
+        "tags": {
+          "type": "string",
+          "max_chars": 120
+        }
+      },
+      "allow_key": "allow_submit_food_review",
+      "cooldown_key": "food_submit_cooldown_seconds",
+      "cooldown_default": 60,
+      "operation": "food.draft_create",
+      "call_style": "food_positional",
+      "write": true,
+      "requires_confirmation": true,
+      "marker_example": "[[tool:submit_food_review restaurant=\"店名\" location=\"位置\" taste=\"4.5\" value=\"3.5\" comment=\"评价\" tags=\"火锅,夜宵\"]]"
+    }
+  ]
+}

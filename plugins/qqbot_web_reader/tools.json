@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "plugin_id": "qqbot_web_reader",
+  "tools": [
+    {
+      "name": "fetch_webpage",
+      "method": "tool_fetch_webpage",
+      "description": "读取公开网页正文；只允许公开 HTTP(S)，不登录、不带 Cookie。",
+      "parameters": {
+        "url": {
+          "type": "string",
+          "required": true,
+          "max_chars": 2048
+        },
+        "max_chars": {
+          "type": "integer",
+          "min": 1,
+          "max": 8000,
+          "default": 4000
+        }
+      },
+      "allow_key": "allow_fetch_webpage",
+      "cooldown_key": "web_fetch_cooldown_seconds",
+      "cooldown_default": 30,
+      "operation": "web.read",
+      "call_style": "kwargs",
+      "marker_example": "[[tool:fetch_webpage url=\"https://example.com/article\" max_chars=3000]]"
+    }
+  ]
+}

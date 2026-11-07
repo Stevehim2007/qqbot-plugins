@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "plugin_id": "qqbot_stickers",
+  "tools": [
+    {
+      "name": "send_sticker",
+      "method": "tool_send_sticker",
+      "description": "发送一张表情；category/emotion/tag 三选一，仍需保留正常文字回复。",
+      "parameters": {
+        "category": {
+          "type": "string",
+          "max_chars": 64
+        },
+        "emotion": {
+          "type": "string",
+          "max_chars": 64
+        },
+        "tag": {
+          "type": "string",
+          "max_chars": 64
+        }
+      },
+      "constraints": {
+        "exactly_one": [
+          "category",
+          "emotion",
+          "tag"
+        ]
+      },
+      "allow_key": "allow_send_sticker",
+      "cooldown_key": "sticker_cooldown_seconds",
+      "cooldown_default": 20,
+      "operation": "sticker.send_plan",
+      "call_style": "kwargs",
+      "marker_example": "[[tool:send_sticker category=\"分类\"]] 或 [[tool:send_sticker emotion=\"happy\"]]"
+    },
+    {
+      "name": "collect_sticker",
+      "method": "tool_collect_sticker",
+      "description": "收藏当前消息中的表情。",
+      "parameters": {
+        "category": {
+          "type": "string",
+          "max_chars": 32
+        }
+      },
+      "allow_key": "allow_collect_sticker",
+      "cooldown_key": "collect_sticker_cooldown_seconds",
+      "cooldown_default": 30,
+      "operation": "sticker.collect_plan",
+      "call_style": "kwargs",
+      "marker_example": "[[tool:collect_sticker category=\"分类\"]]"
+    },
+    {
+      "name": "list_sticker_categories",
+      "method": "tool_list_categories",
+      "description": "列出可用表情分类。",
+      "parameters": {},
+      "allow_key": "allow_list_categories",
+      "cooldown_key": "list_categories_cooldown_seconds",
+      "cooldown_default": 5,
+      "operation": "category.list",
+      "call_style": "kwargs",
+      "marker_example": "[[tool:list_sticker_categories()]]"
+    }
+  ]
+}

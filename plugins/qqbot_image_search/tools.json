@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "plugin_id": "qqbot_image_search",
+  "tools": [
+    {
+      "name": "search_images",
+      "method": "tool_search_images",
+      "description": "按关键词搜索图片；禁止路径/命令。",
+      "parameters": {
+        "keyword": {
+          "type": "string",
+          "required": true,
+          "max_chars": 100
+        },
+        "count": {
+          "type": "integer",
+          "min": 1,
+          "max": 5,
+          "default": 1
+        }
+      },
+      "allow_key": "allow_search_images",
+      "cooldown_key": "image_search_cooldown_seconds",
+      "cooldown_default": 10,
+      "operation": "image.search",
+      "call_style": "kwargs",
+      "marker_example": "[[tool:search_images keyword=\"关键词\" count=1]]"
+    }
+  ]
+}
