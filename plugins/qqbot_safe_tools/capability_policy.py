@@ -112,6 +112,29 @@ PLUGIN_PARAM_SPECS: dict[str, dict[str, ParamSpec]] = {
         "inject.max_entries": _p("int", minimum=1, maximum=20),
         "inject.max_chars": _p("int", minimum=0, maximum=1000),
     },
+    "auxiliary_llm": {
+        "tier": _p(
+            "enum",
+            enum=("off", "light", "standard", "advanced", "full"),
+            group_overridable=False,
+        ),
+        "monthly_budget_cny": _p(
+            "int", minimum=0, maximum=1000, group_overridable=False
+        ),
+        "warning_ratio": _p(
+            "float", minimum=0.0, maximum=1.0, group_overridable=False
+        ),
+        "stop_ratio": _p(
+            "float", minimum=0.0, maximum=1.0, group_overridable=False
+        ),
+    },
+}
+
+AUXILIARY_LLM_DEFAULTS: dict[str, Any] = {
+    "tier": "standard",
+    "monthly_budget_cny": 20,
+    "warning_ratio": 0.8,
+    "stop_ratio": 1.0,
 }
 
 
@@ -197,7 +220,9 @@ def _coerce_scalar(spec: ParamSpec, value: Any) -> Any:
     raise PolicyError("invalid_schema", "unsupported parameter kind")
 
 
-def _validate_params(plugin_id: str, params: Any) -> dict[str, Any]:
+def _validate_params(
+    plugin_id: str, params: Any, *, global_scope: bool = False
+) -> dict[str, Any]:
     if params is None:
         return {}
     if not isinstance(params, Mapping):
@@ -209,13 +234,15 @@ def _validate_params(plugin_id: str, params: Any) -> dict[str, Any]:
         spec = specs.get(key)
         if spec is None:
             raise PolicyError("unknown_param", f"unknown parameter: {key}")
-        if not spec.group_overridable or spec.sensitive:
+        if spec.sensitive or (not spec.group_overridable and not global_scope):
             raise PolicyError("sensitive_param", f"parameter is not group-overridable: {key}")
         result[key] = _coerce_scalar(spec, raw_value)
     return result
 
 
-def _validate_plugin_override(plugin_id: str, raw: Any) -> dict[str, Any]:
+def _validate_plugin_override(
+    plugin_id: str, raw: Any, *, global_scope: bool = False
+) -> dict[str, Any]:
     if raw is None:
         return {"enabled": True, "params": {}}
     if not isinstance(raw, Mapping):
@@ -223,7 +250,12 @@ def _validate_plugin_override(plugin_id: str, raw: Any) -> dict[str, Any]:
     enabled = raw.get("enabled", True)
     if not isinstance(enabled, bool):
         raise PolicyError("invalid_param", "enabled must be boolean")
-    return {"enabled": enabled, "params": _validate_params(plugin_id, raw.get("params", {}))}
+    return {
+        "enabled": enabled,
+        "params": _validate_params(
+            plugin_id, raw.get("params", {}), global_scope=global_scope
+        ),
+    }
 
 
 def _merge_plugin(base: Mapping[str, Any], overlay: Mapping[str, Any]) -> dict[str, Any]:
@@ -279,7 +311,9 @@ class CapabilityPolicy:
         global_raw = raw.get("global", {})
         if not isinstance(global_raw, Mapping):
             raise PolicyError("invalid_store", "global must be an object")
-        store["global"]["plugins"] = self._normalise_plugins(global_raw.get("plugins", {}))
+        store["global"]["plugins"] = self._normalise_plugins(
+            global_raw.get("plugins", {}), global_scope=True
+        )
         for section in ("templates", "groups", "private"):
             raw_section = raw.get(section, {})
             if not isinstance(raw_section, Mapping):
@@ -302,7 +336,9 @@ class CapabilityPolicy:
         store["audit"] = deepcopy(audit[-MAX_AUDIT_ENTRIES:])
         return store
 
-    def _normalise_plugins(self, raw: Any) -> dict[str, Any]:
+    def _normalise_plugins(
+        self, raw: Any, *, global_scope: bool = False
+    ) -> dict[str, Any]:
         if raw is None:
             return {}
         if not isinstance(raw, Mapping):
@@ -310,7 +346,9 @@ class CapabilityPolicy:
         result: dict[str, Any] = {}
         for raw_plugin, raw_override in raw.items():
             plugin_id = _plugin_name(raw_plugin)
-            result[plugin_id] = _validate_plugin_override(plugin_id, raw_override)
+            result[plugin_id] = _validate_plugin_override(
+                plugin_id, raw_override, global_scope=global_scope
+            )
         return result
 
     def _require_loaded(self) -> None:
@@ -398,6 +436,51 @@ class CapabilityPolicy:
         )
         if len(audit) > MAX_AUDIT_ENTRIES:
             del audit[: len(audit) - MAX_AUDIT_ENTRIES]
+
+    def set_global_override(
+        self,
+        *,
+        plugin_id: str,
+        enabled: bool = True,
+        params: Mapping[str, Any] | None = None,
+        expected_revision: int | None = None,
+    ) -> EffectivePolicy:
+        with self._lock:
+            self._require_loaded()
+            plugin = _plugin_name(plugin_id)
+            if expected_revision is not None and int(expected_revision) != self.revision:
+                raise PolicyError("revision_conflict", "policy revision is stale")
+            if not isinstance(enabled, bool):
+                raise PolicyError("invalid_value", "enabled must be boolean")
+            override = {
+                "enabled": enabled,
+                "params": _validate_params(plugin, params or {}, global_scope=True),
+            }
+            entry = self._store["global"]["plugins"]
+            before = deepcopy(entry.get(plugin))
+            entry[plugin] = override
+            self._audit("set", "global", plugin, before, override)
+            self._store["revision"] = self.revision + 1
+            self._save()
+            return self.effective(plugin)
+
+    def reset_global_override(
+        self,
+        *,
+        plugin_id: str,
+        expected_revision: int | None = None,
+    ) -> EffectivePolicy:
+        with self._lock:
+            self._require_loaded()
+            plugin = _plugin_name(plugin_id)
+            if expected_revision is not None and int(expected_revision) != self.revision:
+                raise PolicyError("revision_conflict", "policy revision is stale")
+            entry = self._store["global"]["plugins"]
+            before = deepcopy(entry.pop(plugin, None))
+            self._audit("reset", "global", plugin, before, None)
+            self._store["revision"] = self.revision + 1
+            self._save()
+            return self.effective(plugin)
 
     def set_override(
         self,

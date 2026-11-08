@@ -31,6 +31,7 @@ except ImportError:  # Keep import failure bounded; dispatch will still fail saf
 try:  # Loaded as an AstrBot package in production.
     from . import (
         auth,
+        aux_budget,
         call_ledger,
         capability_policy,
         confirmation,
@@ -44,6 +45,7 @@ try:  # Loaded as an AstrBot package in production.
     )
 except ImportError:  # Loaded directly by a small test harness.
     import auth  # type: ignore[no-redef]
+    import aux_budget  # type: ignore[no-redef]
     import capability_policy  # type: ignore[no-redef]
     import call_ledger  # type: ignore[no-redef]
     import confirmation  # type: ignore[no-redef]
@@ -172,6 +174,15 @@ _CONTROL_RPC_ARGUMENTS: dict[str, frozenset[str]] = {
             "expected_revision",
         }
     ),
+    "auxiliary_llm.get": frozenset(),
+    "auxiliary_llm.set": frozenset({"tier", "expected_revision"}),
+    "aux_budget.get": frozenset(),
+    "aux_budget.set": frozenset({"tier", "enabled", "expected_revision"}),
+    "aux_budget.usage": frozenset({"cycle"}),
+    "aux_budget.feature_set": frozenset(
+        {"feature_id", "enabled", "group_allowlist", "expected_revision"}
+    ),
+    "aux_budget.cycle_reset": frozenset({"expected_revision"}),
     "tool.catalog": frozenset({"include_unready", "conversation_id", "persona_id"}),
     "tool.dispatch": frozenset(
         {
@@ -259,6 +270,7 @@ class SafeToolsPlugin(Star):
         self._tool_registry_cache: tool_registry.ToolRegistry | None = None
         self._capability_policy: capability_policy.CapabilityPolicy | None = None
         self._policy_degraded = False
+        self._aux_budget_obj: aux_budget.AuxBudget | None = None
 
     # ------------------------------------------------------------------
     # Configuration helpers (injected, bounded, never raw exceptions)
@@ -514,6 +526,136 @@ class SafeToolsPlugin(Star):
         result = effective.as_dict()
         result["degraded"] = bool(self._policy_degraded)
         return result
+
+    def _aux_budget(self) -> aux_budget.AuxBudget:
+        if self._aux_budget_obj is None:
+            self._aux_budget_obj = aux_budget.AuxBudget(self._data_dir())
+        return self._aux_budget_obj
+
+    def aux_budget_get(self) -> dict[str, Any]:
+        ledger = self._aux_budget()
+        return {
+            "ok": not ledger.degraded,
+            "degraded": ledger.degraded,
+            "status": ledger.status(),
+            "config": ledger.public_config(),
+        }
+
+    def aux_budget_set(
+        self,
+        *,
+        tier: str | None = None,
+        enabled: bool | None = None,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        ledger = self._aux_budget()
+        if ledger.degraded:
+            return {"ok": False, "error": "store_degraded", "degraded": True}
+        try:
+            if tier is not None:
+                return {"ok": True, "status": ledger.set_tier(tier, expected_revision=expected_revision)}
+            if enabled is not None:
+                return {"ok": True, "status": ledger.set_enabled(enabled, expected_revision=expected_revision)}
+            raise aux_budget.AuxBudgetError("invalid_args", "tier or enabled required")
+        except aux_budget.AuxBudgetError as exc:
+            return exc.as_dict()
+
+    def aux_budget_usage(self, *, cycle: str | None = None) -> dict[str, Any]:
+        return self._aux_budget().usage(cycle=cycle)
+
+    def aux_budget_feature_set(
+        self,
+        *,
+        feature_id: str,
+        enabled: bool,
+        group_allowlist: list[str] | None = None,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        ledger = self._aux_budget()
+        if ledger.degraded:
+            return {"ok": False, "error": "store_degraded", "degraded": True}
+        try:
+            return {
+                "ok": True,
+                "status": ledger.set_feature(
+                    feature_id,
+                    enabled=enabled,
+                    group_allowlist=group_allowlist,
+                    expected_revision=expected_revision,
+                ),
+            }
+        except aux_budget.AuxBudgetError as exc:
+            return exc.as_dict()
+
+    def aux_budget_cycle_reset(self, *, expected_revision: int | None = None) -> dict[str, Any]:
+        ledger = self._aux_budget()
+        if ledger.degraded:
+            return {"ok": False, "error": "store_degraded", "degraded": True}
+        try:
+            return {"ok": True, "status": ledger.reset_cycle(expected_revision=expected_revision)}
+        except aux_budget.AuxBudgetError as exc:
+            return exc.as_dict()
+
+    def auxiliary_llm_set(
+        self, *, tier: str, expected_revision: int | None = None
+    ) -> dict[str, Any]:
+        if self._policy_degraded:
+            return {"ok": False, "error": "store_degraded"}
+        try:
+            effective = self._policy().set_global_override(
+                plugin_id="auxiliary_llm",
+                enabled=tier != "off",
+                params={"tier": tier},
+                expected_revision=expected_revision,
+            )
+        except capability_policy.PolicyError as exc:
+            return {
+                "ok": False,
+                "error": exc.code,
+                "message": str(exc),
+                "revision": self._policy().revision,
+            }
+        return {
+            "ok": True,
+            "effective": effective.as_dict(),
+            "revision": self._policy().revision,
+            "auxiliary_llm": self.auxiliary_llm(),
+        }
+
+    def auxiliary_llm_reset(
+        self, *, expected_revision: int | None = None
+    ) -> dict[str, Any]:
+        if self._policy_degraded:
+            return {"ok": False, "error": "store_degraded"}
+        try:
+            effective = self._policy().reset_global_override(
+                plugin_id="auxiliary_llm",
+                expected_revision=expected_revision,
+            )
+        except capability_policy.PolicyError as exc:
+            return {
+                "ok": False,
+                "error": exc.code,
+                "message": str(exc),
+                "revision": self._policy().revision,
+            }
+        return {
+            "ok": True,
+            "effective": effective.as_dict(),
+            "revision": self._policy().revision,
+            "auxiliary_llm": self.auxiliary_llm(),
+        }
+
+    def auxiliary_llm(self) -> dict[str, Any]:
+        policy = self.policy_effective("auxiliary_llm")
+        params = policy.get("params") if isinstance(policy, dict) else None
+        merged = dict(capability_policy.AUXILIARY_LLM_DEFAULTS)
+        if isinstance(params, dict):
+            merged.update(params)
+        merged["enabled"] = bool(policy.get("enabled", True)) if isinstance(policy, dict) else True
+        merged["degraded"] = bool(policy.get("degraded", self._policy_degraded)) if isinstance(policy, dict) else bool(self._policy_degraded)
+        merged["revision"] = int(policy.get("revision", 0)) if isinstance(policy, dict) else int(self._policy().revision)
+        return merged
 
     def policy_snapshot(self) -> dict[str, Any]:
         result = self._policy().snapshot()
@@ -2269,6 +2411,79 @@ class SafeToolsPlugin(Star):
                 return decision.to_dict()
             if request.method == "policy.snapshot":
                 return self.policy_snapshot()
+            if request.method == "aux_budget.get":
+                return self.aux_budget_get()
+            if request.method == "aux_budget.usage":
+                cycle = body.get("cycle")
+                if cycle is not None and not isinstance(cycle, str):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                return self.aux_budget_usage(cycle=cycle)
+            if request.method == "aux_budget.set":
+                tier = body.get("tier")
+                enabled = body.get("enabled")
+                if tier is not None and (not isinstance(tier, str) or not tier):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                if enabled is not None and not isinstance(enabled, bool):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                expected_revision = body.get("expected_revision")
+                if expected_revision is not None and (
+                    isinstance(expected_revision, bool)
+                    or not isinstance(expected_revision, int)
+                ):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                return self.aux_budget_set(
+                    tier=tier, enabled=enabled, expected_revision=expected_revision
+                )
+            if request.method == "aux_budget.feature_set":
+                feature_id = body.get("feature_id")
+                enabled = body.get("enabled")
+                if not isinstance(feature_id, str) or not feature_id:
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                if not isinstance(enabled, bool):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                allowlist = body.get("group_allowlist")
+                if allowlist is not None and not isinstance(allowlist, list):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                expected_revision = body.get("expected_revision")
+                if expected_revision is not None and (
+                    isinstance(expected_revision, bool)
+                    or not isinstance(expected_revision, int)
+                ):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                return self.aux_budget_feature_set(
+                    feature_id=feature_id,
+                    enabled=enabled,
+                    group_allowlist=allowlist,
+                    expected_revision=expected_revision,
+                )
+            if request.method == "aux_budget.cycle_reset":
+                expected_revision = body.get("expected_revision")
+                if expected_revision is not None and (
+                    isinstance(expected_revision, bool)
+                    or not isinstance(expected_revision, int)
+                ):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                return self.aux_budget_cycle_reset(expected_revision=expected_revision)
+            if request.method == "auxiliary_llm.get":
+                return self.auxiliary_llm()
+            if request.method == "auxiliary_llm.set":
+                tier = body.get("tier")
+                if not isinstance(tier, str) or not tier:
+                    raise control_server.ControlError(
+                        "invalid_args", http_status=400
+                    )
+                expected_revision = body.get("expected_revision")
+                if expected_revision is not None and (
+                    isinstance(expected_revision, bool)
+                    or not isinstance(expected_revision, int)
+                ):
+                    raise control_server.ControlError(
+                        "invalid_args", http_status=400
+                    )
+                return self.auxiliary_llm_set(
+                    tier=tier,
+                    expected_revision=expected_revision,
+                )
             if request.method in {"policy.set", "policy.reset"}:
                 plugin_id = body.get("plugin_id")
                 if not isinstance(plugin_id, str) or not plugin_id:

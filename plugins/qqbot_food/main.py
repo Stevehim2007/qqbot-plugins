@@ -855,8 +855,6 @@ class FoodPlugin(Star):
         search_name = _text(request.get("name"))
         context: list[str] = []
         policy_params = self._capability_params(event)
-        if not request.get("location") and policy_params.get("default_city"):
-            request["location"] = _text(policy_params.get("default_city"))
         if request.get("location"):
             resolved = await self._resolve_search_location(
                 request["location"]
@@ -892,6 +890,34 @@ class FoodPlugin(Star):
                 if group_location is not None:
                     location_id = group_location.get("id")
                     location_name = _text(group_location.get("name"))
+            if location_id is None:
+                fallback_city = _text(policy_params.get("default_city"))
+                if fallback_city:
+                    resolved = await self._resolve_search_location(fallback_city)
+                    if resolved.get("error") == "timeout":
+                        return self._plain(event, self._reply(timeout_key))
+                    if resolved.get("error") == "ambiguous":
+                        return self._plain(
+                            event,
+                            self._reply(
+                                location_ambiguous_key,
+                                location=fallback_city,
+                                options="；".join(resolved.get("options", [])[:3]),
+                            ),
+                        )
+                    if resolved.get("error") == "not_found":
+                        return self._plain(
+                            event,
+                            self._reply(
+                                location_not_found_key,
+                                location=fallback_city,
+                            ),
+                        )
+                    if resolved.get("error"):
+                        self._log_info("search location api failure")
+                        return self._plain(event, self._reply(error_key))
+                    location_id = resolved.get("id")
+                    location_name = _text(resolved.get("name"))
 
         if context and search_name:
             stripped, matched = food.strip_food_group_city_prefix(

@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from control_server import CONTROL_METHODS
 from _support import base_config, make_plugin
 
 
@@ -44,6 +45,60 @@ class PolicyApiTests(unittest.TestCase):
             self.plugin.policy_effective("qqbot_food", group_id="20002")["enabled"]
         )
         self.assertEqual(reset["revision"], 2)
+
+    def test_auxiliary_tier_defaults_and_set(self):
+        status = self.plugin.auxiliary_llm()
+        self.assertEqual(status["tier"], "standard")
+        self.assertEqual(status["monthly_budget_cny"], 20)
+        result = self.plugin.auxiliary_llm_set(tier="advanced")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["auxiliary_llm"]["tier"], "advanced")
+        self.assertTrue(result["auxiliary_llm"]["enabled"])
+        self.assertEqual(result["revision"], 1)
+        off = self.plugin.auxiliary_llm_set(tier="off")
+        self.assertTrue(off["ok"])
+        self.assertFalse(off["auxiliary_llm"]["enabled"])
+        reset = self.plugin.auxiliary_llm_reset(
+            expected_revision=off["revision"]
+        )
+        self.assertTrue(reset["ok"])
+        self.assertEqual(self.plugin.auxiliary_llm()["tier"], "standard")
+
+    def test_aux_budget_get_set_usage_and_feature(self):
+        info = self.plugin.aux_budget_get()
+        self.assertTrue(info["ok"])
+        self.assertEqual(info["status"]["tier"], "standard")
+        self.assertEqual(info["status"]["limit_cny"], 20.0)
+        self.assertEqual(len(info["config"]["features"]), 13)
+
+        updated = self.plugin.aux_budget_set(tier="light")
+        self.assertTrue(updated["ok"])
+        self.assertEqual(updated["status"]["limit_cny"], 10.0)
+        feature = self.plugin.aux_budget_feature_set(
+            feature_id="memory.extract", enabled=False
+        )
+        self.assertTrue(feature["ok"])
+        self.assertFalse(feature["status"]["ok"] is False)  # status is a read model
+
+        reservation = self.plugin._aux_budget().reserve(
+            "sticker.ai_collect", estimate_cny=0.2, request_id="api-1"
+        )
+        self.plugin._aux_budget().commit(reservation["reservation_id"], actual_cost_cny=0.1)
+        usage = self.plugin.aux_budget_usage()
+        self.assertEqual(usage["spent_cny"], 0.1)
+        self.assertTrue(any(item["feature_id"] == "sticker.ai_collect" for item in usage["features"]))
+        self.plugin.aux_budget_cycle_reset()
+        self.assertEqual(self.plugin.aux_budget_usage()["spent_cny"], 0.0)
+
+    def test_aux_budget_control_methods_are_allowlisted(self):
+        for method in (
+            "aux_budget.get",
+            "aux_budget.set",
+            "aux_budget.usage",
+            "aux_budget.feature_set",
+            "aux_budget.cycle_reset",
+        ):
+            self.assertIn(method, CONTROL_METHODS)
 
     def test_stale_revision_is_reported(self):
         first = self.plugin.policy_set(

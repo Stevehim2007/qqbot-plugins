@@ -245,6 +245,7 @@ class StaticSecurityTests(unittest.TestCase):
             "food",
             "web_fetch",
             "auth",
+            "aux_budget",
             "call_ledger",
             "capability_policy",
             "confirmation",
