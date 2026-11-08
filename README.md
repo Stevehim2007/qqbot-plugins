@@ -4,6 +4,8 @@
 
 当前正式发布：**v4.3.1**。
 
+当前测试发布：**v4.4.0-beta.1**（V1：per-group capability policy + auxiliary LLM budget ledger）。
+
 ## 插件
 
 - `qqbot_core_reply`：唯一主回复/LLM owner，负责 direct/astrbot memory、人格、会话、工具目录 handshake。

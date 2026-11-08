@@ -5,7 +5,7 @@
     {
       "id": "qqbot_core_reply",
       "name": "QQ 核心回复",
-      "version": "4.0.3",
+      "version": "4.0.4",
       "description": "唯一主回复/LLM owner；自包含 stdlib-only，负责 direct/astrbot memory、人格、会话、工具说明 handshake 与本地点歌。",
       "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
@@ -44,15 +44,15 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "ff473581c4c1fdedd0a160548342e24c3435b9f1e9385a41256104d5ca0d0cd1",
-      "size": 101687,
+      "sha256": "22c250be095c83c2587e4bf910b326ab67ef2dd88598dc16278af6d45fdc78d1",
+      "size": 102184,
       "root": "qqbot_core_reply",
-      "download": "qqbot_core_reply-4.0.3.zip"
+      "download": "qqbot_core_reply-4.0.4.zip"
     },
     {
       "id": "qqbot_safe_tools",
       "name": "Safe Tools 协议",
-      "version": "3.1.1",
+      "version": "3.2.0",
       "description": "唯一负责 [[tool:...]] marker 解析、校验、权限、冷却与跨插件安全调度的插件；不调用 LLM。",
       "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
@@ -110,10 +110,10 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "fbdade336e51751e07ff8a7e323d0856d6bc808d1af37e9dc098fae25e6487a2",
-      "size": 104212,
+      "sha256": "3d367eaa16e712314b5e54a3ebf7f005aba8401c7629f8b2919ed67096294c70",
+      "size": 123445,
       "root": "qqbot_safe_tools",
-      "download": "qqbot_safe_tools-3.1.1.zip"
+      "download": "qqbot_safe_tools-3.2.0.zip"
     },
     {
       "id": "qqbot_web_reader",
@@ -179,7 +179,7 @@
           "marker_example": "[[tool:fetch_webpage url=\"https://example.com/article\" max_chars=3000]]"
         }
       ],
-      "sha256": "047a8df525e4d7a7fcd44f39e2957f3587a3ee8854bae8835890bc036489d670",
+      "sha256": "05c4acf6e6d52a4abcdd1b671e9ce0c55a2fa85851c47900e599e28442cae782",
       "size": 40447,
       "root": "qqbot_web_reader",
       "download": "qqbot_web_reader-2.0.1.zip"
@@ -259,7 +259,7 @@
           "marker_example": "[[tool:search_images keyword=\"关键词\" count=1]]"
         }
       ],
-      "sha256": "8ebaeae7111d193abc402019101d5d5c42d7d9ae6a5b23e77f4c1b7cab57c8be",
+      "sha256": "b8dbbd49425513a460cbabd92d137e2ce5af4aec56265bef076783e9eb27ff5d",
       "size": 58195,
       "root": "qqbot_image_search",
       "download": "qqbot_image_search-2.0.1.zip"
@@ -267,7 +267,7 @@
     {
       "id": "qqbot_food",
       "name": "Food 查询与提交",
-      "version": "3.0.3",
+      "version": "3.0.4",
       "description": "独立 Food 餐厅查询、标签/地点解析、草稿确认与评价提交；固定 https://food.dlsz.top，仅标准库，不调用聊天模型。",
       "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
@@ -398,15 +398,15 @@
           "marker_example": "[[tool:submit_food_review restaurant=\"店名\" location=\"位置\" taste=\"4.5\" value=\"3.5\" comment=\"评价\" tags=\"火锅,夜宵\"]]"
         }
       ],
-      "sha256": "b2b21abebe0527b4852bd1fd67dcaef58774279c9f0a509ef012c84affbe5a86",
-      "size": 104599,
+      "sha256": "891c89cbb0c55991e908b2594e9bdfa51d3b28f4a4dec3b736ab169a9aaad427",
+      "size": 105405,
       "root": "qqbot_food",
-      "download": "qqbot_food-3.0.3.zip"
+      "download": "qqbot_food-3.0.4.zip"
     },
     {
       "id": "qqbot_stickers",
       "name": "表情收藏与发送",
-      "version": "3.0.2",
+      "version": "3.0.3",
       "description": "独立、自包含的收藏表情库：命令、确定性自然语言、SHA 去重、原子索引、旧数据迁移与安全 core-reply 装饰。",
       "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
@@ -512,15 +512,15 @@
           "marker_example": "[[tool:list_sticker_categories()]]"
         }
       ],
-      "sha256": "da219243a1c715e99b3d40d992bc0763ce2262a6f223024e19eaae63a27645e0",
-      "size": 103104,
+      "sha256": "a98e559a729f12faeb9efa40769ec42706cb382ee0603696726e3e28109ca06c",
+      "size": 103569,
       "root": "qqbot_stickers",
-      "download": "qqbot_stickers-3.0.2.zip"
+      "download": "qqbot_stickers-3.0.3.zip"
     },
     {
       "id": "qqbot_memory_commands",
       "name": "记忆管理",
-      "version": "4.0.1",
+      "version": "4.0.2",
       "description": "独立 /记忆（别名 /记忆管理）命令；复用 AstrBot 原生长期记忆服务，不调用聊天模型。",
       "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
@@ -567,10 +567,14 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "5866c4174285e353e325aea35c31e09267d5bf68a4186cef2f46066f72d0eb45",
-      "size": 74892,
+      "sha256": "7673df121d4e5bf97622973d8415d14bde889ce5f4ce3978706a0867469e4a5f",
+      "size": 75217,
       "root": "qqbot_memory_commands",
-      "download": "qqbot_memory_commands-4.0.1.zip"
+      "download": "qqbot_memory_commands-4.0.2.zip"
     }
-  ]
+  ],
+  "group_param_registry": {
+    "file": "group_param_registry.json",
+    "registry_revision": "9e8e3294ca2ef5f246df50023a855d08eac00c0ce2ba35528dfd80c0933ef29e"
+  }
 }

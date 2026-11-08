@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "registry_revision": "9e8e3294ca2ef5f246df50023a855d08eac00c0ce2ba35528dfd80c0933ef29e",
+  "plugins": {
+    "qqbot_core_reply": {
+      "participation.reply_probability": {
+        "kind": "float",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": 0.0,
+        "maximum": 1.0,
+        "max_chars": null,
+        "enum": []
+      },
+      "participation.timezone": {
+        "kind": "str",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": null,
+        "maximum": null,
+        "max_chars": 64,
+        "enum": []
+      },
+      "context.max_chars": {
+        "kind": "int",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": 500,
+        "maximum": 8000,
+        "max_chars": null,
+        "enum": []
+      },
+      "persona.profile_id": {
+        "kind": "str",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": null,
+        "maximum": null,
+        "max_chars": 64,
+        "enum": []
+      }
+    },
+    "qqbot_safe_tools": {
+      "tool_allowlist": {
+        "kind": "list_str",
+        "group_overridable": false,
+        "sensitive": true,
+        "minimum": null,
+        "maximum": null,
+        "max_chars": 64,
+        "enum": []
+      },
+      "tool_cooldown_seconds": {
+        "kind": "int",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": 0,
+        "maximum": 3600,
+        "max_chars": null,
+        "enum": []
+      },
+      "require_confirm": {
+        "kind": "bool",
+        "group_overridable": false,
+        "sensitive": false,
+        "minimum": null,
+        "maximum": null,
+        "max_chars": null,
+        "enum": []
+      }
+    },
+    "qqbot_web_reader": {},
+    "qqbot_image_search": {},
+    "qqbot_food": {
+      "default_city": {
+        "kind": "str",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": null,
+        "maximum": null,
+        "max_chars": 32,
+        "enum": []
+      },
+      "max_results": {
+        "kind": "int",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": 1,
+        "maximum": 20,
+        "max_chars": null,
+        "enum": []
+      },
+      "sort": {
+        "kind": "enum",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": null,
+        "maximum": null,
+        "max_chars": null,
+        "enum": [
+          "total",
+          "taste",
+          "service",
+          "environment"
+        ]
+      },
+      "allow_submit_review": {
+        "kind": "bool",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": null,
+        "maximum": null,
+        "max_chars": null,
+        "enum": []
+      }
+    },
+    "qqbot_stickers": {
+      "decoration_probability": {
+        "kind": "float",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": 0.0,
+        "maximum": 1.0,
+        "max_chars": null,
+        "enum": []
+      },
+      "ai_decoration_enabled": {
+        "kind": "bool",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": null,
+        "maximum": null,
+        "max_chars": null,
+        "enum": []
+      },
+      "ai_decoration_probability": {
+        "kind": "float",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": 0.0,
+        "maximum": 1.0,
+        "max_chars": null,
+        "enum": []
+      },
+      "candidate_count": {
+        "kind": "int",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": 1,
+        "maximum": 20,
+        "max_chars": null,
+        "enum": []
+      },
+      "collect_enabled": {
+        "kind": "bool",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": null,
+        "maximum": null,
+        "max_chars": null,
+        "enum": []
+      }
+    },
+    "qqbot_memory_commands": {
+      "allow_write": {
+        "kind": "bool",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": null,
+        "maximum": null,
+        "max_chars": null,
+        "enum": []
+      },
+      "max_results": {
+        "kind": "int",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": 1,
+        "maximum": 50,
+        "max_chars": null,
+        "enum": []
+      },
+      "visible_scopes": {
+        "kind": "list_str",
+        "group_overridable": false,
+        "sensitive": true,
+        "minimum": null,
+        "maximum": null,
+        "max_chars": 16,
+        "enum": []
+      }
+    }
+  }
+}

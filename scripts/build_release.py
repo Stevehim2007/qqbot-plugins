@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -75,6 +76,7 @@ REQUIRES: dict[str, list[dict[str, Any]]] = {
 CONFLICTS = ["qqbot_enhancer", "qqbot_core_full"]
 CONFIG_SCHEMA_VERSION = 1
 DATA_SCHEMA_VERSION = 1
+GROUP_REGISTRY_SCHEMA_VERSION = 1
 DISPLAY_NAMES = {
     "qqbot_core_reply": "QQ 核心回复",
     "qqbot_safe_tools": "Safe Tools 协议",
@@ -300,6 +302,37 @@ def _catalog_entries(tag: str) -> tuple[list[dict[str, Any]], list[dict[str, Any
     return local, remote
 
 
+def _group_param_registry() -> dict[str, Any]:
+    """Build the frozen group-overridable parameter registry from ParamSpec."""
+    module_path = PLUGIN_ROOT / "qqbot_safe_tools" / "capability_policy.py"
+    spec = importlib.util.spec_from_file_location("_qqbot_capability_policy_for_build", module_path)
+    if spec is None or spec.loader is None:
+        raise BuildError("无法加载 capability_policy 参数规范")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    plugins: dict[str, dict[str, Any]] = {}
+    for plugin_id in FINAL_PLUGINS:
+        params: dict[str, Any] = {}
+        for name, param in module.PLUGIN_PARAM_SPECS.get(plugin_id, {}).items():
+            params[name] = {
+                "kind": param.kind,
+                "group_overridable": bool(param.group_overridable),
+                "sensitive": bool(param.sensitive),
+                "minimum": param.minimum,
+                "maximum": param.maximum,
+                "max_chars": param.max_chars,
+                "enum": list(param.enum),
+            }
+        plugins[plugin_id] = params
+    canonical = json.dumps(plugins, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return {
+        "schema_version": GROUP_REGISTRY_SCHEMA_VERSION,
+        "registry_revision": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+        "plugins": plugins,
+    }
+
+
 def _write_json(path: Path, value: Any) -> None:
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     try:
@@ -326,11 +359,34 @@ def build(tag: str, *, clean: bool = True) -> dict[str, Any]:
             if old.is_file() and old.suffix == ".zip":
                 old.unlink()
     local, remote = _catalog_entries(tag)
-    catalog = {"schema_version": 2, "catalog_id": "qqbot-plugins", "plugins": local}
-    manifest = {"schema_version": 2, "catalog_id": "qqbot-plugins", "plugins": remote}
+    registry = _group_param_registry()
+    _write_json(ROOT / "group_param_registry.json", registry)
+    registry_ref = {
+        "file": "group_param_registry.json",
+        "registry_revision": registry["registry_revision"],
+    }
+    catalog = {
+        "schema_version": 2,
+        "catalog_id": "qqbot-plugins",
+        "plugins": local,
+        "group_param_registry": registry_ref,
+    }
+    manifest = {
+        "schema_version": 2,
+        "catalog_id": "qqbot-plugins",
+        "plugins": remote,
+        "group_param_registry": registry_ref,
+    }
     _write_json(ROOT / "catalog.json", catalog)
     _write_json(ROOT / "manifest.json", manifest)
-    return {"tag": tag, "plugins": local, "catalog": str(ROOT / "catalog.json"), "manifest": str(ROOT / "manifest.json")}
+    return {
+        "tag": tag,
+        "plugins": local,
+        "catalog": str(ROOT / "catalog.json"),
+        "manifest": str(ROOT / "manifest.json"),
+        "group_param_registry": str(ROOT / "group_param_registry.json"),
+        "registry_revision": registry["registry_revision"],
+    }
 
 
 def main(argv: list[str] | None = None) -> int:

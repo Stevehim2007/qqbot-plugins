@@ -151,6 +151,23 @@ class ArchiveContractTests(unittest.TestCase):
                 self.assertIn(f"{plugin_id}/VERSION", names)
                 self.assertFalse(any("__pycache__" in name or name.endswith(".pyc") for name in names))
 
+    def test_group_param_registry_is_frozen_and_matches_catalog(self):
+        path = ROOT / "group_param_registry.json"
+        self.assertTrue(path.is_file())
+        registry = json.loads(path.read_text(encoding="utf-8-sig"))
+        self.assertEqual(registry.get("schema_version"), 1)
+        self.assertRegex(registry.get("registry_revision", ""), r"^[0-9a-f]{64}$")
+        self.assertEqual(set(registry.get("plugins", {})), FINAL_PLUGINS)
+        safe = registry["plugins"]["qqbot_safe_tools"]
+        self.assertFalse(safe["tool_allowlist"]["group_overridable"])
+        self.assertTrue(safe["tool_allowlist"]["sensitive"])
+        self.assertTrue(safe["tool_cooldown_seconds"]["group_overridable"])
+        self.assertFalse(safe["require_confirm"]["group_overridable"])
+        catalog = self._catalog("catalog.json")
+        manifest = self._catalog("manifest.json")
+        self.assertEqual(catalog["group_param_registry"]["registry_revision"], registry["registry_revision"])
+        self.assertEqual(manifest["group_param_registry"]["registry_revision"], registry["registry_revision"])
+
     def test_no_retired_archives_or_catalog_entries(self):
         for path in ARTIFACTS.glob("*.zip"):
             self.assertFalse(path.name.startswith("qqbot_enhancer-"), path.name)

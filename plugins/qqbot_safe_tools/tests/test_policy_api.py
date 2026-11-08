@@ -46,24 +46,6 @@ class PolicyApiTests(unittest.TestCase):
         )
         self.assertEqual(reset["revision"], 2)
 
-    def test_auxiliary_tier_defaults_and_set(self):
-        status = self.plugin.auxiliary_llm()
-        self.assertEqual(status["tier"], "standard")
-        self.assertEqual(status["monthly_budget_cny"], 20)
-        result = self.plugin.auxiliary_llm_set(tier="advanced")
-        self.assertTrue(result["ok"])
-        self.assertEqual(result["auxiliary_llm"]["tier"], "advanced")
-        self.assertTrue(result["auxiliary_llm"]["enabled"])
-        self.assertEqual(result["revision"], 1)
-        off = self.plugin.auxiliary_llm_set(tier="off")
-        self.assertTrue(off["ok"])
-        self.assertFalse(off["auxiliary_llm"]["enabled"])
-        reset = self.plugin.auxiliary_llm_reset(
-            expected_revision=off["revision"]
-        )
-        self.assertTrue(reset["ok"])
-        self.assertEqual(self.plugin.auxiliary_llm()["tier"], "standard")
-
     def test_aux_budget_get_set_usage_and_feature(self):
         info = self.plugin.aux_budget_get()
         self.assertTrue(info["ok"])

@@ -174,8 +174,6 @@ _CONTROL_RPC_ARGUMENTS: dict[str, frozenset[str]] = {
             "expected_revision",
         }
     ),
-    "auxiliary_llm.get": frozenset(),
-    "auxiliary_llm.set": frozenset({"tier", "expected_revision"}),
     "aux_budget.get": frozenset(),
     "aux_budget.set": frozenset({"tier", "enabled", "expected_revision"}),
     "aux_budget.usage": frozenset({"cycle"}),
@@ -595,67 +593,6 @@ class SafeToolsPlugin(Star):
             return {"ok": True, "status": ledger.reset_cycle(expected_revision=expected_revision)}
         except aux_budget.AuxBudgetError as exc:
             return exc.as_dict()
-
-    def auxiliary_llm_set(
-        self, *, tier: str, expected_revision: int | None = None
-    ) -> dict[str, Any]:
-        if self._policy_degraded:
-            return {"ok": False, "error": "store_degraded"}
-        try:
-            effective = self._policy().set_global_override(
-                plugin_id="auxiliary_llm",
-                enabled=tier != "off",
-                params={"tier": tier},
-                expected_revision=expected_revision,
-            )
-        except capability_policy.PolicyError as exc:
-            return {
-                "ok": False,
-                "error": exc.code,
-                "message": str(exc),
-                "revision": self._policy().revision,
-            }
-        return {
-            "ok": True,
-            "effective": effective.as_dict(),
-            "revision": self._policy().revision,
-            "auxiliary_llm": self.auxiliary_llm(),
-        }
-
-    def auxiliary_llm_reset(
-        self, *, expected_revision: int | None = None
-    ) -> dict[str, Any]:
-        if self._policy_degraded:
-            return {"ok": False, "error": "store_degraded"}
-        try:
-            effective = self._policy().reset_global_override(
-                plugin_id="auxiliary_llm",
-                expected_revision=expected_revision,
-            )
-        except capability_policy.PolicyError as exc:
-            return {
-                "ok": False,
-                "error": exc.code,
-                "message": str(exc),
-                "revision": self._policy().revision,
-            }
-        return {
-            "ok": True,
-            "effective": effective.as_dict(),
-            "revision": self._policy().revision,
-            "auxiliary_llm": self.auxiliary_llm(),
-        }
-
-    def auxiliary_llm(self) -> dict[str, Any]:
-        policy = self.policy_effective("auxiliary_llm")
-        params = policy.get("params") if isinstance(policy, dict) else None
-        merged = dict(capability_policy.AUXILIARY_LLM_DEFAULTS)
-        if isinstance(params, dict):
-            merged.update(params)
-        merged["enabled"] = bool(policy.get("enabled", True)) if isinstance(policy, dict) else True
-        merged["degraded"] = bool(policy.get("degraded", self._policy_degraded)) if isinstance(policy, dict) else bool(self._policy_degraded)
-        merged["revision"] = int(policy.get("revision", 0)) if isinstance(policy, dict) else int(self._policy().revision)
-        return merged
 
     def policy_snapshot(self) -> dict[str, Any]:
         result = self._policy().snapshot()
@@ -2464,26 +2401,6 @@ class SafeToolsPlugin(Star):
                 ):
                     raise control_server.ControlError("invalid_args", http_status=400)
                 return self.aux_budget_cycle_reset(expected_revision=expected_revision)
-            if request.method == "auxiliary_llm.get":
-                return self.auxiliary_llm()
-            if request.method == "auxiliary_llm.set":
-                tier = body.get("tier")
-                if not isinstance(tier, str) or not tier:
-                    raise control_server.ControlError(
-                        "invalid_args", http_status=400
-                    )
-                expected_revision = body.get("expected_revision")
-                if expected_revision is not None and (
-                    isinstance(expected_revision, bool)
-                    or not isinstance(expected_revision, int)
-                ):
-                    raise control_server.ControlError(
-                        "invalid_args", http_status=400
-                    )
-                return self.auxiliary_llm_set(
-                    tier=tier,
-                    expected_revision=expected_revision,
-                )
             if request.method in {"policy.set", "policy.reset"}:
                 plugin_id = body.get("plugin_id")
                 if not isinstance(plugin_id, str) or not plugin_id:

@@ -112,29 +112,6 @@ PLUGIN_PARAM_SPECS: dict[str, dict[str, ParamSpec]] = {
         "inject.max_entries": _p("int", minimum=1, maximum=20),
         "inject.max_chars": _p("int", minimum=0, maximum=1000),
     },
-    "auxiliary_llm": {
-        "tier": _p(
-            "enum",
-            enum=("off", "light", "standard", "advanced", "full"),
-            group_overridable=False,
-        ),
-        "monthly_budget_cny": _p(
-            "int", minimum=0, maximum=1000, group_overridable=False
-        ),
-        "warning_ratio": _p(
-            "float", minimum=0.0, maximum=1.0, group_overridable=False
-        ),
-        "stop_ratio": _p(
-            "float", minimum=0.0, maximum=1.0, group_overridable=False
-        ),
-    },
-}
-
-AUXILIARY_LLM_DEFAULTS: dict[str, Any] = {
-    "tier": "standard",
-    "monthly_budget_cny": 20,
-    "warning_ratio": 0.8,
-    "stop_ratio": 1.0,
 }
 
 

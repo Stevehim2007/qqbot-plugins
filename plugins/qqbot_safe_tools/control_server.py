@@ -44,8 +44,6 @@ CONTROL_METHODS = frozenset(
         "policy.snapshot",
         "policy.set",
         "policy.reset",
-        "auxiliary_llm.get",
-        "auxiliary_llm.set",
         "aux_budget.get",
         "aux_budget.set",
         "aux_budget.usage",
