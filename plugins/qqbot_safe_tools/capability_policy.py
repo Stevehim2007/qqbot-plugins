@@ -41,6 +41,7 @@ class ParamSpec:
     group_overridable: bool = True
     sensitive: bool = False
     default: Any = None
+    config_key: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,11 +70,11 @@ def _p(kind: str, **kwargs: Any) -> ParamSpec:
 # make a parameter writable.
 PLUGIN_PARAM_SPECS: dict[str, dict[str, ParamSpec]] = {
     "qqbot_core_reply": {
-        "participation.reply_probability": _p("float", minimum=0.0, maximum=1.0, default=0.12),
-        "participation.timezone": _p("str", max_chars=64, default="Asia/Shanghai"),
-        "context.max_chars": _p("int", minimum=500, maximum=8000, default=2000),
+        "participation.reply_probability": _p("float", minimum=0.0, maximum=1.0, default=0.12, config_key="participation.group_probability"),
+        "participation.timezone": _p("str", max_chars=64, default="Asia/Shanghai", config_key="participation.timezone"),
+        "context.max_chars": _p("int", minimum=500, maximum=8000, default=2000, config_key="max_input_chars"),
         "persona.profile_id": _p("str", max_chars=64, default=""),
-        "help_command_enabled": _p("bool", default=True),
+        "help_command_enabled": _p("bool", default=True, config_key="help_command_enabled"),
     },
     "qqbot_safe_tools": {
         "tool_allowlist": _p("list_str", max_chars=64, group_overridable=False, sensitive=True),
@@ -81,21 +82,21 @@ PLUGIN_PARAM_SPECS: dict[str, dict[str, ParamSpec]] = {
         "require_confirm": _p("bool", group_overridable=False, default=True),
     },
     "qqbot_food": {
-        "default_city": _p("str", max_chars=32, default=""),
-        "max_results": _p("int", minimum=1, maximum=20, default=5),
-        "sort": _p("enum", enum=("total", "taste", "service", "environment"), default="total"),
-        "allow_submit_review": _p("bool", default=True),
+        "default_city": _p("str", max_chars=32, default="", config_key="food_default_city"),
+        "max_results": _p("int", minimum=1, maximum=20, default=5, config_key="food_max_results"),
+        "sort": _p("enum", enum=("total", "taste", "service", "environment"), default="total", config_key="food_search_sort"),
+        "allow_submit_review": _p("bool", default=True, config_key="food_submit_enabled"),
     },
     "qqbot_stickers": {
-        "decoration_probability": _p("float", minimum=0.0, maximum=1.0, default=1.0),
-        "ai_decoration_enabled": _p("bool", default=False),
-        "ai_decoration_probability": _p("float", minimum=0.0, maximum=1.0, default=0.3),
-        "candidate_count": _p("int", minimum=1, maximum=20, default=20),
-        "collect_enabled": _p("bool", default=False),
+        "decoration_probability": _p("float", minimum=0.0, maximum=1.0, default=1.0, config_key="sticker_decorate_probability"),
+        "ai_decoration_enabled": _p("bool", default=False, config_key="sticker_ai_decorate_enabled"),
+        "ai_decoration_probability": _p("float", minimum=0.0, maximum=1.0, default=0.3, config_key="sticker_ai_decorate_probability"),
+        "candidate_count": _p("int", minimum=1, maximum=20, default=20, config_key="sticker_ai_decorate_max_candidates"),
+        "collect_enabled": _p("bool", default=False, config_key="sticker_ai_collect_enabled"),
     },
     "qqbot_memory_commands": {
         "allow_write": _p("bool", default=False),
-        "max_results": _p("int", minimum=1, maximum=50, default=5),
+        "max_results": _p("int", minimum=1, maximum=50, default=5, config_key="max_results"),
         "visible_scopes": _p("list_str", max_chars=16, group_overridable=False, sensitive=True, default=("group", "user", "conversation", "persona", "global")),
     },
     "qqbot_web_reader": {},
@@ -595,6 +596,7 @@ class CapabilityPolicy:
                     "group_overridable": bool(spec.group_overridable),
                     "sensitive": bool(spec.sensitive),
                     "default": _json_default(spec.default),
+                    "config_key": spec.config_key,
                 }
             return {"plugin_id": plugin, "fields": fields}
 

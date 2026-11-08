@@ -197,6 +197,7 @@ class CapabilityPolicyTests(unittest.TestCase):
         self.assertEqual(snapshot["defaults"]["qqbot_food"]["max_results"], 5)
         schema = self.policy.param_schema("qqbot_food")["fields"]
         self.assertEqual(schema["sort"]["default"], "total")
+        self.assertEqual(schema["sort"]["config_key"], "food_search_sort")
 
     def test_corrupt_store_is_rejected(self):
         self.path.write_text("{not json", encoding="utf-8")
