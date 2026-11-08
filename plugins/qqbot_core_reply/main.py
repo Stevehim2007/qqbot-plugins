@@ -353,6 +353,130 @@ class CoreReplyPlugin(Star):
     # ------------------------------------------------------------------
     # Canonical commands
     # ------------------------------------------------------------------
+    def _group_admin_allowed(self, event: AstrMessageEvent) -> bool:
+        sender = getattr(getattr(event, "message_obj", None), "sender", None)
+        role = str(getattr(sender, "role", "") or "").strip().lower()
+        if role not in {"admin", "owner"}:
+            return False
+        star = self.gateway.safe_tools_star()
+        checker = getattr(star, "group_admin_override_enabled", None)
+        if not callable(checker):
+            return False
+        try:
+            return bool(checker())
+        except Exception:
+            return False
+
+    @filter.platform_adapter_type(_PLATFORM_TYPES, priority=110)
+    @filter.command("分群", priority=110)
+    async def group_policy_command(self, event: AstrMessageEvent):
+        event.should_call_llm(True)
+        group_id = self.persona._safe_group_id(event)
+        if not group_id:
+            yield event.plain_result("分群策略只能在群聊里使用。")
+            event.stop_event()
+            return
+        if not self._group_admin_allowed(event):
+            yield event.plain_result("只有本群群主/管理员可以在群内修改分群策略；完整配置请到 Studio。")
+            event.stop_event()
+            return
+        star = self.gateway.safe_tools_star()
+        if star is None:
+            yield event.plain_result("安全工具插件未就绪，暂时不能读取分群策略。")
+            event.stop_event()
+            return
+        raw = str(getattr(event, "message_str", "") or "").strip()
+        raw = re.sub(r"^[/／]?分群\s*", "", raw, count=1).strip()
+        parts = raw.split()
+        action = parts[0] if parts else "状态"
+        plugin_id = parts[1] if len(parts) > 1 else ""
+
+        def _scope():
+            result = star.policy_scope("group", group_id)
+            return result if isinstance(result, dict) else {}
+
+        try:
+            if action == "状态":
+                data = _scope()
+                lines = [f"分群策略 revision {data.get('revision', 0)}"]
+                plugins = data.get("plugins") if isinstance(data.get("plugins"), dict) else {}
+                if not plugins:
+                    lines.append("当前使用实例默认，无群级覆盖。")
+                for pid, entry in sorted(plugins.items()):
+                    enabled = "开" if bool(entry.get("enabled", True)) else "关"
+                    params = entry.get("params") if isinstance(entry.get("params"), dict) else {}
+                    lines.append(f"{pid}: {enabled}" + (f" · {len(params)} 项覆盖" if params else ""))
+                text = "\n".join(lines[:20])
+            elif action in {"开启", "关闭"}:
+                if not plugin_id:
+                    text = "用法：/分群 开启|关闭 <插件ID>"
+                else:
+                    data = _scope()
+                    existing = data.get("plugins", {}).get(plugin_id, {})
+                    params = existing.get("params", {}) if isinstance(existing, dict) else {}
+                    result = star.policy_set(
+                        plugin_id=plugin_id,
+                        group_id=group_id,
+                        enabled=action == "开启",
+                        params=params if isinstance(params, dict) else {},
+                        expected_revision=data.get("revision"),
+                    )
+                    text = f"{plugin_id} 已{action}。" if result.get("ok") else f"设置失败：{result.get('error', 'unknown')}"
+            elif action == "重置":
+                data = _scope()
+                if plugin_id:
+                    result = star.policy_reset(
+                        plugin_id=plugin_id,
+                        group_id=group_id,
+                        expected_revision=data.get("revision"),
+                    )
+                    text = f"{plugin_id} 已重置。" if result.get("ok") else f"重置失败：{result.get('error', 'unknown')}"
+                else:
+                    result = star.policy_scope_reset(
+                        scope_type="group",
+                        scope_id=group_id,
+                        expected_revision=data.get("revision"),
+                    )
+                    text = "本群全部覆盖已重置。" if result.get("ok") else f"重置失败：{result.get('error', 'unknown')}"
+            elif action == "模板":
+                if not plugin_id:
+                    text = "用法：/分群 模板 <模板ID>"
+                else:
+                    data = _scope()
+                    result = star.policy_template_apply(
+                        group_id=group_id,
+                        template_id=plugin_id,
+                        expected_revision=data.get("revision"),
+                    )
+                    text = f"已应用模板 {plugin_id}。" if result.get("ok") else f"应用失败：{result.get('error', 'unknown')}"
+            elif action == "概率":
+                if not plugin_id:
+                    text = "用法：/分群 概率 0.3"
+                else:
+                    try:
+                        probability = float(plugin_id)
+                    except ValueError:
+                        probability = -1.0
+                    if not 0.0 <= probability <= 1.0:
+                        text = "概率必须在 0 到 1 之间。"
+                    else:
+                        data = _scope()
+                        result = star.policy_set(
+                            plugin_id="qqbot_core_reply",
+                            group_id=group_id,
+                            enabled=True,
+                            params={"participation.reply_probability": probability},
+                            expected_revision=data.get("revision"),
+                        )
+                        text = f"本群非@回复概率已设为 {probability:.2f}。" if result.get("ok") else f"设置失败：{result.get('error', 'unknown')}"
+            else:
+                text = "用法：/分群 状态|开启 <插件>|关闭 <插件>|重置 [插件]|模板 <ID>|概率 <0..1>"
+        except Exception:
+            logger.exception("qqbot_core_reply /分群 命令处理失败")
+            text = "分群策略操作失败，请稍后到 Studio 重试。"
+        yield event.plain_result(text)
+        event.stop_event()
+
     @filter.platform_adapter_type(_PLATFORM_TYPES, priority=110)
     @filter.command("回复", alias={"reply"}, priority=110)
     async def reply_command(self, event: AstrMessageEvent):

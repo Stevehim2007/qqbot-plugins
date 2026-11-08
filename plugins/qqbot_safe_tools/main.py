@@ -154,6 +154,14 @@ _ERROR_TO_REASON: dict[str, str] = {
 
 _CONTROL_RPC_ARGUMENTS: dict[str, frozenset[str]] = {
     "policy.snapshot": frozenset(),
+    "policy.scope": frozenset({"scope_type", "scope_id"}),
+    "policy.scope_reset": frozenset({"scope_type", "scope_id", "expected_revision"}),
+    "policy.audit": frozenset({"scope_type", "scope_id", "limit", "offset"}),
+    "policy.templates": frozenset(),
+    "policy.template_set": frozenset({"template_id", "plugins", "expected_revision"}),
+    "policy.template_delete": frozenset({"template_id", "expected_revision"}),
+    "policy.template_apply": frozenset({"group_id", "template_id", "expected_revision"}),
+    "policy.param_schema": frozenset({"plugin_id"}),
     "policy.set": frozenset(
         {
             "plugin_id",
@@ -594,9 +602,118 @@ class SafeToolsPlugin(Star):
         except aux_budget.AuxBudgetError as exc:
             return exc.as_dict()
 
+    def group_admin_override_enabled(self) -> bool:
+        return self._cfg_bool("group_admin_override_enabled", False)
+
+    def group_admin_max_params_per_group(self) -> int:
+        return self._cfg_int("group_admin_max_params_per_group", 20, minimum=1, maximum=100)
+
     def policy_snapshot(self) -> dict[str, Any]:
         result = self._policy().snapshot()
         result["degraded"] = bool(self._policy_degraded)
+        return result
+
+    def policy_scope(self, scope_type: str, scope_id: str) -> dict[str, Any]:
+        if self._policy_degraded:
+            return {"ok": False, "error": "store_degraded"}
+        try:
+            result = self._policy().scope_snapshot(scope_type, scope_id)
+        except capability_policy.PolicyError as exc:
+            return {"ok": False, "error": exc.code, "message": str(exc), "revision": self._policy().revision}
+        result["degraded"] = bool(self._policy_degraded)
+        return result
+
+    def policy_scope_reset(
+        self,
+        *,
+        scope_type: str,
+        scope_id: str,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        if self._policy_degraded:
+            return {"ok": False, "error": "store_degraded"}
+        try:
+            return self._policy().scope_reset(
+                scope_type, scope_id, expected_revision=expected_revision
+            )
+        except capability_policy.PolicyError as exc:
+            return {"ok": False, "error": exc.code, "message": str(exc), "revision": self._policy().revision}
+
+    def policy_audit(
+        self,
+        *,
+        scope_type: str = "",
+        scope_id: str = "",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        try:
+            result = self._policy().audit_entries(
+                scope_type=scope_type, scope_id=scope_id, limit=limit, offset=offset
+            )
+        except capability_policy.PolicyError as exc:
+            return {"ok": False, "error": exc.code, "message": str(exc)}
+        result["ok"] = True
+        return result
+
+    def policy_templates(self) -> dict[str, Any]:
+        try:
+            result = self._policy().list_templates()
+        except capability_policy.PolicyError as exc:
+            return {"ok": False, "error": exc.code, "message": str(exc)}
+        result["degraded"] = bool(self._policy_degraded)
+        return result
+
+    def policy_template_set(
+        self,
+        *,
+        template_id: str,
+        plugins: dict[str, Any] | None = None,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        if self._policy_degraded:
+            return {"ok": False, "error": "store_degraded"}
+        try:
+            return self._policy().upsert_template(
+                template_id, plugins=plugins, expected_revision=expected_revision
+            )
+        except capability_policy.PolicyError as exc:
+            return {"ok": False, "error": exc.code, "message": str(exc), "revision": self._policy().revision}
+
+    def policy_template_delete(
+        self, *, template_id: str, expected_revision: int | None = None
+    ) -> dict[str, Any]:
+        if self._policy_degraded:
+            return {"ok": False, "error": "store_degraded"}
+        try:
+            return self._policy().delete_template(
+                template_id, expected_revision=expected_revision
+            )
+        except capability_policy.PolicyError as exc:
+            return {"ok": False, "error": exc.code, "message": str(exc), "revision": self._policy().revision}
+
+    def policy_template_apply(
+        self,
+        *,
+        group_id: str,
+        template_id: str,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        if self._policy_degraded:
+            return {"ok": False, "error": "store_degraded"}
+        try:
+            return self._policy().set_group_template(
+                group_id, template_id, expected_revision=expected_revision
+            )
+        except capability_policy.PolicyError as exc:
+            return {"ok": False, "error": exc.code, "message": str(exc), "revision": self._policy().revision}
+
+    def policy_param_schema(self, *, plugin_id: str) -> dict[str, Any]:
+        try:
+            result = self._policy().param_schema(plugin_id)
+        except capability_policy.PolicyError as exc:
+            return {"ok": False, "error": exc.code, "message": str(exc)}
+        result["ok"] = True
         return result
 
     def policy_set(
@@ -2401,6 +2518,73 @@ class SafeToolsPlugin(Star):
                 ):
                     raise control_server.ControlError("invalid_args", http_status=400)
                 return self.aux_budget_cycle_reset(expected_revision=expected_revision)
+            if request.method == "policy.scope":
+                scope_type = body.get("scope_type")
+                scope_id = body.get("scope_id", "")
+                if not isinstance(scope_type, str) or not isinstance(scope_id, str):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                return self.policy_scope(scope_type=scope_type, scope_id=scope_id)
+            if request.method == "policy.scope_reset":
+                scope_type = body.get("scope_type")
+                scope_id = body.get("scope_id")
+                if not isinstance(scope_type, str) or not isinstance(scope_id, str):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                expected_revision = body.get("expected_revision")
+                if expected_revision is not None and (
+                    isinstance(expected_revision, bool) or not isinstance(expected_revision, int)
+                ):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                return self.policy_scope_reset(scope_type=scope_type, scope_id=scope_id, expected_revision=expected_revision)
+            if request.method == "policy.audit":
+                scope_type = body.get("scope_type", "")
+                scope_id = body.get("scope_id", "")
+                if not isinstance(scope_type, str) or not isinstance(scope_id, str):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                try:
+                    limit = int(body.get("limit", 50)); offset = int(body.get("offset", 0))
+                except (TypeError, ValueError):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                return self.policy_audit(scope_type=scope_type, scope_id=scope_id, limit=limit, offset=offset)
+            if request.method == "policy.templates":
+                return self.policy_templates()
+            if request.method == "policy.template_set":
+                template_id = body.get("template_id")
+                plugins = body.get("plugins")
+                if not isinstance(template_id, str) or not template_id:
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                if plugins is not None and not isinstance(plugins, Mapping):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                expected_revision = body.get("expected_revision")
+                if expected_revision is not None and (
+                    isinstance(expected_revision, bool) or not isinstance(expected_revision, int)
+                ):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                return self.policy_template_set(template_id=template_id, plugins=(dict(plugins) if plugins is not None else None), expected_revision=expected_revision)
+            if request.method == "policy.template_delete":
+                template_id = body.get("template_id")
+                if not isinstance(template_id, str) or not template_id:
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                expected_revision = body.get("expected_revision")
+                if expected_revision is not None and (
+                    isinstance(expected_revision, bool) or not isinstance(expected_revision, int)
+                ):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                return self.policy_template_delete(template_id=template_id, expected_revision=expected_revision)
+            if request.method == "policy.template_apply":
+                group_id = body.get("group_id"); template_id = body.get("template_id")
+                if not isinstance(group_id, str) or not isinstance(template_id, str):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                expected_revision = body.get("expected_revision")
+                if expected_revision is not None and (
+                    isinstance(expected_revision, bool) or not isinstance(expected_revision, int)
+                ):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                return self.policy_template_apply(group_id=group_id, template_id=template_id, expected_revision=expected_revision)
+            if request.method == "policy.param_schema":
+                plugin_id = body.get("plugin_id")
+                if not isinstance(plugin_id, str) or not plugin_id:
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                return self.policy_param_schema(plugin_id=plugin_id)
             if request.method in {"policy.set", "policy.reset"}:
                 plugin_id = body.get("plugin_id")
                 if not isinstance(plugin_id, str) or not plugin_id:

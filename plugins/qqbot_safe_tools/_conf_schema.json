@@ -463,5 +463,20 @@
     "description": "控制桥允许scope，JSON/逗号列表",
     "type": "string",
     "default": "global"
+  },
+  "group_admin_override_enabled": {
+    "description": "允许群主/管理员用 /分群 命令修改本群非敏感参数（默认关闭）",
+    "type": "bool",
+    "default": false
+  },
+  "group_admin_max_params_per_group": {
+    "description": "单个群最多允许覆盖的参数数量",
+    "type": "int",
+    "default": 20,
+    "slider": {
+      "min": 1,
+      "max": 100,
+      "step": 1
+    }
   }
 }

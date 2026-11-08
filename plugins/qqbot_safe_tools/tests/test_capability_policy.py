@@ -134,6 +134,63 @@ class CapabilityPolicyTests(unittest.TestCase):
         self.assertTrue(effective.enabled)
         self.assertEqual(dict(effective.params), {})
 
+    def test_scope_snapshot_and_template_crud(self):
+        self.policy.upsert_template(
+            "standard",
+            plugins={
+                "qqbot_food": {
+                    "enabled": True,
+                    "params": {"default_city": "长春市", "max_results": 5},
+                }
+            },
+        )
+        self.policy.set_group_template("g1", "standard", expected_revision=1)
+        self.policy.set_override(
+            plugin_id="qqbot_food",
+            group_id="g1",
+            enabled=False,
+            params={"max_results": 3},
+            expected_revision=2,
+        )
+        snapshot = self.policy.scope_snapshot("group", "g1")
+        self.assertEqual(snapshot["scope_type"], "group")
+        self.assertEqual(snapshot["scope_id"], "g1")
+        self.assertEqual(snapshot["template"], "standard")
+        self.assertFalse(snapshot["plugins"]["qqbot_food"]["enabled"])
+        self.assertEqual(
+            snapshot["effective"]["qqbot_food"]["params"]["default_city"], "长春市"
+        )
+        self.assertEqual(
+            snapshot["effective"]["qqbot_food"]["params"]["max_results"], 3
+        )
+        self.assertIn("default_city", snapshot["schemas"]["qqbot_food"])
+        template_data = self.policy.list_templates()
+        self.assertEqual(template_data["templates"]["standard"]["used_by"], ["g1"])
+
+    def test_scope_reset_and_audit_filter(self):
+        self.policy.set_override(
+            plugin_id="qqbot_food", group_id="g1", params={"max_results": 3}
+        )
+        self.policy.set_override(
+            plugin_id="qqbot_stickers",
+            group_id="g2",
+            params={"decoration_probability": 0.2},
+        )
+        audit = self.policy.audit_entries(scope_type="group", scope_id="g1")
+        self.assertGreaterEqual(audit["total"], 1)
+        self.assertTrue(all(row["target"] == "group:g1" for row in audit["items"]))
+        result = self.policy.scope_reset("group", "g1", expected_revision=self.policy.revision)
+        self.assertTrue(result["ok"])
+        snapshot = self.policy.scope_snapshot("group", "g1")
+        self.assertFalse(snapshot["plugins"])
+
+    def test_param_schema_hides_sensitive_group_writes(self):
+        schema = self.policy.param_schema("qqbot_safe_tools")["fields"]
+        self.assertFalse(schema["tool_allowlist"]["group_overridable"])
+        self.assertTrue(schema["tool_allowlist"]["sensitive"])
+        food = self.policy.param_schema("qqbot_food")["fields"]
+        self.assertTrue(food["default_city"]["group_overridable"])
+
     def test_corrupt_store_is_rejected(self):
         self.path.write_text("{not json", encoding="utf-8")
         with self.assertRaises(PolicyError) as ctx:

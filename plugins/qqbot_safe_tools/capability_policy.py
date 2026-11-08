@@ -525,18 +525,30 @@ class CapabilityPolicy:
             self._save()
             return self.effective(plugin, group_id=target if not is_private else None, user_id=target if is_private else None, is_private=is_private)
 
-    def set_group_template(self, group_id: str, template_id: str) -> None:
+    def set_group_template(
+        self,
+        group_id: str,
+        template_id: str,
+        *,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
         with self._lock:
             self._require_loaded()
+            if expected_revision is not None and int(expected_revision) != self.revision:
+                raise PolicyError("revision_conflict", "policy revision is stale")
             group = _target_id(group_id, "group_id")
+            template = ""
             if template_id:
                 template = _target_id(template_id, "template")
                 if template not in self._store["templates"]:
                     raise PolicyError("unknown_template", "template does not exist")
             entry = self._store["groups"].setdefault(group, {"plugins": {}})
-            entry["template"] = template_id
+            before = str(entry.get("template", "") or "")
+            entry["template"] = template
+            self._audit("apply_template", f"group:{group}", "*", before, template)
             self._store["revision"] = self.revision + 1
             self._save()
+            return {"ok": True, "group_id": group, "template": template, "revision": self.revision}
 
     def set_template_override(
         self,
@@ -560,6 +572,213 @@ class CapabilityPolicy:
             self._audit("set_template", f"template:{template}", plugin, before, override)
             self._store["revision"] = self.revision + 1
             self._save()
+
+    def param_schema(self, plugin_id: str) -> dict[str, Any]:
+        with self._lock:
+            plugin = _plugin_name(plugin_id)
+            fields: dict[str, Any] = {}
+            for name, spec in PLUGIN_PARAM_SPECS.get(plugin, {}).items():
+                fields[name] = {
+                    "kind": spec.kind,
+                    "minimum": spec.minimum,
+                    "maximum": spec.maximum,
+                    "max_chars": spec.max_chars,
+                    "enum": list(spec.enum) if spec.enum else [],
+                    "group_overridable": bool(spec.group_overridable),
+                    "sensitive": bool(spec.sensitive),
+                }
+            return {"plugin_id": plugin, "fields": fields}
+
+    def scope_snapshot(
+        self, scope_type: str, scope_id: str
+    ) -> dict[str, Any]:
+        with self._lock:
+            self._require_loaded()
+            kind = str(scope_type or "").strip().lower()
+            if kind not in {"group", "private", "template", "global"}:
+                raise PolicyError("invalid_scope", "scope_type must be group/private/template/global")
+            if kind == "global":
+                target = "global"
+                entry = {"plugins": deepcopy(self._store["global"]["plugins"])}
+            elif kind == "template":
+                target = _target_id(scope_id, "template_id")
+                entry = deepcopy(self._store["templates"].get(target, {"plugins": {}}))
+            elif kind == "private":
+                target = _target_id(scope_id, "user_id")
+                entry = deepcopy(self._store["private"].get(target, {"plugins": {}}))
+            else:
+                target = _target_id(scope_id, "group_id")
+                entry = deepcopy(self._store["groups"].get(target, {"plugins": {}}))
+            plugins = deepcopy(entry.get("plugins", {}))
+            effective: dict[str, Any] = {}
+            for plugin in PLUGIN_PARAM_SPECS:
+                if kind == "global":
+                    value = self.effective(plugin)
+                elif kind == "template":
+                    value = EffectivePolicy(
+                        plugin_id=plugin,
+                        enabled=True,
+                        params={},
+                        sources=("global",),
+                        revision=self.revision,
+                    )
+                elif kind == "private":
+                    value = self.effective(plugin, user_id=target, is_private=True)
+                else:
+                    value = self.effective(plugin, group_id=target)
+                effective[plugin] = value.as_dict()
+            schemas = {plugin: self.param_schema(plugin)["fields"] for plugin in PLUGIN_PARAM_SPECS}
+            return {
+                "ok": True,
+                "scope_type": kind,
+                "scope_id": target,
+                "template": str(entry.get("template", "") or ""),
+                "plugins": plugins,
+                "effective": effective,
+                "schemas": schemas,
+                "available_plugins": sorted(PLUGIN_PARAM_SPECS),
+                "templates": sorted(self._store["templates"]),
+                "groups": sorted(self._store["groups"]),
+                "private": sorted(self._store["private"]),
+                "revision": self.revision,
+            }
+
+    def scope_reset(
+        self,
+        scope_type: str,
+        scope_id: str,
+        *,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        with self._lock:
+            self._require_loaded()
+            if expected_revision is not None and int(expected_revision) != self.revision:
+                raise PolicyError("revision_conflict", "policy revision is stale")
+            kind = str(scope_type or "").strip().lower()
+            if kind not in {"group", "private"}:
+                raise PolicyError("invalid_scope", "scope_type must be group/private")
+            if kind == "private":
+                target = _target_id(scope_id, "user_id")
+                section = self._store["private"]
+                label = f"private:{target}"
+            else:
+                target = _target_id(scope_id, "group_id")
+                section = self._store["groups"]
+                label = f"group:{target}"
+            before = deepcopy(section.pop(target, None))
+            self._audit("reset_scope", label, "*", before, None)
+            self._store["revision"] = self.revision + 1
+            self._save()
+            return {"ok": True, "revision": self.revision, "before": before}
+
+    def audit_entries(
+        self,
+        *,
+        scope_type: str = "",
+        scope_id: str = "",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        with self._lock:
+            self._require_loaded()
+            prefix = ""
+            if scope_type:
+                kind = str(scope_type).strip().lower()
+                if kind not in {"group", "private", "template", "global"}:
+                    raise PolicyError("invalid_scope", "invalid audit scope")
+                if kind == "global":
+                    prefix = "global"
+                elif kind == "template":
+                    prefix = f"template:{_target_id(scope_id, 'template_id')}"
+                elif kind == "private":
+                    prefix = f"private:{_target_id(scope_id, 'user_id')}"
+                else:
+                    prefix = f"group:{_target_id(scope_id, 'group_id')}"
+            rows = list(reversed(self._store.get("audit", [])))
+            if prefix:
+                rows = [row for row in rows if str(row.get("target", "")).startswith(prefix)]
+            try:
+                limit_value = max(1, min(200, int(limit)))
+                offset_value = max(0, int(offset))
+            except (TypeError, ValueError) as exc:
+                raise PolicyError("invalid_param", "limit/offset must be integers") from exc
+            total = len(rows)
+            return {
+                "total": total,
+                "limit": limit_value,
+                "offset": offset_value,
+                "items": rows[offset_value : offset_value + limit_value],
+                "revision": self.revision,
+            }
+
+    def list_templates(self) -> dict[str, Any]:
+        with self._lock:
+            self._require_loaded()
+            used: dict[str, list[str]] = {}
+            for group_id, entry in self._store["groups"].items():
+                template = str(entry.get("template", "") or "")
+                if template:
+                    used.setdefault(template, []).append(group_id)
+            return {
+                "ok": True,
+                "revision": self.revision,
+                "templates": {
+                    template_id: {
+                        "plugins": deepcopy(entry.get("plugins", {})),
+                        "used_by": used.get(template_id, []),
+                    }
+                    for template_id, entry in self._store["templates"].items()
+                },
+            }
+
+    def upsert_template(
+        self,
+        template_id: str,
+        *,
+        plugins: Mapping[str, Any] | None = None,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        with self._lock:
+            self._require_loaded()
+            if expected_revision is not None and int(expected_revision) != self.revision:
+                raise PolicyError("revision_conflict", "policy revision is stale")
+            template = _target_id(template_id, "template")
+            if plugins is not None:
+                if not isinstance(plugins, Mapping):
+                    raise PolicyError("invalid_param", "plugins must be an object")
+                normalized = self._normalise_plugins(plugins)
+            else:
+                normalized = deepcopy(self._store["templates"].get(template, {}).get("plugins", {}))
+            before = deepcopy(self._store["templates"].get(template))
+            self._store["templates"][template] = {"plugins": normalized}
+            self._audit("set_template", f"template:{template}", "*", before, {"plugins": normalized})
+            self._store["revision"] = self.revision + 1
+            self._save()
+            return {"ok": True, "template": template, "plugins": deepcopy(normalized), "revision": self.revision}
+
+    def delete_template(
+        self,
+        template_id: str,
+        *,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        with self._lock:
+            self._require_loaded()
+            if expected_revision is not None and int(expected_revision) != self.revision:
+                raise PolicyError("revision_conflict", "policy revision is stale")
+            template = _target_id(template_id, "template")
+            used = [
+                group_id
+                for group_id, entry in self._store["groups"].items()
+                if str(entry.get("template", "") or "") == template
+            ]
+            if used:
+                raise PolicyError("template_in_use", "template is used by groups: " + ",".join(used[:5]))
+            before = deepcopy(self._store["templates"].pop(template, None))
+            self._audit("delete_template", f"template:{template}", "*", before, None)
+            self._store["revision"] = self.revision + 1
+            self._save()
+            return {"ok": True, "template": template, "revision": self.revision}
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:

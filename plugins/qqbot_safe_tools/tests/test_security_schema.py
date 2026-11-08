@@ -138,14 +138,14 @@ class ConfigSchemaTests(unittest.TestCase):
 
 
 class PackagingTests(unittest.TestCase):
-    def test_version_file_is_3_1_0(self):
+    def test_version_file_is_current(self):
         version = (PLUGIN_ROOT / "VERSION").read_text(encoding="utf-8").strip()
-        self.assertEqual(version, "3.2.0")
+        self.assertEqual(version, "3.2.1")
 
     def test_metadata_version_matches(self):
         metadata = (PLUGIN_ROOT / "metadata.yaml").read_text(encoding="utf-8")
         self.assertIn("name: qqbot_safe_tools", metadata)
-        self.assertIn("version: 3.2.0", metadata)
+        self.assertIn("version: 3.2.1", metadata)
         self.assertIn('astrbot_version: ">=4.29,<5"', metadata)
         self.assertIn("aiocqhttp", metadata)
 

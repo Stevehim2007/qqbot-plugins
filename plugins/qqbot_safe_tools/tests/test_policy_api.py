@@ -82,6 +82,51 @@ class PolicyApiTests(unittest.TestCase):
         ):
             self.assertIn(method, CONTROL_METHODS)
 
+    def test_scope_templates_audit_and_control_allowlist(self):
+        scope = self.plugin.policy_scope("group", "20002")
+        self.assertTrue(scope["ok"])
+        self.assertEqual(scope["scope_type"], "group")
+        self.assertIn("qqbot_food", scope["schemas"])
+
+        template = self.plugin.policy_template_set(
+            template_id="standard",
+            plugins={
+                "qqbot_food": {
+                    "enabled": True,
+                    "params": {"default_city": "长春市"},
+                }
+            },
+        )
+        self.assertTrue(template["ok"])
+        applied = self.plugin.policy_template_apply(
+            group_id="20002", template_id="standard"
+        )
+        self.assertTrue(applied["ok"])
+        scoped = self.plugin.policy_scope("group", "20002")
+        self.assertEqual(scoped["template"], "standard")
+        self.assertEqual(
+            scoped["effective"]["qqbot_food"]["params"]["default_city"], "长春市"
+        )
+        audit = self.plugin.policy_audit(scope_type="group", scope_id="20002")
+        self.assertGreaterEqual(audit["total"], 1)
+        deleted = self.plugin.policy_template_delete(
+            template_id="standard", expected_revision=0
+        )
+        self.assertFalse(deleted["ok"])
+        self.assertEqual(deleted["error"], "revision_conflict")
+
+        for method in (
+            "policy.scope",
+            "policy.scope_reset",
+            "policy.audit",
+            "policy.templates",
+            "policy.template_set",
+            "policy.template_delete",
+            "policy.template_apply",
+            "policy.param_schema",
+        ):
+            self.assertIn(method, CONTROL_METHODS)
+
     def test_stale_revision_is_reported(self):
         first = self.plugin.policy_set(
             plugin_id="qqbot_food", group_id="20002", enabled=False

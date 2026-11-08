@@ -20,6 +20,59 @@ def run(coro):
     return asyncio.run(coro)
 
 
+class GroupPolicyCommandTests(unittest.TestCase):
+    def test_group_admin_can_disable_plugin_in_own_group(self):
+        plugin, ctx, _ = make_plugin(overrides={"enabled": True})
+        calls = []
+
+        class FakeSafeTools:
+            def group_admin_override_enabled(self):
+                return True
+
+            def policy_scope(self, scope_type, scope_id):
+                return {
+                    "ok": True,
+                    "revision": 7,
+                    "plugins": {},
+                    "effective": {"qqbot_food": {"enabled": True, "params": {}}},
+                }
+
+            def policy_set(self, **kwargs):
+                calls.append(kwargs)
+                return {"ok": True, "revision": 8}
+
+        fake = FakeSafeTools()
+        plugin.gateway.safe_tools_star = lambda: fake
+        event = FakeEvent("/分群 关闭 qqbot_food", private=False, group_id="20002")
+        from types import SimpleNamespace
+
+        event.message_obj = SimpleNamespace(sender=SimpleNamespace(role="admin"))
+        results = run(collect_command(plugin, "group_policy_command", event))
+        self.assertEqual(len(results), 1)
+        self.assertIn("qqbot_food", results[0].text)
+        self.assertEqual(calls[0]["plugin_id"], "qqbot_food")
+        self.assertEqual(calls[0]["group_id"], "20002")
+        self.assertFalse(calls[0]["enabled"])
+        self.assertTrue(event.stopped)
+
+    def test_non_admin_cannot_change_group_policy(self):
+        plugin, ctx, _ = make_plugin(overrides={"enabled": True})
+
+        class FakeSafeTools:
+            def group_admin_override_enabled(self):
+                return True
+
+        plugin.gateway.safe_tools_star = lambda: FakeSafeTools()
+        event = FakeEvent("/分群 关闭 qqbot_food", private=False, group_id="20002")
+        from types import SimpleNamespace
+
+        event.message_obj = SimpleNamespace(sender=SimpleNamespace(role="member"))
+        results = run(collect_command(plugin, "group_policy_command", event))
+        self.assertEqual(len(results), 1)
+        self.assertIn("管理员", results[0].text)
+        self.assertTrue(event.stopped)
+
+
 class ReplyCommandTests(unittest.TestCase):
     def test_reply_status_alias_and_no_model_call(self):
         for command in ("/回复 状态", "/reply 状态"):
