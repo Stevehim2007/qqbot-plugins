@@ -191,6 +191,13 @@ class CapabilityPolicyTests(unittest.TestCase):
         food = self.policy.param_schema("qqbot_food")["fields"]
         self.assertTrue(food["default_city"]["group_overridable"])
 
+    def test_scope_snapshot_exposes_plugin_defaults(self):
+        snapshot = self.policy.scope_snapshot("group", "g1")
+        self.assertEqual(snapshot["defaults"]["qqbot_core_reply"]["help_command_enabled"], True)
+        self.assertEqual(snapshot["defaults"]["qqbot_food"]["max_results"], 5)
+        schema = self.policy.param_schema("qqbot_food")["fields"]
+        self.assertEqual(schema["sort"]["default"], "total")
+
     def test_corrupt_store_is_rejected(self):
         self.path.write_text("{not json", encoding="utf-8")
         with self.assertRaises(PolicyError) as ctx:

@@ -40,6 +40,7 @@ class ParamSpec:
     enum: tuple[str, ...] = ()
     group_overridable: bool = True
     sensitive: bool = False
+    default: Any = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,50 +69,50 @@ def _p(kind: str, **kwargs: Any) -> ParamSpec:
 # make a parameter writable.
 PLUGIN_PARAM_SPECS: dict[str, dict[str, ParamSpec]] = {
     "qqbot_core_reply": {
-        "participation.reply_probability": _p("float", minimum=0.0, maximum=1.0),
-        "participation.timezone": _p("str", max_chars=64),
-        "context.max_chars": _p("int", minimum=500, maximum=8000),
-        "persona.profile_id": _p("str", max_chars=64),
-        "help_command_enabled": _p("bool"),
+        "participation.reply_probability": _p("float", minimum=0.0, maximum=1.0, default=0.12),
+        "participation.timezone": _p("str", max_chars=64, default="Asia/Shanghai"),
+        "context.max_chars": _p("int", minimum=500, maximum=8000, default=2000),
+        "persona.profile_id": _p("str", max_chars=64, default=""),
+        "help_command_enabled": _p("bool", default=True),
     },
     "qqbot_safe_tools": {
         "tool_allowlist": _p("list_str", max_chars=64, group_overridable=False, sensitive=True),
-        "tool_cooldown_seconds": _p("int", minimum=0, maximum=3600),
-        "require_confirm": _p("bool", group_overridable=False),
+        "tool_cooldown_seconds": _p("int", minimum=0, maximum=3600, default=10),
+        "require_confirm": _p("bool", group_overridable=False, default=True),
     },
     "qqbot_food": {
-        "default_city": _p("str", max_chars=32),
-        "max_results": _p("int", minimum=1, maximum=20),
-        "sort": _p("enum", enum=("total", "taste", "service", "environment")),
-        "allow_submit_review": _p("bool"),
+        "default_city": _p("str", max_chars=32, default=""),
+        "max_results": _p("int", minimum=1, maximum=20, default=5),
+        "sort": _p("enum", enum=("total", "taste", "service", "environment"), default="total"),
+        "allow_submit_review": _p("bool", default=True),
     },
     "qqbot_stickers": {
-        "decoration_probability": _p("float", minimum=0.0, maximum=1.0),
-        "ai_decoration_enabled": _p("bool"),
-        "ai_decoration_probability": _p("float", minimum=0.0, maximum=1.0),
-        "candidate_count": _p("int", minimum=1, maximum=20),
-        "collect_enabled": _p("bool"),
+        "decoration_probability": _p("float", minimum=0.0, maximum=1.0, default=1.0),
+        "ai_decoration_enabled": _p("bool", default=False),
+        "ai_decoration_probability": _p("float", minimum=0.0, maximum=1.0, default=0.3),
+        "candidate_count": _p("int", minimum=1, maximum=20, default=20),
+        "collect_enabled": _p("bool", default=False),
     },
     "qqbot_memory_commands": {
-        "allow_write": _p("bool"),
-        "max_results": _p("int", minimum=1, maximum=50),
-        "visible_scopes": _p("list_str", max_chars=16, group_overridable=False, sensitive=True),
+        "allow_write": _p("bool", default=False),
+        "max_results": _p("int", minimum=1, maximum=50, default=5),
+        "visible_scopes": _p("list_str", max_chars=16, group_overridable=False, sensitive=True, default=("group", "user", "conversation", "persona", "global")),
     },
     "qqbot_web_reader": {},
     "qqbot_image_search": {},
     "qqbot_social_state": {
-        "favorability.half_life_days": _p("int", minimum=0, maximum=365),
-        "relationship.enabled": _p("bool"),
-        "relationship.min_evidence": _p("int", minimum=1, maximum=10),
+        "favorability.half_life_days": _p("int", minimum=0, maximum=365, default=30),
+        "relationship.enabled": _p("bool", default=True),
+        "relationship.min_evidence": _p("int", minimum=1, maximum=10, default=2),
     },
     "qqbot_expression_state": {
-        "emotion.half_life_minutes": _p("int", minimum=5, maximum=1440),
-        "style.enabled": _p("bool"),
-        "style.refresh_hours": _p("int", minimum=1, maximum=168),
+        "emotion.half_life_minutes": _p("int", minimum=5, maximum=1440, default=30),
+        "style.enabled": _p("bool", default=True),
+        "style.refresh_hours": _p("int", minimum=1, maximum=168, default=24),
     },
     "qqbot_vocabulary": {
-        "inject.max_entries": _p("int", minimum=1, maximum=20),
-        "inject.max_chars": _p("int", minimum=0, maximum=1000),
+        "inject.max_entries": _p("int", minimum=1, maximum=20, default=8),
+        "inject.max_chars": _p("int", minimum=0, maximum=1000, default=400),
     },
 }
 
@@ -234,6 +235,12 @@ def _validate_plugin_override(
             plugin_id, raw.get("params", {}), global_scope=global_scope
         ),
     }
+
+
+def _json_default(value: Any) -> Any:
+    if isinstance(value, tuple):
+        return list(value)
+    return value
 
 
 def _merge_plugin(base: Mapping[str, Any], overlay: Mapping[str, Any]) -> dict[str, Any]:
@@ -587,6 +594,7 @@ class CapabilityPolicy:
                     "enum": list(spec.enum) if spec.enum else [],
                     "group_overridable": bool(spec.group_overridable),
                     "sensitive": bool(spec.sensitive),
+                    "default": _json_default(spec.default),
                 }
             return {"plugin_id": plugin, "fields": fields}
 
@@ -629,6 +637,14 @@ class CapabilityPolicy:
                     value = self.effective(plugin, group_id=target)
                 effective[plugin] = value.as_dict()
             schemas = {plugin: self.param_schema(plugin)["fields"] for plugin in PLUGIN_PARAM_SPECS}
+            defaults = {
+                plugin: {
+                    name: _json_default(spec.default)
+                    for name, spec in specs.items()
+                    if not spec.sensitive
+                }
+                for plugin, specs in PLUGIN_PARAM_SPECS.items()
+            }
             return {
                 "ok": True,
                 "scope_type": kind,
@@ -637,6 +653,7 @@ class CapabilityPolicy:
                 "plugins": plugins,
                 "effective": effective,
                 "schemas": schemas,
+                "defaults": defaults,
                 "available_plugins": sorted(PLUGIN_PARAM_SPECS),
                 "templates": sorted(self._store["templates"]),
                 "groups": sorted(self._store["groups"]),
