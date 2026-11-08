@@ -72,6 +72,7 @@ PLUGIN_PARAM_SPECS: dict[str, dict[str, ParamSpec]] = {
         "participation.timezone": _p("str", max_chars=64),
         "context.max_chars": _p("int", minimum=500, maximum=8000),
         "persona.profile_id": _p("str", max_chars=64),
+        "help_command_enabled": _p("bool"),
     },
     "qqbot_safe_tools": {
         "tool_allowlist": _p("list_str", max_chars=64, group_overridable=False, sensitive=True),

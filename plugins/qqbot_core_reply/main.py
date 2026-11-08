@@ -301,24 +301,44 @@ class CoreReplyPlugin(Star):
     # ------------------------------------------------------------------
     # Main event handler (single reply path)
     # ------------------------------------------------------------------
+    def _help_command_enabled(self, event: AstrMessageEvent) -> bool:
+        """Read the global default plus an optional per-group policy override."""
+        enabled = self.config.bool("help_command_enabled", True)
+        group_id = self.persona._safe_group_id(event)
+        is_private = not bool(group_id)
+        policy = self.pipeline._capability_policy(
+            "qqbot_core_reply",
+            group_id=group_id,
+            user_id=str(getattr(event, "get_sender_id", lambda: "")() or ""),
+            is_private=is_private,
+        )
+        params = policy.get("params") if isinstance(policy, dict) else None
+        if isinstance(params, dict) and "help_command_enabled" in params:
+            return bool(params["help_command_enabled"])
+        return bool(enabled)
+
     @filter.platform_adapter_type(_PLATFORM_TYPES, priority=99)
     @filter.event_message_type(filter.EventMessageType.ALL, priority=99)
     async def guard_english_help_phrase(self, event: AstrMessageEvent):
-        """Do not let an English sentence such as ``help me ...`` become /help.
+        """Keep ``help me ...`` conversational and enforce the /help switch.
 
         AstrBot treats an @ mention as a command wake-up, so its built-in
         ``help`` command matches the first word even without a slash.  This
         guard runs before the built-in command and only clears the wake flag
-        for the conversational ``help <words>`` form; real ``/help`` commands
-        are left untouched.
+        for the conversational ``help <words>`` form.
         """
         if not self.config.bool("enabled", False):
             return
         text = str(getattr(event, "message_str", "") or "").strip()
+        help_enabled = self._help_command_enabled(event)
         if text.startswith(("/", "／")):
+            if not help_enabled and re.match(r"(?i)^[/／]help(?:\s|$)", text):
+                event.stop_event()
             return
-        if re.match(r"(?i)^help\s+\S", text):
+        if re.match(r"(?i)^help(?:\s|$)", text):
             event.is_at_or_wake_command = False
+            if not help_enabled:
+                event.stop_event()
 
     @filter.platform_adapter_type(_PLATFORM_TYPES, priority=100)
     @filter.event_message_type(filter.EventMessageType.ALL, priority=100)
@@ -354,18 +374,49 @@ class CoreReplyPlugin(Star):
     # Canonical commands
     # ------------------------------------------------------------------
     def _group_admin_allowed(self, event: AstrMessageEvent) -> bool:
-        sender = getattr(getattr(event, "message_obj", None), "sender", None)
-        role = str(getattr(sender, "role", "") or "").strip().lower()
-        if role not in {"admin", "owner"}:
-            return False
         star = self.gateway.safe_tools_star()
         checker = getattr(star, "group_admin_override_enabled", None)
         if not callable(checker):
             return False
         try:
-            return bool(checker())
+            if not bool(checker()):
+                return False
         except Exception:
             return False
+        sender = getattr(getattr(event, "message_obj", None), "sender", None)
+        role = getattr(sender, "role", "")
+        if not role and isinstance(sender, dict):
+            role = sender.get("role", "")
+        if str(role or "").strip().lower() in {"admin", "owner"}:
+            return True
+        # AstrBot 实例管理员也应能在群里调整测试策略；群管理员开关只控制
+        # “普通成员不能改”，不把实例管理员挡在外面。
+        allow_bot_admin = getattr(star, "group_admin_allow_bot_admin", None)
+        if callable(allow_bot_admin):
+            try:
+                if not bool(allow_bot_admin()):
+                    return False
+            except Exception:
+                return False
+        is_admin = getattr(event, "is_admin", None)
+        if callable(is_admin):
+            try:
+                if bool(is_admin()):
+                    return True
+            except Exception:
+                pass
+        # AstrBot 全局 admins_id 中的账号也应可用，避免 QQ 群成员角色
+        # 与 AstrBot 实例管理员角色不一致时把人挡在外面。
+        sender_id = str(getattr(event, "get_sender_id", lambda: "")() or "")
+        if sender_id:
+            try:
+                config = self.context.get_config()
+                admins = config.get("admins_id", []) if isinstance(config, dict) else getattr(config, "admins_id", [])
+                if sender_id in {str(item) for item in (admins or [])}:
+                    return True
+            except Exception:
+                pass
+        return False
 
     @filter.platform_adapter_type(_PLATFORM_TYPES, priority=110)
     @filter.command("分群", priority=110)

@@ -605,6 +605,9 @@ class SafeToolsPlugin(Star):
     def group_admin_override_enabled(self) -> bool:
         return self._cfg_bool("group_admin_override_enabled", False)
 
+    def group_admin_allow_bot_admin(self) -> bool:
+        return self._cfg_bool("group_admin_allow_bot_admin", True)
+
     def group_admin_max_params_per_group(self) -> int:
         return self._cfg_int("group_admin_max_params_per_group", 20, minimum=1, maximum=100)
 

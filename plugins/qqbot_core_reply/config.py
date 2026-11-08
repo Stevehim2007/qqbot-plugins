@@ -18,6 +18,7 @@ DEFAULTS: dict[str, Any] = {
     # Safe default per the authoritative migration contract: a newly
     # installed package must not take over replies before explicit handover.
     "enabled": False,
+    "help_command_enabled": True,
     "memory_mode": "direct",
     "owner_epoch": 1,
     # Canonical v4.3 groups (flat keys keep AstrBot's schema loader intact).

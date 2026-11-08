@@ -74,6 +74,54 @@ class MemoryHookTests(unittest.TestCase):
         event = FakeEvent("/help", wake=True)
         run(plugin.guard_english_help_phrase(event))
         self.assertTrue(event.is_at_or_wake_command)
+        self.assertFalse(event.stopped)
+
+    def test_help_command_can_be_disabled(self):
+        plugin, _, _ = make_plugin(
+            overrides={"enabled": True, "help_command_enabled": False}
+        )
+        event = FakeEvent("/help", wake=True)
+        run(plugin.guard_english_help_phrase(event))
+        self.assertTrue(event.stopped)
+
+    def test_group_admin_global_admin_fallback(self):
+        class SafeStar:
+            def group_admin_override_enabled(self):
+                return True
+
+            def group_admin_allow_bot_admin(self):
+                return True
+
+        ctx = FakeContext(
+            registered_stars={"qqbot_safe_tools": FakeStarMeta(SafeStar())},
+            global_config={"admins_id": ["2933886037"]},
+        )
+        plugin, _, _ = make_plugin(context=ctx, overrides={"enabled": True})
+        event = FakeEvent("hello", group_id=GROUP, sender_id="2933886037")
+        event.message_obj = types.SimpleNamespace(
+            sender=types.SimpleNamespace(role="member")
+        )
+        event.is_admin = lambda: False
+        self.assertTrue(plugin._group_admin_allowed(event))
+
+    def test_group_admin_switch_allows_bot_admin(self):
+        class SafeStar:
+            def group_admin_override_enabled(self):
+                return True
+
+            def group_admin_allow_bot_admin(self):
+                return True
+
+        ctx = FakeContext(
+            registered_stars={"qqbot_safe_tools": FakeStarMeta(SafeStar())}
+        )
+        plugin, _, _ = make_plugin(context=ctx, overrides={"enabled": True})
+        event = FakeEvent("hello", group_id=GROUP, sender_id="2933886037")
+        event.message_obj = types.SimpleNamespace(
+            sender=types.SimpleNamespace(role="member")
+        )
+        event.is_admin = lambda: True
+        self.assertTrue(plugin._group_admin_allowed(event))
 
     def test_non_candidate_has_no_injection(self):
         plugin, ctx, _ = make_plugin(overrides={"memory_mode": "astrbot"})

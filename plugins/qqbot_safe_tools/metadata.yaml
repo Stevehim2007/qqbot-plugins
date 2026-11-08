@@ -1,7 +1,7 @@
 name: qqbot_safe_tools
 display_name: Safe Tools 协议
 desc: "唯一负责 [[tool:...]] marker 解析、校验、权限、冷却与跨插件安全调度的插件；不调用 LLM。"
-version: 3.2.1
+version: 3.2.2
 author: QQ Bot Studio
 support_platforms:
   - aiocqhttp

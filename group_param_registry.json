@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "registry_revision": "9e8e3294ca2ef5f246df50023a855d08eac00c0ce2ba35528dfd80c0933ef29e",
+  "registry_revision": "be3aed9052cf02db1603a8203a045bf98752dbb88caa761e03b310bf3a553c7c",
   "plugins": {
     "qqbot_core_reply": {
       "participation.reply_probability": {
@@ -37,6 +37,15 @@
         "minimum": null,
         "maximum": null,
         "max_chars": 64,
+        "enum": []
+      },
+      "help_command_enabled": {
+        "kind": "bool",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": null,
+        "maximum": null,
+        "max_chars": null,
         "enum": []
       }
     },

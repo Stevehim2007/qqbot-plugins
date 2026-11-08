@@ -478,5 +478,11 @@
       "max": 100,
       "step": 1
     }
+  },
+  "group_admin_allow_bot_admin": {
+    "type": "bool",
+    "default": true,
+    "description": "允许 AstrBot 实例管理员在群内使用 /分群，即使其不是该 QQ 群的群主/管理员。",
+    "hint": "关闭后只有 QQ 群主/管理员可以使用 /分群；完整配置仍可在 Studio 操作。"
   }
 }
