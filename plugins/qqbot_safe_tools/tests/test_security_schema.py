@@ -246,6 +246,7 @@ class StaticSecurityTests(unittest.TestCase):
             "web_fetch",
             "auth",
             "call_ledger",
+            "capability_policy",
             "confirmation",
             "contracts",
             "control_server",

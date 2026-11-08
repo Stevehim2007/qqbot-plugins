@@ -309,6 +309,52 @@ class FoodPlugin(Star):
     def _cfg_bool(self, key: str) -> bool:
         return self.config.bool(key)
 
+    def _capability_params(self, event: AstrMessageEvent) -> dict[str, Any]:
+        try:
+            getter = getattr(self.context, "get_registered_star", None)
+            meta = getter("qqbot_safe_tools") if callable(getter) else None
+            if meta is None:
+                return {}
+            star = getattr(meta, "star_cls", None) or meta
+            policy_fn = getattr(star, "policy_effective", None)
+            if not callable(policy_fn):
+                return {}
+            private = _event_is_private(event)
+            policy = policy_fn(
+                "qqbot_food",
+                group_id=None if private else (_event_group_id(event) or None),
+                user_id=_event_sender_id(event) or None,
+                is_private=private,
+            )
+            if not isinstance(policy, dict) or not policy.get("enabled", True):
+                return {}
+            params = policy.get("params")
+            return dict(params) if isinstance(params, dict) else {}
+        except Exception:
+            return {}
+
+    def _capability_enabled(self, event: AstrMessageEvent) -> bool:
+        """Return False only when safe_tools explicitly disables Food."""
+        try:
+            getter = getattr(self.context, "get_registered_star", None)
+            meta = getter("qqbot_safe_tools") if callable(getter) else None
+            if meta is None:
+                return True
+            star = getattr(meta, "star_cls", None) or meta
+            policy_fn = getattr(star, "policy_effective", None)
+            if not callable(policy_fn):
+                return True
+            private = _event_is_private(event)
+            policy = policy_fn(
+                "qqbot_food",
+                group_id=None if private else (_event_group_id(event) or None),
+                user_id=_event_sender_id(event) or None,
+                is_private=private,
+            )
+            return not isinstance(policy, dict) or bool(policy.get("enabled", True))
+        except Exception:
+            return True
+
     def _cfg_int(self, key: str, *, minimum: int = 0, maximum: int | None = None, default: int | None = None) -> int:
         return self.config.int(
             key, minimum=minimum, maximum=maximum, default=default
@@ -808,6 +854,9 @@ class FoodPlugin(Star):
         location_name = ""
         search_name = _text(request.get("name"))
         context: list[str] = []
+        policy_params = self._capability_params(event)
+        if not request.get("location") and policy_params.get("default_city"):
+            request["location"] = _text(policy_params.get("default_city"))
         if request.get("location"):
             resolved = await self._resolve_search_location(
                 request["location"]
@@ -1391,6 +1440,9 @@ class FoodPlugin(Star):
     @filter.command("food", alias={"美食", "吃什么", "饭店"}, priority=110)
     async def food_command(self, event: AstrMessageEvent):
         _call_shall_not_llm(event)
+        if not self._capability_enabled(event):
+            _stop_event(event)
+            return
         try:
             if not self._cfg_bool("food_enabled"):
                 result = self._plain(event, self._reply("food_disabled_reply"))
@@ -1467,6 +1519,8 @@ class FoodPlugin(Star):
         """Return an AstrBot result, or None, and never raise."""
 
         if event is None:
+            return None
+        if not self._capability_enabled(event):
             return None
         try:
             if not (
@@ -1954,6 +2008,8 @@ class FoodPlugin(Star):
     # ------------------------------------------------------------------
     @filter.event_message_type(filter.EventMessageType.ALL, priority=120)
     async def on_food_message(self, event: AstrMessageEvent):
+        if not self._capability_enabled(event):
+            return
         handled = False
         claimed_key = ""
         try:

@@ -166,6 +166,42 @@ class MemoryCommandsPlugin(Star):
         )
         self._terminated = False
 
+    def _capability_enabled(self, event: AstrMessageEvent) -> bool:
+        """Return False only when safe_tools explicitly disables memory commands."""
+        try:
+            getter = getattr(self.context, "get_registered_star", None)
+            meta = getter("qqbot_safe_tools") if callable(getter) else None
+            if meta is None:
+                return True
+            star = getattr(meta, "star_cls", None) or meta
+            policy_fn = getattr(star, "policy_effective", None)
+            if not callable(policy_fn):
+                return True
+            private = False
+            try:
+                private = bool(event.is_private_chat())
+            except Exception:
+                private = False
+            group_id = ""
+            try:
+                group_id = str(event.get_group_id() or "").strip()
+            except Exception:
+                group_id = ""
+            sender_id = ""
+            try:
+                sender_id = str(event.get_sender_id() or "").strip()
+            except Exception:
+                sender_id = ""
+            policy = policy_fn(
+                "qqbot_memory_commands",
+                group_id=None if private else (group_id or None),
+                user_id=sender_id or None,
+                is_private=private,
+            )
+            return not isinstance(policy, dict) or bool(policy.get("enabled", True))
+        except Exception:
+            return True
+
     # ------------------------------------------------------------------
     # command handler
     # ------------------------------------------------------------------
@@ -181,6 +217,8 @@ class MemoryCommandsPlugin(Star):
         try:
             # AstrBot's True flag means "handled; do not call the default LLM".
             event.should_call_llm(True)
+            if not self._capability_enabled(event):
+                return
             reply = await self._dispatch(event)
         except Exception:  # noqa: BLE001 - bounded Chinese failure, no traceback
             reply = memory_commands.HANDLER_FAILED_REPLY

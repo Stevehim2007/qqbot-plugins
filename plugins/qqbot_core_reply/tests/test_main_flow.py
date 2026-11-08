@@ -492,6 +492,51 @@ class MainFlowTests(unittest.TestCase):
         self.assertIn("SAFE-TOOLS-INSTRUCTION", system_prompt)
         self.assertIn("# Safe Tools Tool Catalog", system_prompt)
 
+    def test_group_policy_can_disable_chat(self):
+        class SafeStar:
+            def __init__(self):
+                self.calls = []
+
+            def policy_effective(self, plugin_id, *, group_id=None, user_id=None, is_private=False):
+                self.calls.append((plugin_id, group_id, user_id, is_private))
+                return {"enabled": False, "params": {}}
+
+        star = SafeStar()
+        ctx = FakeContext(
+            registered_stars={"qqbot_safe_tools": FakeStarMeta(star)}
+        )
+        plugin, _, _ = make_plugin(context=ctx, overrides={"enabled": True})
+        ctx.llm_responses = ["should-not-run"]
+        event = group_event("hello", at_bot=True)
+        results = run(collect_event(plugin, event))
+        self.assertEqual(results, [])
+        self.assertEqual(ctx.llm_calls, [])
+        self.assertTrue(event.llm_blocked)
+        self.assertEqual(star.calls[0][0], "qqbot_core_reply")
+        self.assertEqual(star.calls[0][1], GROUP)
+        self.assertFalse(star.calls[0][3])
+
+    def test_group_policy_probability_override(self):
+        class SafeStar:
+            def policy_effective(self, plugin_id, *, group_id=None, user_id=None, is_private=False):
+                return {
+                    "enabled": True,
+                    "params": {"participation.reply_probability": 0.0},
+                }
+
+        ctx = FakeContext(
+            registered_stars={"qqbot_safe_tools": FakeStarMeta(SafeStar())}
+        )
+        plugin, _, _ = make_plugin(
+            context=ctx,
+            overrides={"enabled": True, "reply_probability": 1.0},
+        )
+        ctx.llm_responses = ["should-not-run"]
+        event = group_event("hello")
+        results = run(collect_event(plugin, event))
+        self.assertEqual(results, [])
+        self.assertEqual(ctx.llm_calls, [])
+
     def test_safe_tools_absent_means_no_marker_protocol(self):
         plugin, ctx, _ = make_plugin(overrides={"enabled": True})
         ctx.llm_responses = ["ok"]

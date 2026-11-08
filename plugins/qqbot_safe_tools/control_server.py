@@ -41,6 +41,9 @@ CONTROL_METHODS = frozenset(
         "confirmation.confirm",
         "confirmation.cancel",
         "tool.operation_status",
+        "policy.snapshot",
+        "policy.set",
+        "policy.reset",
     }
 )
 _REQUEST_FIELDS = frozenset(

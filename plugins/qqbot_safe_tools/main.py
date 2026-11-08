@@ -32,6 +32,7 @@ try:  # Loaded as an AstrBot package in production.
     from . import (
         auth,
         call_ledger,
+        capability_policy,
         confirmation,
         contracts,
         control_server,
@@ -43,6 +44,7 @@ try:  # Loaded as an AstrBot package in production.
     )
 except ImportError:  # Loaded directly by a small test harness.
     import auth  # type: ignore[no-redef]
+    import capability_policy  # type: ignore[no-redef]
     import call_ledger  # type: ignore[no-redef]
     import confirmation  # type: ignore[no-redef]
     import contracts  # type: ignore[no-redef]
@@ -149,6 +151,27 @@ _ERROR_TO_REASON: dict[str, str] = {
 }
 
 _CONTROL_RPC_ARGUMENTS: dict[str, frozenset[str]] = {
+    "policy.snapshot": frozenset(),
+    "policy.set": frozenset(
+        {
+            "plugin_id",
+            "group_id",
+            "user_id",
+            "is_private",
+            "enabled",
+            "params",
+            "expected_revision",
+        }
+    ),
+    "policy.reset": frozenset(
+        {
+            "plugin_id",
+            "group_id",
+            "user_id",
+            "is_private",
+            "expected_revision",
+        }
+    ),
     "tool.catalog": frozenset({"include_unready", "conversation_id", "persona_id"}),
     "tool.dispatch": frozenset(
         {
@@ -234,6 +257,8 @@ class SafeToolsPlugin(Star):
         self._control_error_code = ""
         self._control_started = False
         self._tool_registry_cache: tool_registry.ToolRegistry | None = None
+        self._capability_policy: capability_policy.CapabilityPolicy | None = None
+        self._policy_degraded = False
 
     # ------------------------------------------------------------------
     # Configuration helpers (injected, bounded, never raw exceptions)
@@ -458,6 +483,110 @@ class SafeToolsPlugin(Star):
         except Exception:
             pass
         return Path.cwd() / ".qqbot_safe_tools_data"
+
+    def _policy(self) -> capability_policy.CapabilityPolicy:
+        if self._capability_policy is not None:
+            return self._capability_policy
+        path = self._data_dir() / "capability_policy.json"
+        try:
+            self._capability_policy = capability_policy.CapabilityPolicy(path)
+            self._policy_degraded = False
+        except capability_policy.PolicyError:
+            logger.exception("capability policy is invalid; using safe defaults")
+            self._capability_policy = capability_policy.CapabilityPolicy(None)
+            self._policy_degraded = True
+        return self._capability_policy
+
+    def policy_effective(
+        self,
+        plugin_id: str,
+        *,
+        group_id: str | None = None,
+        user_id: str | None = None,
+        is_private: bool = False,
+    ) -> dict[str, Any]:
+        effective = self._policy().effective(
+            plugin_id,
+            group_id=group_id,
+            user_id=user_id,
+            is_private=is_private,
+        )
+        result = effective.as_dict()
+        result["degraded"] = bool(self._policy_degraded)
+        return result
+
+    def policy_snapshot(self) -> dict[str, Any]:
+        result = self._policy().snapshot()
+        result["degraded"] = bool(self._policy_degraded)
+        return result
+
+    def policy_set(
+        self,
+        *,
+        plugin_id: str,
+        group_id: str | None = None,
+        user_id: str | None = None,
+        is_private: bool = False,
+        enabled: bool = True,
+        params: dict[str, Any] | None = None,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        if self._policy_degraded:
+            return {"ok": False, "error": "store_degraded"}
+        try:
+            effective = self._policy().set_override(
+                plugin_id=plugin_id,
+                group_id=group_id,
+                user_id=user_id,
+                is_private=is_private,
+                enabled=enabled,
+                params=params or {},
+                expected_revision=expected_revision,
+            )
+        except capability_policy.PolicyError as exc:
+            return {
+                "ok": False,
+                "error": exc.code,
+                "message": str(exc),
+                "revision": self._policy().revision,
+            }
+        return {
+            "ok": True,
+            "effective": effective.as_dict(),
+            "revision": self._policy().revision,
+        }
+
+    def policy_reset(
+        self,
+        *,
+        plugin_id: str,
+        group_id: str | None = None,
+        user_id: str | None = None,
+        is_private: bool = False,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        if self._policy_degraded:
+            return {"ok": False, "error": "store_degraded"}
+        try:
+            effective = self._policy().reset_override(
+                plugin_id=plugin_id,
+                group_id=group_id,
+                user_id=user_id,
+                is_private=is_private,
+                expected_revision=expected_revision,
+            )
+        except capability_policy.PolicyError as exc:
+            return {
+                "ok": False,
+                "error": exc.code,
+                "message": str(exc),
+                "revision": self._policy().revision,
+            }
+        return {
+            "ok": True,
+            "effective": effective.as_dict(),
+            "revision": self._policy().revision,
+        }
 
     def _ensure_ledger(self) -> call_ledger.CallLedger:
         if self._ledger is not None:
@@ -895,6 +1024,36 @@ class SafeToolsPlugin(Star):
     # ------------------------------------------------------------------
     # Intent dispatch
     # ------------------------------------------------------------------
+    def _tool_policy_allows(
+        self, plugin_id: str, event: AstrMessageEvent | None
+    ) -> bool:
+        descriptor = None
+        for candidate in self._tool_registry().all():
+            if candidate.plugin_id == plugin_id:
+                descriptor = candidate
+                break
+        if descriptor is None or event is None:
+            return True
+        try:
+            getter = getattr(self.context, "get_registered_star", None)
+            meta = getter("qqbot_safe_tools") if callable(getter) else None
+            star = getattr(meta, "star_cls", None) or meta if meta is not None else None
+            policy_fn = getattr(star, "policy_effective", None)
+            if not callable(policy_fn):
+                return True
+            private = bool(event.is_private_chat())
+            group_id = "" if private else str(event.get_group_id() or "").strip()
+            user_id = str(event.get_sender_id() or "").strip()
+            policy = policy_fn(
+                plugin_id,
+                group_id=group_id or None,
+                user_id=user_id or None,
+                is_private=private,
+            )
+            return not isinstance(policy, dict) or bool(policy.get("enabled", True))
+        except Exception:
+            return True
+
     async def _execute_intent(
         self,
         event: AstrMessageEvent,
@@ -903,6 +1062,11 @@ class SafeToolsPlugin(Star):
     ) -> tuple[bool, Any | None, str]:
         method = self._stable_method(intent.name)
         if method is None:
+            return False, None, "unavailable"
+        descriptor = self._tool_descriptor(intent.name)
+        if descriptor is not None and not self._tool_policy_allows(
+            descriptor.plugin_id, event
+        ):
             return False, None, "unavailable"
         remaining = self._cooldown_remaining(event, intent.name)
         if remaining > 0:
@@ -2103,6 +2267,60 @@ class SafeToolsPlugin(Star):
                     )
                 decision = self.confirmation_cancel(context, confirmation_id)
                 return decision.to_dict()
+            if request.method == "policy.snapshot":
+                return self.policy_snapshot()
+            if request.method in {"policy.set", "policy.reset"}:
+                plugin_id = body.get("plugin_id")
+                if not isinstance(plugin_id, str) or not plugin_id:
+                    raise control_server.ControlError(
+                        "invalid_args", http_status=400
+                    )
+                group_id = body.get("group_id")
+                user_id = body.get("user_id")
+                if group_id is not None and not isinstance(group_id, str):
+                    raise control_server.ControlError(
+                        "invalid_args", http_status=400
+                    )
+                if user_id is not None and not isinstance(user_id, str):
+                    raise control_server.ControlError(
+                        "invalid_args", http_status=400
+                    )
+                is_private = body.get("is_private", False)
+                if not isinstance(is_private, bool):
+                    raise control_server.ControlError(
+                        "invalid_args", http_status=400
+                    )
+                expected_revision = body.get("expected_revision")
+                if expected_revision is not None and (
+                    isinstance(expected_revision, bool)
+                    or not isinstance(expected_revision, int)
+                ):
+                    raise control_server.ControlError(
+                        "invalid_args", http_status=400
+                    )
+                if request.method == "policy.reset":
+                    return self.policy_reset(
+                        plugin_id=plugin_id,
+                        group_id=group_id or None,
+                        user_id=user_id or None,
+                        is_private=is_private,
+                        expected_revision=expected_revision,
+                    )
+                enabled = body.get("enabled", True)
+                params = body.get("params", {})
+                if not isinstance(enabled, bool) or not isinstance(params, Mapping):
+                    raise control_server.ControlError(
+                        "invalid_args", http_status=400
+                    )
+                return self.policy_set(
+                    plugin_id=plugin_id,
+                    group_id=group_id or None,
+                    user_id=user_id or None,
+                    is_private=is_private,
+                    enabled=enabled,
+                    params=dict(params),
+                    expected_revision=expected_revision,
+                )
             if request.method == "tool.operation_status":
                 operation_id = body.get("operation_id")
                 if not isinstance(operation_id, str):

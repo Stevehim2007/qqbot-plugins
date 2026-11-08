@@ -309,6 +309,37 @@ class ReplyPipeline:
         return context
 
     # ------------------------------------------------------------------
+    # Capability policy
+    # ------------------------------------------------------------------
+    def _capability_policy(
+        self,
+        plugin_id: str,
+        *,
+        group_id: str = "",
+        user_id: str = "",
+        is_private: bool = False,
+    ) -> dict[str, Any] | None:
+        star = self.gateway.safe_tools_star()
+        getter = getattr(star, "policy_effective", None)
+        if not callable(getter):
+            return None
+        try:
+            value = getter(
+                plugin_id,
+                group_id=group_id or None,
+                user_id=user_id or None,
+                is_private=is_private,
+            )
+        except TypeError:
+            try:
+                value = getter(plugin_id)
+            except Exception:
+                return None
+        except Exception:
+            return None
+        return value if isinstance(value, dict) else None
+
+    # ------------------------------------------------------------------
     # Message entry
     # ------------------------------------------------------------------
     async def handle_message(self, event: Any) -> HandleOutcome | None:
@@ -340,6 +371,15 @@ class ReplyPipeline:
             except Exception:
                 actor_id = bot_id = ""
             group_id = self.persona._safe_group_id(event)
+            policy = self._capability_policy(
+                "qqbot_core_reply",
+                group_id=group_id,
+                user_id=actor_id,
+                is_private=is_private,
+            )
+            if policy is not None and not bool(policy.get("enabled", True)):
+                self.block_default_llm(event)
+                return None
             if not is_private and not self.participation.group_allowed(
                 group_id=group_id,
                 actor_id=actor_id,
@@ -393,12 +433,23 @@ class ReplyPipeline:
                         self.config,
                         self.config.string("cooldown.key_mode", "legacy_compatible"),
                     )
+                    probability = self.participation.group_probability()
+                    if policy is not None:
+                        try:
+                            probability = float(
+                                policy.get("params", {}).get(
+                                    "participation.reply_probability",
+                                    probability,
+                                )
+                            )
+                        except (TypeError, ValueError):
+                            pass
                     if not self.cooldown.try_claim_random(
                         session_key=session_key,
                         user_key=self.participation.cooldown_keys(event)[1],
                         group_cooldown=group_cooldown,
                         user_cooldown=user_cooldown,
-                        probability=self.participation.group_probability(),
+                        probability=probability,
                     ):
                         self.block_default_llm(event)
                         return None

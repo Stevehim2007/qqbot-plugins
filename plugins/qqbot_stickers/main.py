@@ -815,6 +815,60 @@ class StickerPlugin(Star):
                     pass
         return "unknown-actor"
 
+    def _capability_params(self, event: AstrMessageEvent) -> dict[str, Any]:
+        try:
+            getter = getattr(self.context, "get_registered_star", None)
+            meta = getter("qqbot_safe_tools") if callable(getter) else None
+            if meta is None:
+                return {}
+            star = getattr(meta, "star_cls", None) or meta
+            policy_fn = getattr(star, "policy_effective", None)
+            if not callable(policy_fn):
+                return {}
+            private = False
+            try:
+                private = bool(event.is_private_chat())
+            except Exception:
+                private = False
+            policy = policy_fn(
+                "qqbot_stickers",
+                group_id=None if private else (self._event_group_id(event) or None),
+                user_id=self._event_actor_id(event) or None,
+                is_private=private,
+            )
+            if not isinstance(policy, dict) or not policy.get("enabled", True):
+                return {}
+            params = policy.get("params")
+            return dict(params) if isinstance(params, dict) else {}
+        except Exception:
+            return {}
+
+    def _capability_enabled(self, event: AstrMessageEvent) -> bool:
+        """Return False only when safe_tools explicitly disables Stickers."""
+        try:
+            getter = getattr(self.context, "get_registered_star", None)
+            meta = getter("qqbot_safe_tools") if callable(getter) else None
+            if meta is None:
+                return True
+            star = getattr(meta, "star_cls", None) or meta
+            policy_fn = getattr(star, "policy_effective", None)
+            if not callable(policy_fn):
+                return True
+            private = False
+            try:
+                private = bool(event.is_private_chat())
+            except Exception:
+                private = False
+            policy = policy_fn(
+                "qqbot_stickers",
+                group_id=None if private else (self._event_group_id(event) or None),
+                user_id=self._event_actor_id(event) or None,
+                is_private=private,
+            )
+            return not isinstance(policy, dict) or bool(policy.get("enabled", True))
+        except Exception:
+            return True
+
     def _event_group_id(self, event: AstrMessageEvent) -> str:
         try:
             value = str(event.get_extra("qqbot_group_id", "") or "").strip()
@@ -1479,6 +1533,9 @@ class StickerPlugin(Star):
     @filter.command("收藏表情", priority=110)
     async def collect_sticker_command(self, event: AstrMessageEvent):
         self._suppress_model(event)
+        if not self._capability_enabled(event):
+            self._stop(event)
+            return
         try:
             if not self._cfg_bool("enabled", True) or not self._cfg_bool(
                 "collected_sticker_enabled", True
@@ -1522,6 +1579,9 @@ class StickerPlugin(Star):
     @filter.command("表情状态", alias={"表情诊断", "表情库"}, priority=110)
     async def sticker_status_command(self, event: AstrMessageEvent):
         self._suppress_model(event)
+        if not self._capability_enabled(event):
+            self._stop(event)
+            return
         try:
             lines = ["表情状态："]
             enabled = self._cfg_bool("collected_sticker_enabled", True)
@@ -1570,6 +1630,9 @@ class StickerPlugin(Star):
     @filter.command("表情分类", priority=110)
     async def sticker_categories_command(self, event: AstrMessageEvent):
         self._suppress_model(event)
+        if not self._capability_enabled(event):
+            self._stop(event)
+            return
         try:
             if not self._cfg_bool("collected_sticker_enabled", True):
                 yield self._plain_result(
@@ -1611,6 +1674,9 @@ class StickerPlugin(Star):
     @filter.command("表情列表", priority=110)
     async def sticker_list_command(self, event: AstrMessageEvent):
         self._suppress_model(event)
+        if not self._capability_enabled(event):
+            self._stop(event)
+            return
         try:
             if not self._cfg_bool("collected_sticker_enabled", True):
                 yield self._plain_result(
@@ -1693,6 +1759,9 @@ class StickerPlugin(Star):
     @filter.command("发表情", priority=110)
     async def send_sticker_command(self, event: AstrMessageEvent):
         self._suppress_model(event)
+        if not self._capability_enabled(event):
+            self._stop(event)
+            return
         try:
             if not self._cfg_bool("enabled", True) or not self._cfg_bool(
                 "collected_sticker_enabled", True
@@ -1791,6 +1860,8 @@ class StickerPlugin(Star):
 
         text = self._message_text(event)
         if self._is_command_message(text):
+            return
+        if not self._capability_enabled(event):
             return
         if not self._cfg_bool("enabled", True) or not self._cfg_bool(
             "collected_sticker_enabled", True
@@ -2647,10 +2718,15 @@ class StickerPlugin(Star):
             if _as_bool(getter("qqbot_stickers_decorated", False)):
                 return
             ai_enabled = self._cfg_bool("sticker_ai_decorate_enabled", False)
+            policy_params = self._capability_params(event)
             if ai_enabled:
                 probability = self._cfg_float("sticker_ai_decorate_probability", 0.3)
+                if "ai_decoration_probability" in policy_params:
+                    probability = float(policy_params["ai_decoration_probability"])
             else:
                 probability = self._cfg_float("sticker_decorate_probability", 1.0)
+                if "decoration_probability" in policy_params:
+                    probability = float(policy_params["decoration_probability"])
             if probability < 1.0 and self._rng.random() >= probability:
                 return
             entries = await self._entries()
@@ -2795,6 +2871,8 @@ class StickerPlugin(Star):
         """Return one image result or ``None``.  Never raises."""
 
         try:
+            if not self._capability_enabled(event):
+                return None
             if not self._cfg_bool("enabled", True):
                 return None
             if not self._cfg_bool("safe_tools_allow_send_sticker", True):
@@ -2829,6 +2907,8 @@ class StickerPlugin(Star):
         """Collect the current/quoted/recent image; return a result or ``None``."""
 
         try:
+            if not self._capability_enabled(event):
+                return None
             if not self._cfg_bool("enabled", True):
                 return None
             if not self._cfg_bool("safe_tools_allow_collect_sticker", True):
@@ -2871,6 +2951,8 @@ class StickerPlugin(Star):
         """Return a bounded category/count summary or ``None``.  Never raises."""
 
         try:
+            if not self._capability_enabled(event):
+                return None
             if not self._cfg_bool("enabled", True):
                 return None
             if not self._cfg_bool("collected_sticker_enabled", True):

@@ -106,6 +106,55 @@ class PluginTestBase(unittest.TestCase):
 
 
 class CommandSearchTests(PluginTestBase):
+    def test_group_policy_disables_food_command(self):
+        plugin = self.plugin()
+        calls = []
+
+        class SafeStar:
+            def policy_effective(self, plugin_id, *, group_id=None, user_id=None, is_private=False):
+                calls.append((plugin_id, group_id, user_id, is_private))
+                return {"enabled": False, "params": {}}
+
+        plugin.context.get_registered_star = lambda name: (
+            type("Meta", (), {"star_cls": SafeStar()})()
+            if name == "qqbot_safe_tools"
+            else None
+        )
+        event = self.event("/food 火锅", private=False, group_id="20002")
+        results = call_command(plugin, event)
+        self.assertEqual(results, [])
+        self.assertEqual(self.api.get_calls, [])
+        self.assertTrue(event.stopped)
+        self.assertEqual(calls[0][0], "qqbot_food")
+        self.assertEqual(calls[0][1], "20002")
+        self.assertFalse(calls[0][3])
+
+    def test_group_policy_default_city(self):
+        plugin = self.plugin()
+
+        class SafeStar:
+            def policy_effective(self, plugin_id, *, group_id=None, user_id=None, is_private=False):
+                return {
+                    "enabled": True,
+                    "params": {"default_city": "长春"},
+                }
+
+        plugin.context.get_registered_star = lambda name: (
+            type("Meta", (), {"star_cls": SafeStar()})()
+            if name == "qqbot_safe_tools"
+            else None
+        )
+        event = self.event("/food 火锅", private=False, group_id="20002")
+        results = call_command(plugin, event)
+        self.assertTrue(results)
+        restaurant_calls = [
+            params
+            for path, params in self.api.get_calls
+            if path == food_engine.FOOD_RESTAURANTS_PATH
+        ]
+        self.assertTrue(restaurant_calls)
+        self.assertIn("location_id", restaurant_calls[0])
+
     def test_command_basic_search(self):
         plugin = self.plugin()
         event = self.event("/food 火锅")
