@@ -42,6 +42,7 @@ class ParamSpec:
     sensitive: bool = False
     default: Any = None
     config_key: str = ""
+    legacy_key: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +71,7 @@ def _p(kind: str, **kwargs: Any) -> ParamSpec:
 # make a parameter writable.
 PLUGIN_PARAM_SPECS: dict[str, dict[str, ParamSpec]] = {
     "qqbot_core_reply": {
-        "participation.reply_probability": _p("float", minimum=0.0, maximum=1.0, default=0.12, config_key="participation.group_probability"),
+        "participation.reply_probability": _p("float", minimum=0.0, maximum=1.0, default=0.12, config_key="participation.group_probability", legacy_key="reply_probability"),
         "participation.timezone": _p("str", max_chars=64, default="Asia/Shanghai", config_key="participation.timezone"),
         "context.max_chars": _p("int", minimum=500, maximum=8000, default=2000, config_key="max_input_chars"),
         "persona.profile_id": _p("str", max_chars=64, default=""),
@@ -597,6 +598,7 @@ class CapabilityPolicy:
                     "sensitive": bool(spec.sensitive),
                     "default": _json_default(spec.default),
                     "config_key": spec.config_key,
+                    "legacy_key": spec.legacy_key,
                 }
             return {"plugin_id": plugin, "fields": fields}
 
