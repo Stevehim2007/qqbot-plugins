@@ -95,7 +95,7 @@ except ImportError:  # Loaded directly by a test harness.
 
 PLUGIN_NAME = "qqbot_core_reply"
 PLUGIN_DISPLAY_NAME = "QQ 核心回复"
-PLUGIN_VERSION = "4.0.12"
+PLUGIN_VERSION = "4.0.13"
 PLUGIN_DIR = Path(__file__).resolve().parent
 SONG_DIR = PLUGIN_DIR / "songs"
 PROVIDER_ID = "core_reply"
@@ -345,6 +345,27 @@ class CoreReplyPlugin(Star):
         if isinstance(params, dict) and "help_command_enabled" in params:
             return bool(params["help_command_enabled"])
         return bool(enabled)
+
+    @filter.platform_adapter_type(_PLATFORM_TYPES, priority=98)
+    @filter.event_message_type(filter.EventMessageType.ALL, priority=98)
+    async def bare_mention_reply(self, event: AstrMessageEvent):
+        """Answer an empty group @ mention without claiming a model turn."""
+        if not self.config.bool("enabled", False):
+            return
+        try:
+            if event.is_private:
+                return
+            text = str(getattr(event, "message_str", "") or "").strip()
+            if text or not bool(getattr(event, "is_at_or_wake_command", False)):
+                return
+            components = list(getattr(getattr(event, "message_obj", None), "message", None) or [])
+            if any(type(component).__name__ in {"Image", "Face"} for component in components):
+                return
+            self.pipeline.block_default_llm(event)
+            yield event.plain_result("在呢，怎么啦？")
+            event.stop_event()
+        except Exception:
+            logger.exception("qqbot_core_reply bare mention reply failed")
 
     @filter.platform_adapter_type(_PLATFORM_TYPES, priority=99)
     @filter.event_message_type(filter.EventMessageType.ALL, priority=99)

@@ -5,7 +5,7 @@
     {
       "id": "qqbot_core_reply",
       "name": "QQ 核心回复",
-      "version": "4.0.12",
+      "version": "4.0.13",
       "description": "唯一主回复/LLM owner；自包含 stdlib-only，负责 direct/astrbot memory、人格、会话、工具说明 handshake 与本地点歌。",
       "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
@@ -44,10 +44,10 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "b01d1dda1b4d4857932aa1966c5975b913883835a15a327cbff5132be6379b20",
-      "size": 106036,
+      "sha256": "721702306bff841d25079a27497b72c9b77917a81de21ad0d054c6d00266793a",
+      "size": 106237,
       "root": "qqbot_core_reply",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.15/qqbot_core_reply-4.0.12.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.16/qqbot_core_reply-4.0.13.zip"
     },
     {
       "id": "qqbot_safe_tools",
@@ -110,10 +110,10 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "5a58e11ec5ec896d1f0d897861b7cf500d5b0eb3ede8904c63e15d5682c881fe",
+      "sha256": "e31e8467a4d48845c75b66ae614419f4b4edfc8941ce7b3f8e2d2470732e4d91",
       "size": 127198,
       "root": "qqbot_safe_tools",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.15/qqbot_safe_tools-3.2.5.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.16/qqbot_safe_tools-3.2.5.zip"
     },
     {
       "id": "qqbot_web_reader",
@@ -179,10 +179,10 @@
           "marker_example": "[[tool:fetch_webpage url=\"https://example.com/article\" max_chars=3000]]"
         }
       ],
-      "sha256": "06fc509f78688c7ab84ccedc883ca243edb56f50f99a52a62f87dc7d9651ea9b",
+      "sha256": "966a33657e696bf68c3d01cf2dc4b79aee17f5dc5bae2a99c50f4962f5cae298",
       "size": 40447,
       "root": "qqbot_web_reader",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.15/qqbot_web_reader-2.0.1.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.16/qqbot_web_reader-2.0.1.zip"
     },
     {
       "id": "qqbot_image_search",
@@ -259,10 +259,10 @@
           "marker_example": "[[tool:search_images keyword=\"关键词\" count=1]]"
         }
       ],
-      "sha256": "ca80480a742f0731607bf84d1f0cf4bbbdc769ef7ec3b6e78a3d4ccb899387f3",
+      "sha256": "11caa4821699d64ee76bcbecc91fb301ea24e5a47862695575f541fe5c9c290e",
       "size": 58195,
       "root": "qqbot_image_search",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.15/qqbot_image_search-2.0.1.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.16/qqbot_image_search-2.0.1.zip"
     },
     {
       "id": "qqbot_food",
@@ -398,10 +398,10 @@
           "marker_example": "[[tool:submit_food_review restaurant=\"店名\" location=\"位置\" taste=\"4.5\" value=\"3.5\" comment=\"评价\" tags=\"火锅,夜宵\"]]"
         }
       ],
-      "sha256": "ee8d7ea9f5a0fc18d4446210df7a71b0e4b89d8ba29ebe619bc2ed69c779bbec",
+      "sha256": "d104c2fefd1abccb3f24699cd89fb75be4d2f2c4e077d8b519683c589753147d",
       "size": 105405,
       "root": "qqbot_food",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.15/qqbot_food-3.0.4.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.16/qqbot_food-3.0.4.zip"
     },
     {
       "id": "qqbot_stickers",
@@ -512,10 +512,10 @@
           "marker_example": "[[tool:list_sticker_categories()]]"
         }
       ],
-      "sha256": "12a884c66d20162fbb3c10c2a0102d3ceb8056bb243ec90f4738626eaa1480a2",
+      "sha256": "55a8ccf1c645069806e1ddea81b954b4401a76e6137dce5d2f5a36470030640a",
       "size": 103569,
       "root": "qqbot_stickers",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.15/qqbot_stickers-3.0.3.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.16/qqbot_stickers-3.0.3.zip"
     },
     {
       "id": "qqbot_memory_commands",
@@ -567,10 +567,10 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "b6cf61e785caccdf68de93d78cc65bd5aed1553f4ad0e3d5c42ee7e0e1590c9a",
+      "sha256": "cba46ea7209ee4edb815a1518e65243d9cc6da6738edd2e7ca157cd953eec756",
       "size": 75217,
       "root": "qqbot_memory_commands",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.15/qqbot_memory_commands-4.0.2.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.16/qqbot_memory_commands-4.0.2.zip"
     }
   ],
   "group_param_registry": {
