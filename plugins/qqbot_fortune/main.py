@@ -16,7 +16,7 @@ except ImportError:  # AstrBot loads plugin modules as top-level
 PLUGIN_NAME = "qqbot_fortune"
 
 
-@register(PLUGIN_NAME, "QQ Bot Studio", "不调用大模型的每日运势", "1.0.1")
+@register(PLUGIN_NAME, "QQ Bot Studio", "不调用大模型的每日运势", "1.0.2")
 class FortunePlugin(Star):
     def __init__(self, context: Context, config: Any = None) -> None:
         super().__init__(context)

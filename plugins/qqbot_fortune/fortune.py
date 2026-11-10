@@ -42,21 +42,39 @@ def generate_fortune(*, user_id: str, display_name: str = "", when: datetime | N
     day = now.astimezone(TZ).strftime("%Y-%m-%d")
     n = _rng(f"{user_id}:{day}")
     luck = _LUCK[n % len(_LUCK)]
+    wealth = _LUCK[(n // 31) % len(_LUCK)]
+    love = _LUCK[(n // 37) % len(_LUCK)]
+    career = _LUCK[(n // 41) % len(_LUCK)]
     suitable = _SUITABLE[(n // 7) % len(_SUITABLE)]
     avoid = _AVOID[(n // 13) % len(_AVOID)]
     item = _ITEMS[(n // 17) % len(_ITEMS)]
     op, cls, advice = _OPS[(n // 23) % len(_OPS)]
-    name = display_name.strip() or "博士"
+    name = " ".join((display_name or "").strip().split()) or "博士"
     lines = [
-        f"【{name} 的明日方舟每日运势】",
-        f"日期：{day}",
-        f"综合运势：{luck}",
-        f"宜：{suitable}",
-        f"忌：{avoid}",
-        f"幸运物：{item}",
+        f"## 🔮 {name} 的每日运势",
+        f"**📅 日期**：{day}",
+        "",
+        "### ✨ 运势速览",
+        f"- **综合**：{luck}",
+        f"- **财运**：{wealth}",
+        f"- **桃花运**：{love}",
+        f"- **事业运**：{career}",
+        "",
+        f"**✅ 宜**：{suitable}",
+        f"**⚠️ 忌**：{avoid}",
+        f"**🍀 幸运物**：{item}",
     ]
     if show_operator:
-        lines.extend([f"今日干员：{op}（{cls}）", f"提示：{advice}"])
-    lines.append("娱乐向内容，不代表官方；理性游戏，别上头。")
+        lines.extend([
+            "",
+            f"### 🎲 今日干员",
+            f"**{op}**（{cls}）",
+            f"> {advice}",
+        ])
+    lines.extend([
+        "",
+        "---",
+        "*娱乐向内容，不代表官方；理性游戏，别上头。*",
+    ])
     return "\n".join(lines)
 

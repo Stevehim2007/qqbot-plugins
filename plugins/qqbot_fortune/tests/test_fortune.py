@@ -20,7 +20,10 @@ class FortuneTests(unittest.TestCase):
 
     def test_sections(self):
         text = generate_fortune(user_id="u1", when=datetime(2026, 11, 10, 12, 0), display_name="博士")
-        for part in ("综合运势", "宜：", "忌：", "幸运物", "娱乐向"):
+        for part in (
+            "每日运势", "综合", "财运", "桃花运", "事业运",
+            "宜", "忌", "幸运物", "娱乐向", "##", "**",
+        ):
             self.assertIn(part, text)
 
 
