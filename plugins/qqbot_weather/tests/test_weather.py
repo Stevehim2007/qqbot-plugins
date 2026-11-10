@@ -56,3 +56,33 @@ class WeatherParsingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+HTML = '''<ul class="t clearfix">
+<li class="sky skyid lv2 on"><h1>10日（今天）</h1><big class="png40"></big><big class="png40 n01"></big><p title="多云" class="wea">多云</p><p class="tem"><i>-2℃</i></p><p class="win"><em><span title="南风" class="S"></span></em><i>&lt;3级</i></p></li>
+<li class="sky skyid lv2"><h1>11日（明天）</h1><big class="png40 d00"></big><big class="png40 n00"></big><p title="晴" class="wea">晴</p><p class="tem"><span>11℃</span>/<i>1℃</i></p><p class="win"><em><span title="西南风" class="SW"></span></em><i>3-4级</i></p></li>
+</ul>'''
+
+
+class WeatherHtmlTests(unittest.TestCase):
+    def test_parse_official_html(self):
+        f = weather.parse_forecast_html(HTML, city="长春")
+        self.assertEqual(f.city, "长春")
+        self.assertEqual(len(f.days), 2)
+        self.assertEqual(f.days[0].label, "10日（今天）")
+        self.assertIsNone(f.days[0].high)
+        self.assertEqual(f.days[0].low, -2)
+        self.assertEqual(f.days[0].description, "多云")
+        self.assertEqual(f.days[1].high, 11)
+        self.assertEqual(f.days[1].low, 1)
+        self.assertEqual(f.days[1].description, "晴")
+        self.assertIn("西南风", f.days[1].wind)
+
+    def test_render_official_html_png(self):
+        try:
+            import PIL  # noqa: F401
+        except ImportError:
+            self.skipTest("Pillow unavailable")
+        data = weather.render_forecast_png(weather.parse_forecast_html(HTML, city="长春"))
+        self.assertTrue(data.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertGreater(len(data), 1000)

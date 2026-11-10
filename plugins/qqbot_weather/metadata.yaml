@@ -1,7 +1,7 @@
 name: qqbot_weather
 display_name: 天气
 desc: 中国天气网 7 天预报图片；命令 /天气 城市，不调用大模型。
-version: 1.0.1
+version: 1.0.2
 author: QQ Bot Studio
 support_platforms:
   - qqofficial

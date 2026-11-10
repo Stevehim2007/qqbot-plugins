@@ -18,7 +18,7 @@ except ImportError:  # AstrBot loads plugin modules as top-level
     import weather  # type: ignore[no-redef]
 
 PLUGIN_NAME = "qqbot_weather"
-PLUGIN_VERSION = "1.0.1"
+PLUGIN_VERSION = "1.0.2"
 DEFAULTS = {
     "enabled": True,
     "default_city": "",
@@ -82,9 +82,7 @@ class WeatherPlugin(Star):
                     tracker(str(path))
                 except Exception:
                     pass
-            summary = f"{forecast.city} 未来7天："
-            summary += "；".join(f"{d.label or d.date} {d.high}°/{d.low}°" for d in forecast.days[:4])
-            yield event.chain_result([Comp.Plain(summary), image])
+            yield event.chain_result([image])
         except Exception:
             logger.exception("qqbot_weather image reply failed")
             text = f"{forecast.city} 未来7天：" + "；".join(
