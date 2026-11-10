@@ -5,7 +5,7 @@
     {
       "id": "qqbot_core_reply",
       "name": "QQ 核心回复",
-      "version": "4.0.15",
+      "version": "4.0.16",
       "description": "唯一主回复/LLM owner；自包含 stdlib-only，负责 direct/astrbot memory、人格、会话、工具说明 handshake 与本地点歌。",
       "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
@@ -44,10 +44,10 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "50c892543f7ce345a2ebd94f960b3fadb25aecca72323df66e0f9db0be778b75",
-      "size": 107531,
+      "sha256": "155205db1177a63e2b3bb258308168bfaf8ef02662ff97d302a5375fccf8891a",
+      "size": 108598,
       "root": "qqbot_core_reply",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.20/qqbot_core_reply-4.0.15.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.21/qqbot_core_reply-4.0.16.zip"
     },
     {
       "id": "qqbot_safe_tools",
@@ -110,10 +110,10 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "aea23a47e0656b29e7e9efc8a21038853d3bcb301503b90ceeeca12948002a56",
+      "sha256": "7c58039f2f3444e284bb9268aa9da45f048b5fec4ea9117f35aba29b734df25c",
       "size": 127198,
       "root": "qqbot_safe_tools",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.20/qqbot_safe_tools-3.2.5.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.21/qqbot_safe_tools-3.2.5.zip"
     },
     {
       "id": "qqbot_web_reader",
@@ -179,10 +179,10 @@
           "marker_example": "[[tool:fetch_webpage url=\"https://example.com/article\" max_chars=3000]]"
         }
       ],
-      "sha256": "17947b15fec1a0dc655ec5e13ed35aec8672d8a6eb1794fbad326219ec1b25bc",
+      "sha256": "ce43d140946f038c81f5e498b8eaa1c874aeada30a0f4cd6d8591ccf0d869acb",
       "size": 40447,
       "root": "qqbot_web_reader",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.20/qqbot_web_reader-2.0.1.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.21/qqbot_web_reader-2.0.1.zip"
     },
     {
       "id": "qqbot_image_search",
@@ -259,10 +259,10 @@
           "marker_example": "[[tool:search_images keyword=\"关键词\" count=1]]"
         }
       ],
-      "sha256": "99e827e794fafdbeb075dfbd729684332f3dc069117bbf149e528c5ebeee4cd6",
+      "sha256": "b74b9b128aa5ea6ad664cbaf02992c7e0414a7828f978bd166c3386c16061d80",
       "size": 58195,
       "root": "qqbot_image_search",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.20/qqbot_image_search-2.0.1.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.21/qqbot_image_search-2.0.1.zip"
     },
     {
       "id": "qqbot_food",
@@ -398,10 +398,10 @@
           "marker_example": "[[tool:submit_food_review restaurant=\"店名\" location=\"位置\" taste=\"4.5\" value=\"3.5\" comment=\"评价\" tags=\"火锅,夜宵\"]]"
         }
       ],
-      "sha256": "61a3de2eb3855376a4e468a9510a6d86714a2773885a24c74145676fb4884c93",
+      "sha256": "0bb72e6a18cf00965f9c90b67aff6633609eb45774441c6e2f0d537b875ad126",
       "size": 105405,
       "root": "qqbot_food",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.20/qqbot_food-3.0.4.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.21/qqbot_food-3.0.4.zip"
     },
     {
       "id": "qqbot_stickers",
@@ -512,10 +512,10 @@
           "marker_example": "[[tool:list_sticker_categories()]]"
         }
       ],
-      "sha256": "89e9c2a391a14ce03c6eed97a9a6e1ab137a8745b5734c7383fd6e4757fe45a3",
+      "sha256": "9ff80329f1d75399e7a005a0a47b7fd98b325db5ebe7d95b7dbe4c30b88e7dec",
       "size": 103569,
       "root": "qqbot_stickers",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.20/qqbot_stickers-3.0.3.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.21/qqbot_stickers-3.0.3.zip"
     },
     {
       "id": "qqbot_memory_commands",
@@ -567,15 +567,15 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "124a36b850d59d5a2b5e03551ddef61f2992188f5071226efe2077e33ccaeb02",
+      "sha256": "82fcd8950e1c19a26969cd0553ea40f739d1c71bc11b7f10f34b0a6478909caf",
       "size": 75217,
       "root": "qqbot_memory_commands",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.20/qqbot_memory_commands-4.0.2.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.21/qqbot_memory_commands-4.0.2.zip"
     },
     {
       "id": "qqbot_fortune",
       "name": "每日运势",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "不调用大模型的明日方舟风格每日运势；按用户与日期确定性生成，带冷却与娱乐声明。",
       "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
@@ -596,15 +596,15 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "5ab405e7281f884dadb85b00e985ca3d1b6e82abfa4aadb429d3b552292360a9",
-      "size": 4802,
+      "sha256": "0f2be7833c5f620598e0f6f30decf819a5f0d2279916fc2a61b0c7ad6720d67a",
+      "size": 4963,
       "root": "qqbot_fortune",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.20/qqbot_fortune-1.0.0.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.21/qqbot_fortune-1.0.1.zip"
     },
     {
       "id": "qqbot_weather",
       "name": "天气",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "中国天气网 7 天预报图片；命令 /天气 城市，不调用大模型。",
       "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
@@ -647,15 +647,15 @@
           }
         ]
       },
-      "sha256": "462470a5d76ff32d648e30433213ea19c95a38628da4e6577a3936086cefbf1d",
-      "size": 8217,
+      "sha256": "7a5769d482a96a5079f77cc5c598187fe875ad23fd810a535b6a352cd83d415d",
+      "size": 8387,
       "root": "qqbot_weather",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.20/qqbot_weather-1.0.0.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.21/qqbot_weather-1.0.1.zip"
     },
     {
       "id": "qqbot_scheduler",
       "name": "定时消息",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "群内定时发送文本；不调用大模型，支持每天、日期段、星期、工作日/非工作日。",
       "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
@@ -676,10 +676,10 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "e0b3b60d18fdff5bb695b9055ae057d6c6593653cf8823e64c67978067d58d81",
-      "size": 10127,
+      "sha256": "58915ad32dc90f94e581644706e93c40981ff4402762ae945e85f1d93ed03626",
+      "size": 10291,
       "root": "qqbot_scheduler",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.20/qqbot_scheduler-1.0.1.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.21/qqbot_scheduler-1.0.2.zip"
     }
   ],
   "group_param_registry": {
