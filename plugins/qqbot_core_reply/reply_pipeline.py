@@ -356,6 +356,12 @@ class ReplyPipeline:
             has_image = any(self.is_component(c, "Image") for c in components)
             has_face = any(self.is_component(c, "Face") for c in components)
             original = self.original_text(event, text)
+            if not str(text or "").strip() and not has_image and not has_face:
+                # A bare @ mention (or an empty event) must not claim the
+                # single memory turn.  It otherwise blocks the next real
+                # message until the watchdog expires.
+                self.block_default_llm(event)
+                return None
 
             match = self.command_match(event, text)
             if match is not None:

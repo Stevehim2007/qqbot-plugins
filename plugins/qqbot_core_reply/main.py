@@ -95,7 +95,7 @@ except ImportError:  # Loaded directly by a test harness.
 
 PLUGIN_NAME = "qqbot_core_reply"
 PLUGIN_DISPLAY_NAME = "QQ 核心回复"
-PLUGIN_VERSION = "4.0.11"
+PLUGIN_VERSION = "4.0.12"
 PLUGIN_DIR = Path(__file__).resolve().parent
 SONG_DIR = PLUGIN_DIR / "songs"
 PROVIDER_ID = "core_reply"
