@@ -61,8 +61,10 @@ _UNMENTIONED_COMMANDS = (
 def _unmentioned_command_owner(text: str) -> str:
     value = str(text or "").strip().replace("／", "/")
     for prefix, plugin_id in _UNMENTIONED_COMMANDS:
-        if value == prefix or value.startswith(prefix + " ") or value.startswith(prefix + "\t"):
-            return plugin_id
+        candidates = (prefix, prefix.lstrip("/"))
+        for candidate in candidates:
+            if value == candidate or value.startswith(candidate + " ") or value.startswith(candidate + "\t"):
+                return plugin_id
     return ""
 
 try:  # Loaded as a package by AstrBot.
@@ -111,7 +113,7 @@ except ImportError:  # Loaded directly by a test harness.
 
 PLUGIN_NAME = "qqbot_core_reply"
 PLUGIN_DISPLAY_NAME = "QQ 核心回复"
-PLUGIN_VERSION = "4.0.18"
+PLUGIN_VERSION = "4.0.22"
 PLUGIN_DIR = Path(__file__).resolve().parent
 SONG_DIR = PLUGIN_DIR / "songs"
 PROVIDER_ID = "core_reply"
@@ -442,10 +444,15 @@ class CoreReplyPlugin(Star):
             return False
         return False
 
-    @filter.platform_adapter_type(_PLATFORM_TYPES, priority=120)
     @filter.event_message_type(filter.EventMessageType.ALL, priority=120)
     async def require_mention_for_utility_commands(self, event: AstrMessageEvent):
         """Keep utility commands behind an actual @ in group chats."""
+        logger.info(
+            "utility mention gate enter: text=%r private=%s umo=%r",
+            str(getattr(event, "message_str", "") or ""),
+            self.pipeline.is_private(event),
+            str(getattr(event, "unified_msg_origin", "") or ""),
+        )
         if not self.config.bool("enabled", False):
             return
         if not self.config.bool("utility_commands_require_at", True):
@@ -455,7 +462,17 @@ class CoreReplyPlugin(Star):
         owner = _unmentioned_command_owner(str(getattr(event, "message_str", "") or ""))
         if not owner:
             return
-        if self._has_bot_mention(event):
+        has_mention = self._has_bot_mention(event)
+        logger.info(
+            "utility mention gate: text=%r owner=%s private=%s self_id=%r has_mention=%s global_require_at=%s",
+            str(getattr(event, "message_str", "") or ""),
+            owner,
+            self.pipeline.is_private(event),
+            str(event.get_self_id() or ""),
+            has_mention,
+            self.config.bool("utility_commands_require_at", True),
+        )
+        if has_mention:
             return
         event.is_at_or_wake_command = False
         event.stop_event()

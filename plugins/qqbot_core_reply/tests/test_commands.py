@@ -443,6 +443,8 @@ class UnmentionedCommandTests(unittest.TestCase):
     def test_owner_mapping(self):
         self.assertEqual(core_main._unmentioned_command_owner("/天气 长春"), "qqbot_weather")
         self.assertEqual(core_main._unmentioned_command_owner("／每日运势"), "qqbot_fortune")
+        self.assertEqual(core_main._unmentioned_command_owner("每日运势"), "qqbot_fortune")
+        self.assertEqual(core_main._unmentioned_command_owner("天气 长春"), "qqbot_weather")
         self.assertEqual(core_main._unmentioned_command_owner("/定时 08:00 早安"), "qqbot_scheduler")
         self.assertEqual(core_main._unmentioned_command_owner("/option 美食"), "qqbot_core_reply")
         self.assertEqual(core_main._unmentioned_command_owner("/分群 状态"), "")
