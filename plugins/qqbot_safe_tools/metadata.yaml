@@ -5,4 +5,6 @@ version: 3.2.5
 author: QQ Bot Studio
 support_platforms:
   - aiocqhttp
+  - qq_official
+  - qq_official_webhook
 astrbot_version: ">=4.29,<5"

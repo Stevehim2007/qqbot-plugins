@@ -4,6 +4,10 @@
 AstrBot 原生记忆服务；**不调用聊天模型**，也不导入 `qqbot_enhancer`、`qqbot_core_full`
 或其他插件源码。实现只依赖 Python 标准库和 AstrBot 公共 API。
 
+## 记忆卡 v3 基础层
+
+本版本开始引入独立的 `cards.py` / `memory_cards.db` 记忆卡存储，用于下一阶段 active/archive 卡片、清晰度衰减、归档和事件审计。它不替代现有五 scope 原始记忆；现有 `/记忆`、Studio 管理面和 AstrBot 长期记忆行为保持不变。卡片层当前是增量基础，尚未接入回复注入和收尾流程。
+
 ## 命令
 
 `/记忆` 与 `/记忆管理` 是同一个 handler 的两个命令名，不会重复注册或重复回复。

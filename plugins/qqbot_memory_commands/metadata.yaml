@@ -1,8 +1,10 @@
 name: qqbot_memory_commands
 display_name: 记忆管理
 desc: 独立 /记忆（别名 /记忆管理）命令；复用 AstrBot 原生长期记忆服务，不调用聊天模型。
-version: 4.0.2
+version: 4.1.0
 author: QQ Bot Studio
 support_platforms:
   - aiocqhttp
+  - qq_official
+  - qq_official_webhook
 astrbot_version: ">=4.29,<5"

@@ -6,4 +6,5 @@ author: QQ Bot Studio
 support_platforms:
   - qq_official
   - aiocqhttp
+  - qq_official_webhook
 astrbot_version: ">=4.29,<5"

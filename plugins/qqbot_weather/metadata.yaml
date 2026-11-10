@@ -4,6 +4,7 @@ desc: 中国天气网 7 天预报图片；命令 /天气 城市，不调用大�
 version: 1.0.2
 author: QQ Bot Studio
 support_platforms:
-  - qqofficial
   - aiocqhttp
+  - qq_official
+  - qq_official_webhook
 astrbot_version: ">=4.29,<5"
