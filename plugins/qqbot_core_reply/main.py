@@ -95,7 +95,7 @@ except ImportError:  # Loaded directly by a test harness.
 
 PLUGIN_NAME = "qqbot_core_reply"
 PLUGIN_DISPLAY_NAME = "QQ 核心回复"
-PLUGIN_VERSION = "4.0.13"
+PLUGIN_VERSION = "4.0.14"
 PLUGIN_DIR = Path(__file__).resolve().parent
 SONG_DIR = PLUGIN_DIR / "songs"
 PROVIDER_ID = "core_reply"
@@ -353,7 +353,7 @@ class CoreReplyPlugin(Star):
         if not self.config.bool("enabled", False):
             return
         try:
-            if event.is_private:
+            if self.pipeline.is_private(event):
                 return
             text = str(getattr(event, "message_str", "") or "").strip()
             if text or not bool(getattr(event, "is_at_or_wake_command", False)):
