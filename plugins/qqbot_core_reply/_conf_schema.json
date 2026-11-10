@@ -755,5 +755,16 @@
     "default": true,
     "description": "是否允许 AstrBot 内置 /help 命令。关闭后 /help 不再响应；不影响普通聊天中的 “help me ...” 句子。",
     "hint": "也可在 Studio → 群策略 → qqbot_core_reply 中按群覆盖。"
+  },
+  "utility_commands_require_at": {
+    "type": "bool",
+    "default": true,
+    "description": "群聊中使用工具命令是否仍然要求 @ 机器人。关闭后，只有已开启 allow_unmentioned_command 的插件命令可不 @ 触发。",
+    "hint": "涉及 /天气、/每日运势、/运势、/定时、/option；其他命令仍要求 @。"
+  },
+  "option_allow_unmentioned": {
+    "type": "bool",
+    "default": false,
+    "description": "允许 /option 在群聊中免 @ 触发；仅在 utility_commands_require_at=false 时生效。"
   }
 }

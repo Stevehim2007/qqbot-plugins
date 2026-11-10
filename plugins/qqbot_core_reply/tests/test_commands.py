@@ -439,5 +439,54 @@ class SongCommandTests(unittest.TestCase):
             self.assertIn("本地音频构造失败", results[0].text)
 
 
+class UnmentionedCommandTests(unittest.TestCase):
+    def test_owner_mapping(self):
+        self.assertEqual(core_main._unmentioned_command_owner("/天气 长春"), "qqbot_weather")
+        self.assertEqual(core_main._unmentioned_command_owner("／每日运势"), "qqbot_fortune")
+        self.assertEqual(core_main._unmentioned_command_owner("/定时 08:00 早安"), "qqbot_scheduler")
+        self.assertEqual(core_main._unmentioned_command_owner("/option 美食"), "qqbot_core_reply")
+        self.assertEqual(core_main._unmentioned_command_owner("/分群 状态"), "")
+        self.assertEqual(core_main._unmentioned_command_owner("今天天气不错"), "")
+
+    def test_owner_requires_command_boundary(self):
+        self.assertEqual(core_main._unmentioned_command_owner("/天气好"), "")
+        self.assertEqual(core_main._unmentioned_command_owner("/option"), "qqbot_core_reply")
+
+    def test_handler_sets_wake_only_for_opted_in_plugin(self):
+        class OptIn:
+            def allow_unmentioned_command(self):
+                return True
+
+        class OptOut:
+            def allow_unmentioned_command(self):
+                return False
+
+        ctx = FakeContext(
+            registered_stars={
+                "qqbot_weather": FakeStarMeta(OptIn()),
+                "qqbot_fortune": FakeStarMeta(OptOut()),
+            }
+        )
+        plugin, _ctx, _cfg = make_plugin(
+            config={"enabled": True, "utility_commands_require_at": False},
+            context=ctx,
+        )
+        weather_event = FakeEvent("/天气 长春", wake=False)
+        run(plugin.allow_unmentioned_utility_commands(weather_event))
+        self.assertTrue(weather_event.is_at_or_wake_command)
+
+        fortune_event = FakeEvent("/每日运势", wake=False)
+        run(plugin.allow_unmentioned_utility_commands(fortune_event))
+        self.assertFalse(fortune_event.is_at_or_wake_command)
+
+    def test_handler_respects_global_switch(self):
+        plugin, _ctx, _cfg = make_plugin(
+            config={"enabled": True, "utility_commands_require_at": True}
+        )
+        event = FakeEvent("/天气 长春", wake=False)
+        run(plugin.allow_unmentioned_utility_commands(event))
+        self.assertFalse(event.is_at_or_wake_command)
+
+
 if __name__ == "__main__":
     unittest.main()

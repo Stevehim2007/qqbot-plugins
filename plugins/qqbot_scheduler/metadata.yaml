@@ -1,7 +1,7 @@
 name: qqbot_scheduler
 display_name: 定时消息
 desc: 群内定时发送文本；不调用大模型，支持每天、日期段、星期、工作日/非工作日。
-version: 1.0.1
+version: 1.0.2
 author: QQ Bot Studio
 support_platforms:
   - qq_official

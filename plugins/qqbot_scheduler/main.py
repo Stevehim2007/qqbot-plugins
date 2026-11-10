@@ -73,6 +73,9 @@ class SchedulerPlugin(Star):
         self._holidays = scheduler.HolidayResolver(enabled=self._holiday_enabled)
         self._task: asyncio.Task | None = None
 
+    def allow_unmentioned_command(self) -> bool:
+        return bool(_cfg(self.config, "allow_unmentioned_command", False))
+
     def _resolve_data_dir(self, override: str | Path | None) -> Path:
         if override is not None:
             return Path(override)

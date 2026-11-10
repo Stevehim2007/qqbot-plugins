@@ -14,5 +14,10 @@
     "description": "显示干员/职业风味",
     "type": "bool",
     "default": true
+  },
+  "allow_unmentioned_command": {
+    "type": "bool",
+    "default": false,
+    "description": "允许该插件的命令在群聊中免 @ 触发；仅在 qqbot_core_reply 的 utility_commands_require_at=false 时生效。"
   }
 }

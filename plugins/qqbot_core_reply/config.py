@@ -19,6 +19,8 @@ DEFAULTS: dict[str, Any] = {
     # installed package must not take over replies before explicit handover.
     "enabled": False,
     "help_command_enabled": True,
+    "utility_commands_require_at": True,
+    "option_allow_unmentioned": False,
     "memory_mode": "direct",
     "owner_epoch": 1,
     # Canonical v4.3 groups (flat keys keep AstrBot's schema loader intact).

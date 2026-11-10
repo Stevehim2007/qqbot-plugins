@@ -49,6 +49,22 @@ _install_qqofficial_role_compat()
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, StarTools
 
+_UNMENTIONED_COMMANDS = (
+    ("/天气", "qqbot_weather"),
+    ("/每日运势", "qqbot_fortune"),
+    ("/运势", "qqbot_fortune"),
+    ("/定时", "qqbot_scheduler"),
+    ("/option", "qqbot_core_reply"),
+)
+
+
+def _unmentioned_command_owner(text: str) -> str:
+    value = str(text or "").strip().replace("／", "/")
+    for prefix, plugin_id in _UNMENTIONED_COMMANDS:
+        if value == prefix or value.startswith(prefix + " ") or value.startswith(prefix + "\t"):
+            return plugin_id
+    return ""
+
 try:  # Loaded as a package by AstrBot.
     from . import command_exclusion as command_engine
     from . import contracts
@@ -95,7 +111,7 @@ except ImportError:  # Loaded directly by a test harness.
 
 PLUGIN_NAME = "qqbot_core_reply"
 PLUGIN_DISPLAY_NAME = "QQ 核心回复"
-PLUGIN_VERSION = "4.0.15"
+PLUGIN_VERSION = "4.0.16"
 PLUGIN_DIR = Path(__file__).resolve().parent
 SONG_DIR = PLUGIN_DIR / "songs"
 PROVIDER_ID = "core_reply"
@@ -409,6 +425,32 @@ class CoreReplyPlugin(Star):
         if isinstance(params, dict) and "help_command_enabled" in params:
             return bool(params["help_command_enabled"])
         return bool(enabled)
+
+    @filter.platform_adapter_type(_PLATFORM_TYPES, priority=97)
+    @filter.event_message_type(filter.EventMessageType.ALL, priority=97)
+    async def allow_unmentioned_utility_commands(self, event: AstrMessageEvent):
+        """Allow selected utility commands without @ when their plugin opts in."""
+        if not self.config.bool("enabled", False):
+            return
+        if self.config.bool("utility_commands_require_at", True):
+            return
+        if self.pipeline.is_private(event):
+            return
+        owner = _unmentioned_command_owner(str(getattr(event, "message_str", "") or ""))
+        if not owner:
+            return
+        if owner == "qqbot_core_reply":
+            allowed = self.config.bool("option_allow_unmentioned", False)
+        else:
+            getter = getattr(self.context, "get_registered_star", None)
+            meta = getter(owner) if callable(getter) else None
+            if meta is None or getattr(meta, "activated", True) is False:
+                return
+            star = getattr(meta, "star_cls", None) or meta
+            check = getattr(star, "allow_unmentioned_command", None)
+            allowed = bool(check()) if callable(check) else False
+        if allowed:
+            event.is_at_or_wake_command = True
 
     @filter.platform_adapter_type(_PLATFORM_TYPES, priority=98)
     @filter.event_message_type(filter.EventMessageType.ALL, priority=98)

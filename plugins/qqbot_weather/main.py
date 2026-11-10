@@ -18,7 +18,7 @@ except ImportError:  # AstrBot loads plugin modules as top-level
     import weather  # type: ignore[no-redef]
 
 PLUGIN_NAME = "qqbot_weather"
-PLUGIN_VERSION = "1.0.0"
+PLUGIN_VERSION = "1.0.1"
 DEFAULTS = {
     "enabled": True,
     "default_city": "",
@@ -34,6 +34,9 @@ class WeatherPlugin(Star):
         super().__init__(context)
         self.config_obj = config if isinstance(config, dict) else {}
         self._cache: dict[str, tuple[float, weather.Forecast, bytes]] = {}
+
+    def allow_unmentioned_command(self) -> bool:
+        return bool(self._cfg("allow_unmentioned_command", False))
 
     def _cfg(self, key: str, default: Any) -> Any:
         value = self.config_obj.get(key, default)

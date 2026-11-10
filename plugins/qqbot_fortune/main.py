@@ -16,12 +16,15 @@ except ImportError:  # AstrBot loads plugin modules as top-level
 PLUGIN_NAME = "qqbot_fortune"
 
 
-@register(PLUGIN_NAME, "QQ Bot Studio", "不调用大模型的每日运势", "1.0.0")
+@register(PLUGIN_NAME, "QQ Bot Studio", "不调用大模型的每日运势", "1.0.1")
 class FortunePlugin(Star):
     def __init__(self, context: Context, config: Any = None) -> None:
         super().__init__(context)
         self.config_obj = config if isinstance(config, dict) else {}
         self._last: dict[str, float] = {}
+
+    def allow_unmentioned_command(self) -> bool:
+        return self._bool("allow_unmentioned_command", False)
 
     def _bool(self, key: str, default: bool) -> bool:
         value = self.config_obj.get(key, default)
