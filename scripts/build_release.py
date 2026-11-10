@@ -56,12 +56,11 @@ REQUIRES: dict[str, list[dict[str, Any]]] = {
         {"plugin_id": "qqbot_safe_tools", "version_range": ">=3.0.0,<4", "capability": "tools", "abi_version": 1, "optional": False},
         {"plugin_id": "qqbot_memory_commands", "version_range": ">=4.0.0,<5", "capability": "memory.read", "abi_version": 1, "optional": False},
     ],
-    "qqbot_safe_tools": [
-        {"plugin_id": "qqbot_web_reader", "version_range": ">=2.0.0,<3", "capability": "web.read", "abi_version": 1, "optional": True},
-        {"plugin_id": "qqbot_image_search", "version_range": ">=2.0.0,<3", "capability": "image.search", "abi_version": 1, "optional": True},
-        {"plugin_id": "qqbot_food", "version_range": ">=3.0.0,<4", "capability": "food.query", "abi_version": 1, "optional": True},
-        {"plugin_id": "qqbot_stickers", "version_range": ">=3.0.0,<4", "capability": "sticker.send", "abi_version": 1, "optional": True},
-    ],
+    # safe_tools is the ABI/auth base and must not depend on business
+    # providers; otherwise optional provider edges create dependency cycles
+    # (safe_tools <-> web_reader/food/stickers/image_search) and a fresh
+    # instance cannot install the base plugin at all.
+    "qqbot_safe_tools": [],
     "qqbot_web_reader": [
         {"plugin_id": "qqbot_safe_tools", "version_range": ">=3.0.0,<4", "capability": "tools", "abi_version": 1, "optional": False},
     ],
