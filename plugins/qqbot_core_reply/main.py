@@ -111,7 +111,7 @@ except ImportError:  # Loaded directly by a test harness.
 
 PLUGIN_NAME = "qqbot_core_reply"
 PLUGIN_DISPLAY_NAME = "QQ 核心回复"
-PLUGIN_VERSION = "4.0.16"
+PLUGIN_VERSION = "4.0.17"
 PLUGIN_DIR = Path(__file__).resolve().parent
 SONG_DIR = PLUGIN_DIR / "songs"
 PROVIDER_ID = "core_reply"
@@ -425,6 +425,40 @@ class CoreReplyPlugin(Star):
         if isinstance(params, dict) and "help_command_enabled" in params:
             return bool(params["help_command_enabled"])
         return bool(enabled)
+
+    @staticmethod
+    def _has_bot_mention(event: AstrMessageEvent) -> bool:
+        """Return True only when the bot is actually mentioned in this event."""
+        try:
+            self_id = str(event.get_self_id() or "")
+            if not self_id or self_id in {"qq_official", "unknown_selfid"}:
+                return False
+            for component in list(getattr(getattr(event, "message_obj", None), "message", None) or []):
+                if type(component).__name__ != "At":
+                    continue
+                if str(getattr(component, "qq", "") or "") == self_id:
+                    return True
+        except Exception:
+            return False
+        return False
+
+    @filter.platform_adapter_type(_PLATFORM_TYPES, priority=96)
+    @filter.event_message_type(filter.EventMessageType.ALL, priority=96)
+    async def require_mention_for_utility_commands(self, event: AstrMessageEvent):
+        """Keep utility commands behind an actual @ in group chats."""
+        if not self.config.bool("enabled", False):
+            return
+        if not self.config.bool("utility_commands_require_at", True):
+            return
+        if self.pipeline.is_private(event):
+            return
+        owner = _unmentioned_command_owner(str(getattr(event, "message_str", "") or ""))
+        if not owner:
+            return
+        if self._has_bot_mention(event):
+            return
+        event.is_at_or_wake_command = False
+        event.stop_event()
 
     @filter.platform_adapter_type(_PLATFORM_TYPES, priority=97)
     @filter.event_message_type(filter.EventMessageType.ALL, priority=97)
