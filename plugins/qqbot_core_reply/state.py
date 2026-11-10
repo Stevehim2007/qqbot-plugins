@@ -247,7 +247,11 @@ class RuntimeState:
         )
         entry = {
             "nickname": _safe_text(nickname, max_chars=32),
-            "qq": qq if str(qq).isdigit() else "",
+            "qq": str(qq).strip()
+            if str(qq).strip()
+            and all(ch.isalnum() or ch in "_.:-" for ch in str(qq).strip())
+            and len(str(qq).strip()) <= 128
+            else "",
             "text": value,
             "timestamp": self.clock(),
         }

@@ -331,3 +331,45 @@ class DefaultLlmGateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OfficialIdentityTests(unittest.TestCase):
+    def test_group_policy_accepts_official_openid_and_raw_role(self):
+        plugin, ctx, _ = make_plugin(overrides={"enabled": True})
+        calls = []
+
+        class FakeSafeTools:
+            def group_admin_override_enabled(self):
+                return True
+
+            def group_admin_allow_bot_admin(self):
+                return True
+
+            def policy_scope(self, scope_type, scope_id):
+                return {
+                    "ok": True,
+                    "revision": 1,
+                    "plugins": {},
+                    "effective": {"qqbot_food": {"enabled": True, "params": {}}},
+                }
+
+            def policy_set(self, **kwargs):
+                calls.append(kwargs)
+                return {"ok": True, "revision": 2}
+
+        plugin.gateway.safe_tools_star = lambda: FakeSafeTools()
+        event = FakeEvent(
+            "/分群 关闭 qqbot_food",
+            private=False,
+            group_id="A1B2C3D4E5F6-openid",
+        )
+        from types import SimpleNamespace
+
+        event.message_obj = SimpleNamespace(
+            sender=SimpleNamespace(role=""),
+            raw_message=SimpleNamespace(author=SimpleNamespace(member_role="owner")),
+        )
+        results = run(collect_command(plugin, "group_policy_command", event))
+        self.assertEqual(len(results), 1)
+        self.assertEqual(calls[0]["group_id"], "A1B2C3D4E5F6-openid")
+        self.assertFalse(calls[0]["enabled"])

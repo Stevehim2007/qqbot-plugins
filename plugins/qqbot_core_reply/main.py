@@ -66,7 +66,7 @@ except ImportError:  # Loaded directly by a test harness.
 
 PLUGIN_NAME = "qqbot_core_reply"
 PLUGIN_DISPLAY_NAME = "QQ 核心回复"
-PLUGIN_VERSION = "4.0.0"
+PLUGIN_VERSION = "4.0.7"
 PLUGIN_DIR = Path(__file__).resolve().parent
 SONG_DIR = PLUGIN_DIR / "songs"
 PROVIDER_ID = "core_reply"
@@ -387,6 +387,15 @@ class CoreReplyPlugin(Star):
         role = getattr(sender, "role", "")
         if not role and isinstance(sender, dict):
             role = sender.get("role", "")
+        # QQ 官方适配器把群成员角色放在 raw_message.author.member_role，
+        # AstrBot 的 MessageMember 目前不会带 role；这里直接读取原始事件。
+        raw_message = getattr(getattr(event, "message_obj", None), "raw_message", None)
+        if not role and raw_message is not None:
+            author = raw_message.get("author") if isinstance(raw_message, dict) else getattr(raw_message, "author", None)
+            if isinstance(author, dict):
+                role = author.get("member_role", "")
+            elif author is not None:
+                role = getattr(author, "member_role", "") or ""
         if str(role or "").strip().lower() in {"admin", "owner"}:
             return True
         # AstrBot 实例管理员也应能在群里调整测试策略；群管理员开关只控制

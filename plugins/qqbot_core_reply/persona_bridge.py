@@ -6,7 +6,10 @@ provider/model/key settings, and no helper imports another plugin.
 
 from __future__ import annotations
 
+import re
 from typing import Any
+
+PLATFORM_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}")
 
 AGENT_PERSONA_PREFIX = "qqbot_core_reply_group_"
 AGENT_DEFAULT_PERSONA_ID = AGENT_PERSONA_PREFIX + "default"
@@ -20,8 +23,10 @@ SAFE_TOOLS_MARKER = "# Safe Tools Tool Catalog"
 def persona_id_for(group_id: str, source: str) -> str:
     """Return a dedicated persona id; never the global/default persona id."""
 
-    if source == "group" and str(group_id or "").isdigit():
-        return f"{AGENT_PERSONA_PREFIX}{group_id}"
+    if source == "group":
+        token = re.sub(r"[^A-Za-z0-9_-]", "_", str(group_id or "").strip())[:96]
+        if token:
+            return f"{AGENT_PERSONA_PREFIX}{token}"
     if source == "default":
         return AGENT_DEFAULT_PERSONA_ID
     return ""
@@ -163,15 +168,21 @@ def inject_current_sender_identity(
     existing = str(getattr(req, "system_prompt", "") or "")
     if CURRENT_SENDER_MARKER in existing:
         existing = existing.split(CURRENT_SENDER_MARKER, 1)[0].rstrip()
-    safe_group = "".join(
-        char for char in str(group_id or "") if char.isdigit()
-    )[:20]
+    safe_group = (
+        str(group_id or "").strip()
+        if PLATFORM_ID_RE.fullmatch(str(group_id or "").strip())
+        else ""
+    )[:128]
     safe_nickname = "".join(
         char
         for char in str(nickname or "")
         if ord(char) >= 32 and ord(char) != 127
     )[:32].strip() or "未知"
-    safe_qq = "".join(char for char in str(qq or "") if char.isdigit())[:20]
+    safe_qq = (
+        str(qq or "").strip()
+        if PLATFORM_ID_RE.fullmatch(str(qq or "").strip())
+        else ""
+    )[:128]
     lines = [
         CURRENT_SENDER_MARKER,
         "This metadata applies only to the current incoming message.",
@@ -220,9 +231,11 @@ def inject_ambient_group_context(
             for char in str(item.get("nickname", "") or "")
             if ord(char) >= 32 and ord(char) != 127
         )[:32].strip() or "未知"
-        qq = "".join(
-            char for char in str(item.get("qq", "") or "") if char.isdigit()
-        )[:20]
+        qq = (
+            str(item.get("qq", "") or "").strip()
+            if PLATFORM_ID_RE.fullmatch(str(item.get("qq", "") or "").strip())
+            else ""
+        )[:128]
         label = f"{nickname}({qq})" if qq else nickname
         text = "".join(
             char

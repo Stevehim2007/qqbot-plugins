@@ -65,12 +65,19 @@ class PersonaService:
         )
 
     @staticmethod
+    def _safe_platform_id(raw: Any) -> str:
+        value = str(raw or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}", value):
+            return ""
+        return value
+
+    @staticmethod
     def _safe_identity_qq(event: Any) -> str:
         try:
             raw = str(event.get_sender_id() or "").strip()
         except Exception:
             return ""
-        return raw if re.fullmatch(r"[0-9]{1,20}", raw) else ""
+        return PersonaService._safe_platform_id(raw)
 
     def _safe_group_id(self, event: Any) -> str:
         try:
@@ -82,7 +89,7 @@ class PersonaService:
             raw = str(event.get_group_id() or "").strip()
         except Exception:
             return ""
-        return raw if re.fullmatch(r"[0-9]{1,20}", raw) else ""
+        return PersonaService._safe_platform_id(raw)
 
     @staticmethod
     def _identity_label(nickname: str, qq: str) -> str:
