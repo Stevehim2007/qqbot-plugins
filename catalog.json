@@ -5,7 +5,7 @@
     {
       "id": "qqbot_core_reply",
       "name": "QQ 核心回复",
-      "version": "4.0.14",
+      "version": "4.0.15",
       "description": "唯一主回复/LLM owner；自包含 stdlib-only，负责 direct/astrbot memory、人格、会话、工具说明 handshake 与本地点歌。",
       "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
@@ -44,10 +44,10 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "9af3c41d27ab16fd166fb79a39e064249add1fd5305db7dd990977c7de30e365",
-      "size": 107499,
+      "sha256": "b67cb7d9c45f0fdc0dbeb49f0acf0cd5b2c81ca4e6c52d1dc9e3fd8dead3a0fc",
+      "size": 107531,
       "root": "qqbot_core_reply",
-      "download": "qqbot_core_reply-4.0.14.zip"
+      "download": "qqbot_core_reply-4.0.15.zip"
     },
     {
       "id": "qqbot_safe_tools",
@@ -110,7 +110,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "c48c8bb2e456051fa5c7217fb3e0c552bb31967e0685dc221d7fc2449a1c6786",
+      "sha256": "0df10ec018e323cdcd777861c18f6c8640a8d66e593d195b71ec2c353efb4fc7",
       "size": 127198,
       "root": "qqbot_safe_tools",
       "download": "qqbot_safe_tools-3.2.5.zip"
@@ -179,7 +179,7 @@
           "marker_example": "[[tool:fetch_webpage url=\"https://example.com/article\" max_chars=3000]]"
         }
       ],
-      "sha256": "995cefd54aeb327b784c4ba84c7abe798350e2fd5e6ce51dffc280c87544c2a4",
+      "sha256": "c285bf6073156aab38fb5ffd83d378f61f5e7742dd295d9f8c48570dc186c9fa",
       "size": 40447,
       "root": "qqbot_web_reader",
       "download": "qqbot_web_reader-2.0.1.zip"
@@ -259,7 +259,7 @@
           "marker_example": "[[tool:search_images keyword=\"关键词\" count=1]]"
         }
       ],
-      "sha256": "a31a4143b60b83f363d32c98d9e98c61cb91c923510a2dea722afbd962c35d3a",
+      "sha256": "4990ee425435ead160af9d0ca77a1b5330d57f9e40d96fc22cc67de4b5e068cb",
       "size": 58195,
       "root": "qqbot_image_search",
       "download": "qqbot_image_search-2.0.1.zip"
@@ -398,7 +398,7 @@
           "marker_example": "[[tool:submit_food_review restaurant=\"店名\" location=\"位置\" taste=\"4.5\" value=\"3.5\" comment=\"评价\" tags=\"火锅,夜宵\"]]"
         }
       ],
-      "sha256": "a1b50943ad845fbc3f906e1d59075075c714276464ae4f5535368952fa49a8d1",
+      "sha256": "88971e75d33f5f4bdecde46494ef637aa3f6ec66a0152c043ad1184099516f14",
       "size": 105405,
       "root": "qqbot_food",
       "download": "qqbot_food-3.0.4.zip"
@@ -512,7 +512,7 @@
           "marker_example": "[[tool:list_sticker_categories()]]"
         }
       ],
-      "sha256": "06aa378805dd84153ec56092693f441c93d16046591826c26b643b2dc1f638c2",
+      "sha256": "0265c15f1589e6550949247d2e0d48e819a4ece8e7e9fab40e43649038428957",
       "size": 103569,
       "root": "qqbot_stickers",
       "download": "qqbot_stickers-3.0.3.zip"
@@ -567,7 +567,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "cea3d91d356839df0b6385704eaacacf28b33e801a549a53cd46a8d5143b301c",
+      "sha256": "7c9b4c5eb2362bb3f071e6499394de51fc6bba6658eb0b9f832f15acfc940067",
       "size": 75217,
       "root": "qqbot_memory_commands",
       "download": "qqbot_memory_commands-4.0.2.zip"
@@ -596,7 +596,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "d077111b34163d16cf549a3b142abf02fef0cd6a31525539c7e1a338245e5fd6",
+      "sha256": "d88f85e84f01723d67e9ddc8b38f8f57aa7f7f4414ab3a45cfab2f296bc695e7",
       "size": 4802,
       "root": "qqbot_fortune",
       "download": "qqbot_fortune-1.0.0.zip"
@@ -639,17 +639,51 @@
             "kind": "font",
             "target": "Noto Sans CJK SC",
             "description": "天气图片中文字体"
+          },
+          {
+            "kind": "package",
+            "target": "fonts-noto-cjk",
+            "description": "天气图片中文字体包"
           }
         ]
       },
-      "sha256": "098956df8a19838f7e1c7f25902cd0fc4af8b80b96ae34362372a0accabec1bf",
-      "size": 8185,
+      "sha256": "4b17d46352ec73dbd3a497b91d999a5c8ddd03929bb18fd49cae3fa2ca907fc1",
+      "size": 8217,
       "root": "qqbot_weather",
       "download": "qqbot_weather-1.0.0.zip"
+    },
+    {
+      "id": "qqbot_scheduler",
+      "name": "定时消息",
+      "version": "1.0.0",
+      "description": "群内定时发送文本；不调用大模型，支持每天、日期段、星期、工作日/非工作日。",
+      "author": "QQ Bot Studio",
+      "astrbot": ">=4.29,<5",
+      "dependencies": [],
+      "provides": [
+        {
+          "capability": "utility.scheduler",
+          "abi_version": 1
+        }
+      ],
+      "requires": [],
+      "conflicts": [
+        "qqbot_enhancer",
+        "qqbot_core_full"
+      ],
+      "config_schema_version": 1,
+      "data_schema_version": 1,
+      "recommended_groups": [
+        "QQ Bot"
+      ],
+      "sha256": "071c679ff3e73352e61ddfafa198f4f5c7ff571a580a00a2a778487526e9502c",
+      "size": 9776,
+      "root": "qqbot_scheduler",
+      "download": "qqbot_scheduler-1.0.0.zip"
     }
   ],
   "group_param_registry": {
     "file": "group_param_registry.json",
-    "registry_revision": "58753b50459a6f587a653300af7b1f68d5c8f7affb1dc20ef3418fe9feff1c6c"
+    "registry_revision": "5f028b18f45fab54db92e204001a334385b186802251b362eeb1e8e4e602f43f"
   }
 }

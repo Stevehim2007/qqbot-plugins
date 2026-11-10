@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "registry_revision": "58753b50459a6f587a653300af7b1f68d5c8f7affb1dc20ef3418fe9feff1c6c",
+  "registry_revision": "5f028b18f45fab54db92e204001a334385b186802251b362eeb1e8e4e602f43f",
   "plugins": {
     "qqbot_core_reply": {
       "participation.reply_probability": {
@@ -200,6 +200,7 @@
       }
     },
     "qqbot_fortune": {},
-    "qqbot_weather": {}
+    "qqbot_weather": {},
+    "qqbot_scheduler": {}
   }
 }

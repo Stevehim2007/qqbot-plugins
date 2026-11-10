@@ -24,6 +24,9 @@ FINAL_PLUGINS = {
     "qqbot_food",
     "qqbot_stickers",
     "qqbot_memory_commands",
+    "qqbot_fortune",
+    "qqbot_weather",
+    "qqbot_scheduler",
 }
 RETIRED = {"qqbot_enhancer", "qqbot_core_full"}
 REQUIRED_FILES = {"VERSION", "README.md", "metadata.yaml", "_conf_schema.json", "main.py"}
@@ -126,7 +129,7 @@ class ArchiveContractTests(unittest.TestCase):
         remote = manifest["plugins"]
         self.assertEqual({item["id"] for item in local}, FINAL_PLUGINS)
         self.assertEqual([item["id"] for item in local], [item["id"] for item in remote])
-        self.assertEqual(len(list(ARTIFACTS.glob("*.zip"))), 7)
+        self.assertEqual(len(list(ARTIFACTS.glob("*.zip"))), len(FINAL_PLUGINS))
         for local_item, remote_item in zip(local, remote):
             plugin_id = local_item["id"]
             version = local_item["version"]
@@ -176,7 +179,7 @@ class ArchiveContractTests(unittest.TestCase):
             payload = self._catalog(name)
             ids = {item["id"] for item in payload["plugins"]}
             self.assertFalse(ids & RETIRED)
-            self.assertEqual(len(payload["plugins"]), 7)
+            self.assertEqual(len(payload["plugins"]), len(FINAL_PLUGINS))
 
 
 class PluginUnitSuiteTests(unittest.TestCase):

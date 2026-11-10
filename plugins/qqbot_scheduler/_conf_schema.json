@@ -1,0 +1,35 @@
+{
+  "enabled": {
+    "description": "启用 /定时 命令",
+    "type": "bool",
+    "default": true
+  },
+  "timezone": {
+    "description": "时区",
+    "type": "string",
+    "default": "Asia/Shanghai"
+  },
+  "max_schedules_per_group": {
+    "description": "每个群最多定时任务数",
+    "type": "int",
+    "default": 20,
+    "slider": {"min": 1, "max": 100, "step": 1}
+  },
+  "max_message_chars": {
+    "description": "单条定时消息最大字符数",
+    "type": "int",
+    "default": 300,
+    "slider": {"min": 1, "max": 2000, "step": 10}
+  },
+  "poll_seconds": {
+    "description": "调度轮询间隔秒数",
+    "type": "int",
+    "default": 20,
+    "slider": {"min": 5, "max": 60, "step": 5}
+  },
+  "holiday_api_enabled": {
+    "description": "工作日/非工作日使用在线节假日数据；失败回退周末判断",
+    "type": "bool",
+    "default": true
+  }
+}

@@ -95,7 +95,7 @@ except ImportError:  # Loaded directly by a test harness.
 
 PLUGIN_NAME = "qqbot_core_reply"
 PLUGIN_DISPLAY_NAME = "QQ 核心回复"
-PLUGIN_VERSION = "4.0.14"
+PLUGIN_VERSION = "4.0.15"
 PLUGIN_DIR = Path(__file__).resolve().parent
 SONG_DIR = PLUGIN_DIR / "songs"
 PROVIDER_ID = "core_reply"
@@ -129,7 +129,7 @@ OPTION_COMMANDS: tuple[dict[str, Any], ...] = (
         "usage": "/option [指令名]",
         "summary": "查看可用指令；带指令名时显示详细用法",
         "detail": "直接发送 /option 会列出所有可用指令；发送 /option 指令名 查看该指令的用途、参数和示例。",
-        "examples": ("/option", "/option 定时"),
+        "examples": ("/option", "/option 美食"),
         "plugin": "",
     },
     {
@@ -156,6 +156,31 @@ OPTION_COMMANDS: tuple[dict[str, Any], ...] = (
         "detail": "发送 /表情 列表、/表情 分类 或 /表情 状态；收藏与发送受群策略控制。",
         "examples": ("/表情 列表", "/表情 分类"),
         "plugin": "qqbot_stickers",
+    },
+    {
+        "name": "定时",
+        "usage": "/定时 HH:MM 消息 [日期段]",
+        "summary": "创建每天、日期段、星期或工作日定时消息",
+        "detail": "日期段支持 YYYY-MM-DD~YYYY-MM-DD；星期支持周一~周日、逗号/顿号分隔；也支持工作日/非工作日。",
+        "examples": ("/定时 08:00 早安", "/定时 12:00 午饭 周一、周三", "/定时 09:00 上班 工作日"),
+        "plugin": "qqbot_scheduler",
+    },
+    {
+        "name": "每日运势",
+        "aliases": ("运势", "方舟运势"),
+        "usage": "/每日运势",
+        "summary": "查看今日方舟风格运势",
+        "detail": "按用户和日期生成确定性运势，不调用大模型，仅供娱乐。",
+        "examples": ("/每日运势",),
+        "plugin": "qqbot_fortune",
+    },
+    {
+        "name": "天气",
+        "usage": "/天气 城市",
+        "summary": "查询城市未来 7 天天气并生成图片",
+        "detail": "使用中国天气网数据，图片由 Pillow 渲染；不调用大模型。",
+        "examples": ("/天气 长春",),
+        "plugin": "qqbot_weather",
     },
 )
 
@@ -728,22 +753,6 @@ class CoreReplyPlugin(Star):
     async def conversation_delete_command(self, event: AstrMessageEvent):
         event.should_call_llm(True)
         text = await self.conversation.run_delete(event)
-        yield event.plain_result(text)
-        event.stop_event()
-
-    @filter.platform_adapter_type(_PLATFORM_TYPES, priority=110)
-    @filter.command("option", alias={"插件用法", "用法"}, priority=110)
-    async def option_command(self, event: AstrMessageEvent):
-        event.should_call_llm(True)
-        text = ""
-        try:
-            text = self.commands.option_text()
-            limit = self.config.int("option_max_chars", 1, 4000)
-            if limit > 0 and len(text) > limit:
-                text = text[: max(1, limit - 1)].rstrip() + "…"
-        except Exception:
-            logger.exception("qqbot_core_reply /option 命令处理失败")
-            text = "插件用法暂时读取失败，请到 AstrBot WebUI → 插件 查看。"
         yield event.plain_result(text)
         event.stop_event()
 

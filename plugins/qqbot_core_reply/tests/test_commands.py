@@ -319,80 +319,39 @@ class ConversationDeleteTests(unittest.TestCase):
 
 
 class OptionTests(unittest.TestCase):
-    def test_option_contains_ownership_and_commands(self):
-        plugin, ctx = make_command_plugin(manager=manager_with("Alpha"))
+    def _plugin_with_commands(self):
+        plugin, ctx = make_command_plugin()
+        for plugin_id in ("qqbot_memory_commands", "qqbot_food", "qqbot_stickers"):
+            ctx.registered_stars[plugin_id] = object()
+        return plugin, ctx
+
+    def test_option_lists_only_user_facing_commands(self):
+        plugin, _ctx = self._plugin_with_commands()
         event = FakeEvent("/option", group_id=GROUP)
         results = run(collect_command(plugin, "option_command", event))
         text = results[0].text
-        self.assertIn("唯一主回复 / LLM owner", text)
-        self.assertIn("/唱歌", text)
-        self.assertIn("/会话列表", text)
-        self.assertIn("/新会话", text)
-        self.assertIn("/删除会话", text)
-        self.assertIn("reply_probability", text)
+        self.assertIn("/option", text)
+        self.assertIn("/记忆", text)
+        self.assertIn("/美食", text)
+        self.assertIn("/表情", text)
+        self.assertNotIn("reply_probability", text)
+        self.assertNotIn("唯一主回复 / LLM owner", text)
+        self.assertNotIn("qqbot_safe_tools", text)
 
-    def test_option_reports_memory_mode_and_safe_tools_absent(self):
-        plugin, ctx = make_command_plugin(
-            manager=manager_with("Alpha"),
-            overrides={"memory_mode": "astrbot"},
-        )
-        event = FakeEvent("/option", group_id=GROUP)
+    def test_option_detail(self):
+        plugin, _ctx = self._plugin_with_commands()
+        event = FakeEvent("/option 美食", group_id=GROUP)
         results = run(collect_command(plugin, "option_command", event))
         text = results[0].text
-        self.assertIn("memory_mode=astrbot", text)
-        self.assertIn("未检测到 qqbot_safe_tools", text)
+        self.assertIn("用途：搜索美食", text)
+        self.assertIn("用法：/美食", text)
+        self.assertIn("示例：", text)
 
-    def test_option_reports_safe_tools_handshake(self):
-        class SafeStar:
-            def tool_instruction(self):
-                return "SAFE"
-
-        plugin, ctx = make_command_plugin(manager=manager_with("Alpha"))
-        plugin.context.registered_stars["qqbot_safe_tools"] = FakeStarMeta(SafeStar())
-        event = FakeEvent("/option", group_id=GROUP)
+    def test_option_unknown_command(self):
+        plugin, _ctx = self._plugin_with_commands()
+        event = FakeEvent("/option not-a-command", group_id=GROUP)
         results = run(collect_command(plugin, "option_command", event))
-        self.assertIn("已检测到 qqbot_safe_tools", results[0].text)
-
-    def test_option_max_chars(self):
-        plugin, ctx = make_command_plugin(
-            manager=manager_with("Alpha"),
-            overrides={"option_max_chars": 80},
-        )
-        event = FakeEvent("/option", group_id=GROUP)
-        results = run(collect_command(plugin, "option_command", event))
-        self.assertLessEqual(len(results[0].text), 80)
-        self.assertTrue(results[0].text.endswith("…"))
-
-    def test_option_loaded_plugins_metadata(self):
-        stars = [
-            types.SimpleNamespace(
-                name="qqbot_core_reply",
-                display_name="QQ 核心回复",
-                version="4.0.0",
-                desc="core",
-                activated=True,
-                star_cls=None,
-                root_dir_name="qqbot_core_reply",
-            ),
-            types.SimpleNamespace(
-                name="other",
-                display_name="Other",
-                version="1.2.3",
-                desc="other plugin",
-                activated=False,
-                star_cls=None,
-                root_dir_name="other",
-            ),
-        ]
-        ctx = FakeContext(stars=stars)
-        ctx.conversation_manager = manager_with("Alpha")
-        plugin, _, _ = make_plugin(
-            context=ctx,
-            overrides={"enabled": True, "option_max_plugins": 2},
-        )
-        event = FakeEvent("/option", group_id=GROUP)
-        results = run(collect_command(plugin, "option_command", event))
-        self.assertIn("Other v1.2.3（未激活）", results[0].text)
+        self.assertIn("没有找到指令", results[0].text)
 
 
 class SongCommandTests(unittest.TestCase):

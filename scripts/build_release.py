@@ -34,6 +34,7 @@ FINAL_PLUGINS = (
     "qqbot_memory_commands",
     "qqbot_fortune",
     "qqbot_weather",
+    "qqbot_scheduler",
 )
 PROVIDES: dict[str, list[str]] = {
     "qqbot_core_reply": ["reply"],
@@ -45,6 +46,7 @@ PROVIDES: dict[str, list[str]] = {
     "qqbot_memory_commands": ["memory.read", "memory.write", "memory.clear", "session", "persona"],
     "qqbot_fortune": ["utility.fortune"],
     "qqbot_weather": ["utility.weather"],
+    "qqbot_scheduler": ["utility.scheduler"],
 }
 # Final release dependency direction:
 #   safe_tools is the ABI/auth base and must not hard-depend on business providers;
@@ -78,6 +80,7 @@ REQUIRES: dict[str, list[dict[str, Any]]] = {
     ],
     "qqbot_fortune": [],
     "qqbot_weather": [],
+    "qqbot_scheduler": [],
 }
 CONFLICTS = ["qqbot_enhancer", "qqbot_core_full"]
 CONFIG_SCHEMA_VERSION = 1
@@ -93,6 +96,7 @@ DISPLAY_NAMES = {
     "qqbot_memory_commands": "记忆管理",
     "qqbot_fortune": "每日运势",
     "qqbot_weather": "天气",
+    "qqbot_scheduler": "定时消息",
 }
 REQUIRED_FILES = {
     "VERSION",

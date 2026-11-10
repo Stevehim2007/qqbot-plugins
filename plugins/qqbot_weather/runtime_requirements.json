@@ -12,6 +12,11 @@
       "kind": "font",
       "target": "Noto Sans CJK SC",
       "description": "天气图片中文字体"
+    },
+    {
+      "kind": "package",
+      "target": "fonts-noto-cjk",
+      "description": "天气图片中文字体包"
     }
   ]
 }
