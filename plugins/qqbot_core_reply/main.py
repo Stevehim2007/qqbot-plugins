@@ -111,7 +111,7 @@ except ImportError:  # Loaded directly by a test harness.
 
 PLUGIN_NAME = "qqbot_core_reply"
 PLUGIN_DISPLAY_NAME = "QQ 核心回复"
-PLUGIN_VERSION = "4.0.17"
+PLUGIN_VERSION = "4.0.18"
 PLUGIN_DIR = Path(__file__).resolve().parent
 SONG_DIR = PLUGIN_DIR / "songs"
 PROVIDER_ID = "core_reply"
@@ -442,8 +442,8 @@ class CoreReplyPlugin(Star):
             return False
         return False
 
-    @filter.platform_adapter_type(_PLATFORM_TYPES, priority=96)
-    @filter.event_message_type(filter.EventMessageType.ALL, priority=96)
+    @filter.platform_adapter_type(_PLATFORM_TYPES, priority=120)
+    @filter.event_message_type(filter.EventMessageType.ALL, priority=120)
     async def require_mention_for_utility_commands(self, event: AstrMessageEvent):
         """Keep utility commands behind an actual @ in group chats."""
         if not self.config.bool("enabled", False):
@@ -460,8 +460,8 @@ class CoreReplyPlugin(Star):
         event.is_at_or_wake_command = False
         event.stop_event()
 
-    @filter.platform_adapter_type(_PLATFORM_TYPES, priority=97)
-    @filter.event_message_type(filter.EventMessageType.ALL, priority=97)
+    @filter.platform_adapter_type(_PLATFORM_TYPES, priority=119)
+    @filter.event_message_type(filter.EventMessageType.ALL, priority=119)
     async def allow_unmentioned_utility_commands(self, event: AstrMessageEvent):
         """Allow selected utility commands without @ when their plugin opts in."""
         if not self.config.bool("enabled", False):

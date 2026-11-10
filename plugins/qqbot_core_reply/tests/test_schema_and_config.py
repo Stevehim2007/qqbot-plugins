@@ -141,9 +141,9 @@ class SchemaTests(unittest.TestCase):
         self.assertEqual(schema["reply_probability"]["slider"]["max"], 1)
 
     def test_version_and_metadata_bumped(self):
-        self.assertEqual((ROOT / "VERSION").read_text().strip(), "4.0.17")
+        self.assertEqual((ROOT / "VERSION").read_text().strip(), "4.0.18")
         metadata = (ROOT / "metadata.yaml").read_text(encoding="utf-8")
-        self.assertIn("version: 4.0.17", metadata)
+        self.assertIn("version: 4.0.18", metadata)
         self.assertIn("name: qqbot_core_reply", metadata)
         self.assertIn("astrbot_version: \">=4.29,<5\"", metadata)
 
