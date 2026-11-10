@@ -66,7 +66,7 @@ except ImportError:  # Loaded directly by a test harness.
 
 PLUGIN_NAME = "qqbot_core_reply"
 PLUGIN_DISPLAY_NAME = "QQ 核心回复"
-PLUGIN_VERSION = "4.0.7"
+PLUGIN_VERSION = "4.0.8"
 PLUGIN_DIR = Path(__file__).resolve().parent
 SONG_DIR = PLUGIN_DIR / "songs"
 PROVIDER_ID = "core_reply"
@@ -458,7 +458,10 @@ class CoreReplyPlugin(Star):
         try:
             if action == "状态":
                 data = _scope()
-                lines = [f"分群策略 revision {data.get('revision', 0)}"]
+                lines = [
+                    f"分群策略 revision {data.get('revision', 0)}",
+                    f"本群 openid: {group_id}",
+                ]
                 plugins = data.get("plugins") if isinstance(data.get("plugins"), dict) else {}
                 if not plugins:
                     lines.append("当前使用实例默认，无群级覆盖。")
