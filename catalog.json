@@ -44,7 +44,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "b67cb7d9c45f0fdc0dbeb49f0acf0cd5b2c81ca4e6c52d1dc9e3fd8dead3a0fc",
+      "sha256": "50c892543f7ce345a2ebd94f960b3fadb25aecca72323df66e0f9db0be778b75",
       "size": 107531,
       "root": "qqbot_core_reply",
       "download": "qqbot_core_reply-4.0.15.zip"
@@ -110,7 +110,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "0df10ec018e323cdcd777861c18f6c8640a8d66e593d195b71ec2c353efb4fc7",
+      "sha256": "aea23a47e0656b29e7e9efc8a21038853d3bcb301503b90ceeeca12948002a56",
       "size": 127198,
       "root": "qqbot_safe_tools",
       "download": "qqbot_safe_tools-3.2.5.zip"
@@ -179,7 +179,7 @@
           "marker_example": "[[tool:fetch_webpage url=\"https://example.com/article\" max_chars=3000]]"
         }
       ],
-      "sha256": "c285bf6073156aab38fb5ffd83d378f61f5e7742dd295d9f8c48570dc186c9fa",
+      "sha256": "17947b15fec1a0dc655ec5e13ed35aec8672d8a6eb1794fbad326219ec1b25bc",
       "size": 40447,
       "root": "qqbot_web_reader",
       "download": "qqbot_web_reader-2.0.1.zip"
@@ -259,7 +259,7 @@
           "marker_example": "[[tool:search_images keyword=\"关键词\" count=1]]"
         }
       ],
-      "sha256": "4990ee425435ead160af9d0ca77a1b5330d57f9e40d96fc22cc67de4b5e068cb",
+      "sha256": "99e827e794fafdbeb075dfbd729684332f3dc069117bbf149e528c5ebeee4cd6",
       "size": 58195,
       "root": "qqbot_image_search",
       "download": "qqbot_image_search-2.0.1.zip"
@@ -398,7 +398,7 @@
           "marker_example": "[[tool:submit_food_review restaurant=\"店名\" location=\"位置\" taste=\"4.5\" value=\"3.5\" comment=\"评价\" tags=\"火锅,夜宵\"]]"
         }
       ],
-      "sha256": "88971e75d33f5f4bdecde46494ef637aa3f6ec66a0152c043ad1184099516f14",
+      "sha256": "61a3de2eb3855376a4e468a9510a6d86714a2773885a24c74145676fb4884c93",
       "size": 105405,
       "root": "qqbot_food",
       "download": "qqbot_food-3.0.4.zip"
@@ -512,7 +512,7 @@
           "marker_example": "[[tool:list_sticker_categories()]]"
         }
       ],
-      "sha256": "0265c15f1589e6550949247d2e0d48e819a4ece8e7e9fab40e43649038428957",
+      "sha256": "89e9c2a391a14ce03c6eed97a9a6e1ab137a8745b5734c7383fd6e4757fe45a3",
       "size": 103569,
       "root": "qqbot_stickers",
       "download": "qqbot_stickers-3.0.3.zip"
@@ -567,7 +567,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "7c9b4c5eb2362bb3f071e6499394de51fc6bba6658eb0b9f832f15acfc940067",
+      "sha256": "124a36b850d59d5a2b5e03551ddef61f2992188f5071226efe2077e33ccaeb02",
       "size": 75217,
       "root": "qqbot_memory_commands",
       "download": "qqbot_memory_commands-4.0.2.zip"
@@ -596,7 +596,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "d88f85e84f01723d67e9ddc8b38f8f57aa7f7f4414ab3a45cfab2f296bc695e7",
+      "sha256": "5ab405e7281f884dadb85b00e985ca3d1b6e82abfa4aadb429d3b552292360a9",
       "size": 4802,
       "root": "qqbot_fortune",
       "download": "qqbot_fortune-1.0.0.zip"
@@ -647,7 +647,7 @@
           }
         ]
       },
-      "sha256": "4b17d46352ec73dbd3a497b91d999a5c8ddd03929bb18fd49cae3fa2ca907fc1",
+      "sha256": "462470a5d76ff32d648e30433213ea19c95a38628da4e6577a3936086cefbf1d",
       "size": 8217,
       "root": "qqbot_weather",
       "download": "qqbot_weather-1.0.0.zip"
@@ -655,7 +655,7 @@
     {
       "id": "qqbot_scheduler",
       "name": "定时消息",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "群内定时发送文本；不调用大模型，支持每天、日期段、星期、工作日/非工作日。",
       "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
@@ -676,10 +676,10 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "071c679ff3e73352e61ddfafa198f4f5c7ff571a580a00a2a778487526e9502c",
-      "size": 9776,
+      "sha256": "e0b3b60d18fdff5bb695b9055ae057d6c6593653cf8823e64c67978067d58d81",
+      "size": 10127,
       "root": "qqbot_scheduler",
-      "download": "qqbot_scheduler-1.0.0.zip"
+      "download": "qqbot_scheduler-1.0.1.zip"
     }
   ],
   "group_param_registry": {

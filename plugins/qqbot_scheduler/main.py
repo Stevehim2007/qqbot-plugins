@@ -123,15 +123,11 @@ class SchedulerPlugin(Star):
             except Exception as exc:
                 logger.warning("[qqbot_scheduler] loop error: %s", exc)
 
+    def _rows_for(self, umo: str) -> list[scheduler.Schedule]:
+        return [item for item in self._store.list() if item.umo == umo]
+
     def _format_rule(self, rule: scheduler.DateRule) -> str:
-        if rule.kind == "daily":
-            return "每天"
-        if rule.kind == "range":
-            return f"{rule.start}~{rule.end}"
-        if rule.kind == "weekdays":
-            names = "一二三四五六日"
-            return "周" + "、周".join(names[d - 1] for d in rule.weekdays)
-        return "工作日" if rule.kind == "workdays" else "非工作日"
+        return scheduler.format_rule(rule)
 
     @filter.command("定时", alias={"schedule"}, priority=110)
     async def schedule_command(self, event: AstrMessageEvent):
@@ -143,39 +139,43 @@ class SchedulerPlugin(Star):
             yield event.plain_result("无法确定当前会话，不能创建定时消息。")
             event.stop_event()
             return
-        if not raw or raw in ("帮助", "help", "用法"):
+        if raw in ("帮助", "help", "用法"):
             yield event.plain_result(
                 "用法：\n"
+                "/定时                    查看当前定时任务表\n"
                 "/定时 HH:MM 消息\n"
                 "/定时 HH:MM 消息 YYYY-MM-DD~YYYY-MM-DD\n"
                 "/定时 HH:MM 消息 周一、周三、周五\n"
                 "/定时 HH:MM 消息 工作日\n"
-                "/定时 列表\n"
-                "/定时 删除 <ID>"
+                "/定时 删除 <序号>\n"
+                "/定时 列表"
             )
             event.stop_event()
             return
-        if raw in ("列表", "list"):
-            rows = [item for item in self._store.list() if item.umo == umo]
-            if not rows:
-                text = "当前会话没有定时任务。"
-            else:
-                text = "\n".join(
-                    f"{item.id}  {item.at}  [{self._format_rule(item.rule)}]  {item.message}"
-                    for item in rows
-                )
-            yield event.plain_result(text)
+        if not raw or raw in ("列表", "list"):
+            yield event.plain_result(scheduler.format_schedule_table(self._rows_for(umo)))
             event.stop_event()
             return
         delete_match = re.fullmatch(r"(?:删除|delete)\s+(\S+)", raw, flags=re.I)
         if delete_match:
-            schedule_id = delete_match.group(1)
-            target = next((item for item in self._store.list() if item.id == schedule_id), None)
-            if target is None or target.umo != umo:
+            token = delete_match.group(1)
+            rows = self._rows_for(umo)
+            target = None
+            if token.isdigit():
+                index = int(token) - 1
+                if 0 <= index < len(rows):
+                    target = rows[index]
+                else:
+                    yield event.plain_result(f"序号超出范围：当前只有 {len(rows)} 个定时任务。")
+                    event.stop_event()
+                    return
+            else:
+                target = next((item for item in rows if item.id == token), None)
+            if target is None:
                 yield event.plain_result("没有找到这个定时任务。")
             else:
-                self._store.delete(schedule_id)
-                yield event.plain_result(f"已删除定时任务 {schedule_id}。")
+                self._store.delete(target.id)
+                yield event.plain_result(f"已删除定时任务 {target.id}。")
             event.stop_event()
             return
         try:
@@ -186,7 +186,7 @@ class SchedulerPlugin(Star):
             yield event.plain_result(f"定时设置失败：{exc}")
             event.stop_event()
             return
-        current = [item for item in self._store.list() if item.umo == umo]
+        current = self._rows_for(umo)
         if len(current) >= self._max_schedules:
             yield event.plain_result(f"当前会话最多只能有 {self._max_schedules} 个定时任务。")
             event.stop_event()

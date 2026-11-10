@@ -267,6 +267,26 @@ class ScheduleStore:
                 pass
 
 
+def format_rule(rule: DateRule) -> str:
+    if rule.kind == "daily":
+        return "每天"
+    if rule.kind == "range":
+        return f"{rule.start}~{rule.end}"
+    if rule.kind == "weekdays":
+        names = "一二三四五六日"
+        return "周" + "、周".join(names[day - 1] for day in rule.weekdays)
+    return "工作日" if rule.kind == "workdays" else "非工作日"
+
+
+def format_schedule_table(items: list[Schedule]) -> str:
+    if not items:
+        return "当前会话没有定时任务。"
+    lines = ["当前定时任务："]
+    for index, item in enumerate(items, 1):
+        lines.append(f"{index}. {item.at} [{format_rule(item.rule)}] {item.message} (ID: {item.id})")
+    return "\n".join(lines)
+
+
 class HolidayResolver:
     """Best-effort Chinese workday lookup with weekday fallback."""
 

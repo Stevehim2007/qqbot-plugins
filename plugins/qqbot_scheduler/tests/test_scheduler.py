@@ -67,6 +67,20 @@ class ParseTests(unittest.TestCase):
             scheduler.parse_command("08:00 x 2026-11-20~2026-11-11", today=date(2026, 11, 10))
 
 
+class TableTests(unittest.TestCase):
+    def test_table_numbering(self):
+        rows = [
+            scheduler.Schedule("a", "umo", "08:00", "早安", scheduler.DateRule()),
+            scheduler.Schedule("b", "umo", "09:00", "上班", scheduler.DateRule(kind="weekdays", weekdays=(1, 3))),
+        ]
+        text = scheduler.format_schedule_table(rows)
+        self.assertIn("1. 08:00", text)
+        self.assertIn("2. 09:00", text)
+        self.assertIn("周一、周三", text)
+        self.assertIn("ID: a", text)
+        self.assertEqual(scheduler.format_schedule_table([]), "当前会话没有定时任务。")
+
+
 class DueTests(unittest.TestCase):
     def test_due_daily_and_dedupe(self):
         now = datetime(2026, 11, 10, 8, 0)
