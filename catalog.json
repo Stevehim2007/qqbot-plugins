@@ -44,8 +44,8 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "a6d363aece48bde3b1a342491fa998dfb4f38484d5476fc812a577ad9cfc0619",
-      "size": 106236,
+      "sha256": "9af3c41d27ab16fd166fb79a39e064249add1fd5305db7dd990977c7de30e365",
+      "size": 107499,
       "root": "qqbot_core_reply",
       "download": "qqbot_core_reply-4.0.14.zip"
     },
@@ -110,7 +110,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "783eacf33dedebf8600dd8f85df9d3a9aa0e42674695c385b8b0e5655731b962",
+      "sha256": "c48c8bb2e456051fa5c7217fb3e0c552bb31967e0685dc221d7fc2449a1c6786",
       "size": 127198,
       "root": "qqbot_safe_tools",
       "download": "qqbot_safe_tools-3.2.5.zip"
@@ -179,7 +179,7 @@
           "marker_example": "[[tool:fetch_webpage url=\"https://example.com/article\" max_chars=3000]]"
         }
       ],
-      "sha256": "bf357b4c5be80bee13f8280f827823fc4d31f9745c22b962f50ea0be3d72154f",
+      "sha256": "995cefd54aeb327b784c4ba84c7abe798350e2fd5e6ce51dffc280c87544c2a4",
       "size": 40447,
       "root": "qqbot_web_reader",
       "download": "qqbot_web_reader-2.0.1.zip"
@@ -259,7 +259,7 @@
           "marker_example": "[[tool:search_images keyword=\"关键词\" count=1]]"
         }
       ],
-      "sha256": "72f03caa898b03a36375e8aaa89f216e47b4cb1252790513933c9163bc112879",
+      "sha256": "a31a4143b60b83f363d32c98d9e98c61cb91c923510a2dea722afbd962c35d3a",
       "size": 58195,
       "root": "qqbot_image_search",
       "download": "qqbot_image_search-2.0.1.zip"
@@ -398,7 +398,7 @@
           "marker_example": "[[tool:submit_food_review restaurant=\"店名\" location=\"位置\" taste=\"4.5\" value=\"3.5\" comment=\"评价\" tags=\"火锅,夜宵\"]]"
         }
       ],
-      "sha256": "9cebf31bfb50a32739f9346f56dda5b181fd682f51a9af88acfb1daab53f1e3f",
+      "sha256": "a1b50943ad845fbc3f906e1d59075075c714276464ae4f5535368952fa49a8d1",
       "size": 105405,
       "root": "qqbot_food",
       "download": "qqbot_food-3.0.4.zip"
@@ -512,7 +512,7 @@
           "marker_example": "[[tool:list_sticker_categories()]]"
         }
       ],
-      "sha256": "8d7cccac6a9bd51a9adcb9940ebdd840999e3e1d7186143ec2f19f1864ff67c5",
+      "sha256": "06aa378805dd84153ec56092693f441c93d16046591826c26b643b2dc1f638c2",
       "size": 103569,
       "root": "qqbot_stickers",
       "download": "qqbot_stickers-3.0.3.zip"
@@ -567,14 +567,89 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "b8e74bee8fe4ab664985a88e907753cad53fb11c7842e400f2c5cc63f9d4edb8",
+      "sha256": "cea3d91d356839df0b6385704eaacacf28b33e801a549a53cd46a8d5143b301c",
       "size": 75217,
       "root": "qqbot_memory_commands",
       "download": "qqbot_memory_commands-4.0.2.zip"
+    },
+    {
+      "id": "qqbot_fortune",
+      "name": "每日运势",
+      "version": "1.0.0",
+      "description": "不调用大模型的明日方舟风格每日运势；按用户与日期确定性生成，带冷却与娱乐声明。",
+      "author": "QQ Bot Studio",
+      "astrbot": ">=4.29,<5",
+      "dependencies": [],
+      "provides": [
+        {
+          "capability": "utility.fortune",
+          "abi_version": 1
+        }
+      ],
+      "requires": [],
+      "conflicts": [
+        "qqbot_enhancer",
+        "qqbot_core_full"
+      ],
+      "config_schema_version": 1,
+      "data_schema_version": 1,
+      "recommended_groups": [
+        "QQ Bot"
+      ],
+      "sha256": "d077111b34163d16cf549a3b142abf02fef0cd6a31525539c7e1a338245e5fd6",
+      "size": 4802,
+      "root": "qqbot_fortune",
+      "download": "qqbot_fortune-1.0.0.zip"
+    },
+    {
+      "id": "qqbot_weather",
+      "name": "天气",
+      "version": "1.0.0",
+      "description": "中国天气网 7 天预报图片；命令 /天气 城市，不调用大模型。",
+      "author": "QQ Bot Studio",
+      "astrbot": ">=4.29,<5",
+      "dependencies": [],
+      "provides": [
+        {
+          "capability": "utility.weather",
+          "abi_version": 1
+        }
+      ],
+      "requires": [],
+      "conflicts": [
+        "qqbot_enhancer",
+        "qqbot_core_full"
+      ],
+      "config_schema_version": 1,
+      "data_schema_version": 1,
+      "recommended_groups": [
+        "QQ Bot"
+      ],
+      "runtime_requirements": {
+        "python": [
+          {
+            "name": "Pillow",
+            "spec": ">=10",
+            "module": "PIL",
+            "description": "天气图片渲染"
+          }
+        ],
+        "system": [
+          {
+            "kind": "font",
+            "target": "Noto Sans CJK SC",
+            "description": "天气图片中文字体"
+          }
+        ]
+      },
+      "sha256": "098956df8a19838f7e1c7f25902cd0fc4af8b80b96ae34362372a0accabec1bf",
+      "size": 8185,
+      "root": "qqbot_weather",
+      "download": "qqbot_weather-1.0.0.zip"
     }
   ],
   "group_param_registry": {
     "file": "group_param_registry.json",
-    "registry_revision": "be3aed9052cf02db1603a8203a045bf98752dbb88caa761e03b310bf3a553c7c"
+    "registry_revision": "58753b50459a6f587a653300af7b1f68d5c8f7affb1dc20ef3418fe9feff1c6c"
   }
 }

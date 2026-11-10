@@ -1,0 +1,17 @@
+{
+  "python": [
+    {
+      "name": "Pillow",
+      "spec": ">=10",
+      "module": "PIL",
+      "description": "天气图片渲染"
+    }
+  ],
+  "system": [
+    {
+      "kind": "font",
+      "target": "Noto Sans CJK SC",
+      "description": "天气图片中文字体"
+    }
+  ]
+}

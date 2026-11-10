@@ -1,0 +1,18 @@
+{
+  "enabled": {
+    "description": "启用 /每日运势 命令",
+    "type": "bool",
+    "default": true
+  },
+  "cooldown_seconds": {
+    "description": "同一用户两次查询的最小间隔（秒）",
+    "type": "int",
+    "default": 10,
+    "slider": {"min": 0, "max": 3600, "step": 5}
+  },
+  "show_operator": {
+    "description": "显示干员/职业风味",
+    "type": "bool",
+    "default": true
+  }
+}

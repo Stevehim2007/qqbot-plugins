@@ -1,0 +1,9 @@
+name: qqbot_fortune
+display_name: 每日运势
+desc: 不调用大模型的明日方舟风格每日运势；按用户与日期确定性生成，带冷却与娱乐声明。
+version: 1.0.0
+author: QQ Bot Studio
+support_platforms:
+  - aiocqhttp
+  - qq_official
+astrbot_version: ">=4.29,<5"

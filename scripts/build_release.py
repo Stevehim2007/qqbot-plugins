@@ -32,6 +32,8 @@ FINAL_PLUGINS = (
     "qqbot_food",
     "qqbot_stickers",
     "qqbot_memory_commands",
+    "qqbot_fortune",
+    "qqbot_weather",
 )
 PROVIDES: dict[str, list[str]] = {
     "qqbot_core_reply": ["reply"],
@@ -41,6 +43,8 @@ PROVIDES: dict[str, list[str]] = {
     "qqbot_food": ["food.query", "food.locations", "food.tags", "food.draft", "food.submit", "food.status"],
     "qqbot_stickers": ["sticker.collect", "sticker.categories", "sticker.send", "sticker.index"],
     "qqbot_memory_commands": ["memory.read", "memory.write", "memory.clear", "session", "persona"],
+    "qqbot_fortune": ["utility.fortune"],
+    "qqbot_weather": ["utility.weather"],
 }
 # Final release dependency direction:
 #   safe_tools is the ABI/auth base and must not hard-depend on business providers;
@@ -72,6 +76,8 @@ REQUIRES: dict[str, list[dict[str, Any]]] = {
     "qqbot_memory_commands": [
         {"plugin_id": "qqbot_safe_tools", "version_range": ">=3.0.0,<4", "capability": "tools", "abi_version": 1, "optional": False},
     ],
+    "qqbot_fortune": [],
+    "qqbot_weather": [],
 }
 CONFLICTS = ["qqbot_enhancer", "qqbot_core_full"]
 CONFIG_SCHEMA_VERSION = 1
@@ -85,6 +91,8 @@ DISPLAY_NAMES = {
     "qqbot_food": "Food 查询与提交",
     "qqbot_stickers": "表情收藏与发送",
     "qqbot_memory_commands": "记忆管理",
+    "qqbot_fortune": "每日运势",
+    "qqbot_weather": "天气",
 }
 REQUIRED_FILES = {
     "VERSION",
@@ -219,6 +227,16 @@ def validate_plugin(plugin_id: str) -> dict[str, Any]:
     tests_dir = plugin_dir / "tests"
     if not tests_dir.is_dir() or not any(tests_dir.glob("test_*.py")):
         raise BuildError(f"{plugin_id} 缺少 tests/test_*.py")
+    runtime_requirements: dict[str, Any] = {}
+    runtime_path = plugin_dir / "runtime_requirements.json"
+    if runtime_path.is_file():
+        try:
+            runtime_doc = json.loads(_read_text(runtime_path))
+        except ValueError as exc:
+            raise BuildError(f"{plugin_id} runtime_requirements.json 不是合法 JSON") from exc
+        if not isinstance(runtime_doc, dict):
+            raise BuildError(f"{plugin_id} runtime_requirements.json 必须是 JSON object")
+        runtime_requirements = runtime_doc
     return {
         "id": plugin_id,
         "name": DISPLAY_NAMES[plugin_id],
@@ -240,6 +258,7 @@ def validate_plugin(plugin_id: str) -> dict[str, Any]:
         "data_schema_version": DATA_SCHEMA_VERSION,
         "recommended_groups": ["QQ Bot"],
         **({"tools": tools} if tools else {}),
+        **({"runtime_requirements": runtime_requirements} if runtime_requirements else {}),
     }
 
 

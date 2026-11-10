@@ -120,6 +120,45 @@ def _platform_types() -> Any:
 
 _PLATFORM_TYPES = _platform_types()
 
+# User-facing commands only.  Deliberately excludes instance/plugin settings,
+# admin-only group controls, and anything that exposes internal configuration.
+OPTION_COMMANDS: tuple[dict[str, Any], ...] = (
+    {
+        "name": "option",
+        "aliases": ("插件用法", "用法"),
+        "usage": "/option [指令名]",
+        "summary": "查看可用指令；带指令名时显示详细用法",
+        "detail": "直接发送 /option 会列出所有可用指令；发送 /option 指令名 查看该指令的用途、参数和示例。",
+        "examples": ("/option", "/option 定时"),
+        "plugin": "",
+    },
+    {
+        "name": "记忆",
+        "usage": "/记忆 [查看|添加|删除|清空] ...",
+        "summary": "查看或管理本群/个人记忆",
+        "detail": "按群或用户读写长期记忆；具体权限和 scope 由当前实例的记忆策略决定。",
+        "examples": ("/记忆", "/记忆 查看"),
+        "plugin": "qqbot_memory_commands",
+    },
+    {
+        "name": "美食",
+        "aliases": ("food", "吃什么", "饭店"),
+        "usage": "/美食 [关键词] [--location 城市] [--tag 标签]",
+        "summary": "搜索美食/餐厅，或按提示提交评价",
+        "detail": "自然语言也可以直接说想吃什么；群策略可设置默认城市。",
+        "examples": ("/美食 火锅", "/美食 烧烤 --location 长春"),
+        "plugin": "qqbot_food",
+    },
+    {
+        "name": "表情",
+        "usage": "/表情 [列表|分类|状态]",
+        "summary": "查看或操作本地表情包",
+        "detail": "发送 /表情 列表、/表情 分类 或 /表情 状态；收藏与发送受群策略控制。",
+        "examples": ("/表情 列表", "/表情 分类"),
+        "plugin": "qqbot_stickers",
+    },
+)
+
 
 class CoreReplyPlugin(Star):
     """Thin AstrBot adapter around the single reply controller."""
@@ -590,6 +629,58 @@ class CoreReplyPlugin(Star):
             logger.exception("qqbot_core_reply /分群 命令处理失败")
             text = "分群策略操作失败，请稍后到 Studio 重试。"
         yield event.plain_result(text)
+        event.stop_event()
+
+    def _option_available(self, plugin_id: str) -> bool:
+        if not plugin_id:
+            return True
+        try:
+            return self.context.get_registered_star(plugin_id) is not None
+        except Exception:
+            return True
+
+    def _option_entries(self) -> list[dict[str, Any]]:
+        return [entry for entry in OPTION_COMMANDS if self._option_available(str(entry.get("plugin") or ""))]
+
+    @filter.platform_adapter_type(_PLATFORM_TYPES, priority=110)
+    @filter.command("option", alias={"插件用法", "用法"}, priority=110)
+    async def option_command(self, event: AstrMessageEvent):
+        event.should_call_llm(True)
+        text = str(getattr(event, "message_str", "") or "").strip()
+        parts = text.split(maxsplit=1)
+        query = parts[1].strip() if len(parts) > 1 else ""
+        entries = self._option_entries()
+        if not query:
+            lines = ["可用指令："]
+            for entry in entries:
+                names = "、".join((str(entry["name"]), *entry.get("aliases", ())))
+                lines.append(f"/{names} — {entry['summary']}")
+            lines.append("")
+            lines.append("发送 /option 指令名 查看详细用法。")
+            result = "\n".join(lines)
+        else:
+            wanted = query.lstrip("/／").strip()
+            found = next(
+                (
+                    entry
+                    for entry in entries
+                    if wanted == entry["name"] or wanted in entry.get("aliases", ())
+                ),
+                None,
+            )
+            if found is None:
+                result = f"没有找到指令「{wanted}」。发送 /option 查看可用指令。"
+            else:
+                examples = "\n".join(f"  {item}" for item in found.get("examples", ()))
+                result = (
+                    f"/{found['name']}\n"
+                    f"用途：{found['summary']}\n"
+                    f"用法：{found['usage']}\n"
+                    f"说明：{found['detail']}"
+                )
+                if examples:
+                    result += f"\n示例：\n{examples}"
+        yield event.plain_result(result)
         event.stop_event()
 
     @filter.platform_adapter_type(_PLATFORM_TYPES, priority=110)

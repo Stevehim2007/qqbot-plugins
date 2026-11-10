@@ -1,0 +1,30 @@
+{
+  "enabled": {
+    "description": "启用 /天气 命令",
+    "type": "bool",
+    "default": true
+  },
+  "default_city": {
+    "description": "未指定城市时的默认城市",
+    "type": "string",
+    "default": ""
+  },
+  "timeout_seconds": {
+    "description": "中国天气网请求超时秒数",
+    "type": "int",
+    "default": 10,
+    "slider": {"min": 3, "max": 30, "step": 1}
+  },
+  "cache_seconds": {
+    "description": "天气图片缓存秒数",
+    "type": "int",
+    "default": 1800,
+    "slider": {"min": 60, "max": 7200, "step": 60}
+  },
+  "max_image_bytes": {
+    "description": "天气图片最大字节数",
+    "type": "int",
+    "default": 5000000,
+    "slider": {"min": 200000, "max": 10000000, "step": 100000}
+  }
+}
