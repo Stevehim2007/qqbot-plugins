@@ -84,6 +84,26 @@ class MemoryHookTests(unittest.TestCase):
         run(plugin.guard_english_help_phrase(event))
         self.assertTrue(event.stopped)
 
+    def test_group_admin_username_fallback(self):
+        class SafeStar:
+            def group_admin_override_enabled(self):
+                return True
+
+            def group_admin_allow_bot_admin(self):
+                return True
+
+        ctx = FakeContext(
+            registered_stars={"qqbot_safe_tools": FakeStarMeta(SafeStar())},
+            global_config={"admins_id": ["Stevehim"]},
+        )
+        plugin, _, _ = make_plugin(context=ctx, overrides={"enabled": True})
+        event = FakeEvent("hello", group_id=GROUP, sender_id="openid", sender_name="Stevehim")
+        event.message_obj = types.SimpleNamespace(
+            sender=types.SimpleNamespace(role="member")
+        )
+        event.is_admin = lambda: False
+        self.assertTrue(plugin._group_admin_allowed(event))
+
     def test_group_admin_global_admin_fallback(self):
         class SafeStar:
             def group_admin_override_enabled(self):

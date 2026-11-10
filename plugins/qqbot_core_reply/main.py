@@ -95,7 +95,7 @@ except ImportError:  # Loaded directly by a test harness.
 
 PLUGIN_NAME = "qqbot_core_reply"
 PLUGIN_DISPLAY_NAME = "QQ 核心回复"
-PLUGIN_VERSION = "4.0.10"
+PLUGIN_VERSION = "4.0.11"
 PLUGIN_DIR = Path(__file__).resolve().parent
 SONG_DIR = PLUGIN_DIR / "songs"
 PROVIDER_ID = "core_reply"
@@ -446,11 +446,13 @@ class CoreReplyPlugin(Star):
         # AstrBot 全局 admins_id 中的账号也应可用，避免 QQ 群成员角色
         # 与 AstrBot 实例管理员角色不一致时把人挡在外面。
         sender_id = str(getattr(event, "get_sender_id", lambda: "")() or "")
-        if sender_id:
+        sender_name = str(getattr(event, "get_sender_name", lambda: "")() or "")
+        if sender_id or sender_name:
             try:
                 config = self.context.get_config()
                 admins = config.get("admins_id", []) if isinstance(config, dict) else getattr(config, "admins_id", [])
-                if sender_id in {str(item) for item in (admins or [])}:
+                admin_names = {str(item) for item in (admins or [])}
+                if (sender_id and sender_id in admin_names) or (sender_name and sender_name in admin_names):
                     return True
             except Exception:
                 pass
