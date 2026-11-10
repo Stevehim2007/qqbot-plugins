@@ -21,27 +21,26 @@ from astrbot.api import logger
 def _install_qqofficial_role_compat() -> None:
     """Preserve QQ official author.member_role on botpy GroupMessage.
 
-    botpy 1.x only keeps member_openid, so AstrBot/plugins cannot see whether a
-    group sender is owner/admin. Patch the runtime message object (not the
-    installed package) to retain the raw author payload.
+    botpy 1.x only keeps member_openid in GroupMessage._User.  The nested
+    _User class has a normal __dict__, unlike GroupMessage (slots), so we can
+    attach the raw member_role without touching the installed package.
     """
     try:
         GroupMessage = __import__("botpy.message", fromlist=["GroupMessage"]).GroupMessage
-
-        original = getattr(GroupMessage, "__init__", None)
+        user_cls = getattr(GroupMessage, "_User", None)
+        original = getattr(user_cls, "__init__", None) if user_cls is not None else None
         if original is None or getattr(original, "_qqbot_role_compat", False):
             return
 
-        def _init(self, api, event_id, data):
-            original(self, api, event_id, data)
+        def _init(self, data):
+            original(self, data)
             try:
-                author = data.get("author", {}) if isinstance(data, dict) else {}
-                self._qq_official_author = author if isinstance(author, dict) else {}
+                self.member_role = str((data or {}).get("member_role") or "")
             except Exception:
-                self._qq_official_author = {}
+                pass
 
         setattr(_init, "_qqbot_role_compat", True)
-        GroupMessage.__init__ = _init
+        user_cls.__init__ = _init
     except Exception:
         return
 
@@ -96,7 +95,7 @@ except ImportError:  # Loaded directly by a test harness.
 
 PLUGIN_NAME = "qqbot_core_reply"
 PLUGIN_DISPLAY_NAME = "QQ 核心回复"
-PLUGIN_VERSION = "4.0.9"
+PLUGIN_VERSION = "4.0.10"
 PLUGIN_DIR = Path(__file__).resolve().parent
 SONG_DIR = PLUGIN_DIR / "songs"
 PROVIDER_ID = "core_reply"
@@ -420,10 +419,6 @@ class CoreReplyPlugin(Star):
         # QQ 官方适配器把群成员角色放在 raw_message.author.member_role，
         # AstrBot 的 MessageMember 目前不会带 role；这里直接读取原始事件。
         raw_message = getattr(getattr(event, "message_obj", None), "raw_message", None)
-        if not role and raw_message is not None:
-            raw_author = getattr(raw_message, "_qq_official_author", None)
-            if isinstance(raw_author, dict):
-                role = raw_author.get("member_role", "") or ""
         if not role and raw_message is not None:
             author = raw_message.get("author") if isinstance(raw_message, dict) else getattr(raw_message, "author", None)
             if isinstance(author, dict):
