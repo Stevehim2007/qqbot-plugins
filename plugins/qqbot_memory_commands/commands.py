@@ -51,7 +51,7 @@ _ROOT_NAMES = tuple(sorted(ROOT_ALIASES, key=len, reverse=True))
 _ROOT_HELP = {
     "memory": (
         "记忆命令：/记忆 查看｜搜索 <词>｜添加 <内容>｜预览清空｜确认 <token>｜"
-        "取消 <token>；兼容 状态/删除/忘记/整理。别名 /memory、/记忆管理。"
+        "取消 <token>；卡片；收尾；兼容 状态/删除/忘记/整理。别名 /memory、/记忆管理。"
     ),
     "session": (
         "会话命令：/会话 状态｜新建 [标题]｜切换 <会话ID>｜重置。别名 /session。"
@@ -75,6 +75,10 @@ _ACTIONS = {
         "forget": "forget",
         "整理": "tidy",
         "tidy": "tidy",
+        "卡片": "cards",
+        "cards": "cards",
+        "收尾": "wrapup",
+        "wrapup": "wrapup",
         "预览清空": "preview_clear",
         "预览": "preview_clear",
         "preview_clear": "preview_clear",

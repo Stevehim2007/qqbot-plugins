@@ -26,6 +26,20 @@ class FakeCommandFilter:
     def __init__(self):
         self.registrations = []
 
+    def on_llm_response(self, priority=0):
+        def decorate(function):
+            function.__llm_response_registration__ = {"priority": priority}
+            return function
+
+        return decorate
+
+    def on_llm_request(self, priority=0):
+        def decorate(function):
+            function.__llm_request_registration__ = {"priority": priority}
+            return function
+
+        return decorate
+
     def command(self, name, alias=None, priority=0):
         def decorate(function):
             record = {
@@ -224,6 +238,9 @@ class FakeEvent:
 
     def get_sender_id(self):
         return self.sender_id
+
+    def get_group_id(self):
+        return self.group_id
 
     def is_private_chat(self):
         return self.private
@@ -502,3 +519,42 @@ class TestHandlerBehaviour(HandlerTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCardInjection(HandlerTestCase):
+    async def test_card_block_is_injected_once(self):
+        import tempfile
+        from pathlib import Path as _Path
+
+        plugin, _context = self.make_plugin({"enabled": True, "cards_inject_enabled": True})
+        with tempfile.TemporaryDirectory() as tmp:
+            store = MAIN.cards.CardStore(_Path(tmp) / "cards.db")
+            store.create(scope="group:group-1", content="用户喜欢火锅", kind="preference")
+            plugin.card_store = store
+            event = FakeEvent("hi", group_id="group-1")
+            req = SimpleNamespace(system_prompt="BASE")
+            await plugin.inject_memory_cards(event, req)
+            self.assertIn("[memory_cards]", req.system_prompt)
+            self.assertIn("用户喜欢火锅", req.system_prompt)
+            before = req.system_prompt
+            await plugin.inject_memory_cards(event, req)
+            self.assertEqual(req.system_prompt, before)
+            store.close()
+
+class TestAutoWrapup(HandlerTestCase):
+    async def test_phase_cards_created_every_n_turns(self):
+        import tempfile
+        from pathlib import Path as _Path
+
+        plugin, _context = self.make_plugin(
+            {"enabled": True, "cards_auto_wrapup_enabled": True, "cards_wrapup_every_turns": 2}
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            store = MAIN.cards.CardStore(_Path(tmp) / "cards.db")
+            plugin.card_store = store
+            event = FakeEvent("记住我喜欢火锅", group_id="group-1")
+            resp = SimpleNamespace(completion_text="好的，我记住了。")
+            await plugin.record_memory_turn(event, resp)
+            await plugin.record_memory_turn(event, resp)
+            self.assertGreater(store.stats(scope="group:group-1").get("active", 0), 0)
+            store.close()

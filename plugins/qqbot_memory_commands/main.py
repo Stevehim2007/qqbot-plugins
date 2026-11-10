@@ -15,7 +15,7 @@ from typing import Any
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 
-from . import commands, contracts, memory_commands
+from . import cards, commands, contracts, memory_commands, wrapup
 from .backend import AstrBotBackend
 from .provider import MemoryCommandsProvider, cancel_pending_confirmation
 from .store import OperationStore
@@ -95,6 +95,15 @@ def _build_backend(context: Any, config: Mapping[str, Any]) -> AstrBotBackend:
     )
 
 
+def _cards_path() -> str:
+    """Use the same plugin data directory as the ABI ledger."""
+
+    ledger = _store_path()
+    if ledger == ":memory:":
+        return ":memory:"
+    return str(Path(ledger).with_name("memory_cards.db"))
+
+
 def _store_path() -> str:
     """Use the public StarTools data directory when available."""
 
@@ -150,6 +159,10 @@ class MemoryCommandsPlugin(Star):
         self.plugin_config = self.config
         self.backend = _build_backend(context, self.config)
         self.store = _build_store(context, self.config)
+        card_path = _cards_path()
+        self.card_store = cards.CardStore(card_path) if card_path != ":memory:" else None
+        self._card_turns: dict[str, list[dict[str, str]]] = {}
+        self._card_revisions: dict[str, int] = {}
         self.provider = MemoryCommandsProvider(
             self.backend,
             self.store,
@@ -202,6 +215,122 @@ class MemoryCommandsPlugin(Star):
         except Exception:
             return True
 
+    def _card_scope(self, event: AstrMessageEvent) -> str:
+        try:
+            private = bool(event.is_private_chat())
+        except Exception:  # noqa: BLE001
+            private = False
+        if private:
+            sender = str(getattr(event, "get_sender_id", lambda: "")() or "").strip()
+            return f"user:{sender}" if sender else ""
+        group = str(getattr(event, "get_group_id", lambda: "")() or "").strip()
+        return f"group:{group}" if group else ""
+
+    async def _cards_reply(self, event: AstrMessageEvent) -> str:
+        if self.card_store is None:
+            return "记忆卡片存储不可用。"
+        scope = self._card_scope(event)
+        if not scope:
+            return "无法识别当前会话，不能读取记忆卡片。"
+        stats = self.card_store.stats(scope=scope)
+        active = int(stats.get("active", 0))
+        archived = int(stats.get("archived", 0))
+        return f"记忆卡片：活跃 {active} 张，归档 {archived} 张。当前 scope：{scope}。"
+
+    @filter.on_llm_request()
+    async def inject_memory_cards(self, event: AstrMessageEvent, req: Any) -> None:
+        """Inject a bounded, explicitly untrusted card block into prompts."""
+
+        if not bool(self.config.get("cards_inject_enabled", True)):
+            return
+        if self.card_store is None:
+            return
+        scope = self._card_scope(event)
+        if not scope:
+            return
+        try:
+            max_cards = max(0, min(8, int(self.config.get("cards_max_cards", 4) or 4)))
+            max_chars = max(120, min(1200, int(self.config.get("cards_max_chars", 480) or 480)))
+            selected = cards.select_for_prompt(
+                self.card_store,
+                scope=scope,
+                max_cards=max_cards,
+                max_chars=max_chars,
+            )
+            block = cards.render_prompt_block(selected, max_chars=max_chars)
+            if not block:
+                return
+            prompt = str(getattr(req, "system_prompt", "") or "")
+            if "[memory_cards]" in prompt:
+                return
+            req.system_prompt = prompt + ("\n" if prompt else "") + block
+        except Exception:  # noqa: BLE001 - card injection must never break chat
+            return
+
+    async def _wrapup_reply(self, event: AstrMessageEvent) -> str:
+        if self.card_store is None:
+            return "记忆卡片存储不可用。"
+        scope = self._card_scope(event)
+        if not scope:
+            return "无法识别当前会话，不能生成收尾卡片。"
+        buffer = self._card_turns.get(scope, [])
+        if not buffer:
+            return "当前会话还没有可收尾的对话。"
+        revision = int(self._card_revisions.get(scope, 0)) + 1
+        self._card_revisions[scope] = revision
+        plan = wrapup.preview(
+            conversation_id=scope,
+            session_revision=revision,
+            scope=scope,
+            messages=buffer,
+            purpose_enabled=bool(self.config.get("cards_purpose_enabled", False)),
+        )
+        result = wrapup.apply_plan(self.card_store, plan)
+        return f"记忆收尾完成：生成 {len(result.get('cards', []))} 张卡片，revision={revision}。"
+
+    @filter.on_llm_response()
+    async def record_memory_turn(self, event: AstrMessageEvent, resp: Any) -> None:
+        """Buffer turns and emit a deterministic phase wrap-up every N turns."""
+
+        if self.card_store is None:
+            return
+        if not bool(self.config.get("cards_auto_wrapup_enabled", True)):
+            return
+        scope = self._card_scope(event)
+        if not scope:
+            return
+        try:
+            every = max(2, min(30, int(self.config.get("cards_wrapup_every_turns", 6) or 6)))
+            text = str(getattr(event, "message_str", "") or "").strip()
+            answer = str(
+                getattr(resp, "completion_text", None)
+                or getattr(resp, "text", None)
+                or ""
+            ).strip()
+            if not text:
+                return
+            buffer = self._card_turns.setdefault(scope, [])
+            buffer.append({"role": "user", "content": text})
+            if answer:
+                buffer.append({"role": "assistant", "content": answer})
+            del buffer[:-12]
+            count = len([item for item in buffer if item.get("role") == "user"])
+            if count < every:
+                return
+            revision = int(self._card_revisions.get(scope, 0)) + 1
+            self._card_revisions[scope] = revision
+            plan = wrapup.preview(
+                conversation_id=scope,
+                session_revision=revision,
+                scope=scope,
+                messages=buffer,
+                purpose_enabled=bool(self.config.get("cards_purpose_enabled", False)),
+            )
+            wrapup.apply_plan(self.card_store, plan)
+            self.card_store.archive_decayed(scope=scope)
+        except Exception:  # noqa: BLE001 - memory side effects must not break chat
+            return
+
     # ------------------------------------------------------------------
     # command handler
     # ------------------------------------------------------------------
@@ -248,6 +377,11 @@ class MemoryCommandsPlugin(Star):
                 f"未知命令。{commands.help_text(parsed.root or 'memory')}",
                 options,
             )
+
+        if parsed.root == "memory" and parsed.action == "cards":
+            return self._cards_reply(event)
+        if parsed.root == "memory" and parsed.action == "wrapup":
+            return await self._wrapup_reply(event)
 
         if parsed.root == "memory" and parsed.action == "cancel":
             return self._cancel_confirmation(event, parsed, options)

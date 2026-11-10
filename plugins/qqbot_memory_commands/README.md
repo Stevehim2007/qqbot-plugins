@@ -6,7 +6,14 @@ AstrBot 原生记忆服务；**不调用聊天模型**，也不导入 `qqbot_enh
 
 ## 记忆卡 v3 基础层
 
-本版本开始引入独立的 `cards.py` / `memory_cards.db` 记忆卡存储，用于下一阶段 active/archive 卡片、清晰度衰减、归档和事件审计。它不替代现有五 scope 原始记忆；现有 `/记忆`、Studio 管理面和 AstrBot 长期记忆行为保持不变。卡片层当前是增量基础，尚未接入回复注入和收尾流程。
+本版本提供记忆卡 v3：
+
+- 独立 `cards.py` / `memory_cards.db`：active/archive 卡片、清晰度半衰期、归档、append-only 事件审计。
+- `wrapup.py`：确定性会话摘要、阶段摘要、未完成话题；每 6 轮自动收尾（可配置），也可用 `/记忆 收尾` 手动触发。
+- `@filter.on_llm_request`：把当前会话最多 4 张卡片作为 `untrusted` 记忆块注入提示词，不执行卡片内文本。
+- `/记忆 卡片` 查看当前 scope 活跃/归档数量；`/记忆 收尾` 立即生成卡片。
+- 卡片是从五 scope 原始记忆派生的 L1/L2 层，不替代原始记忆；`global/persona/conversation/group/user` 仍由原 provider 管理。
+- 默认 `cards_inject_enabled=true`、`cards_auto_wrapup_enabled=true`、`cards_wrapup_every_turns=6`、`cards_purpose_enabled=false`。
 
 ## 命令
 

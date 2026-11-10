@@ -244,5 +244,51 @@
     "description": "事件未提供人格绑定时的稳定默认人格 ID",
     "type": "string",
     "default": ""
+  },
+  "cards_inject_enabled": {
+    "description": "将记忆卡片注入回复提示词",
+    "type": "bool",
+    "default": true,
+    "hint": "只注入当前会话 scope 的活跃卡片；卡片内容标记为 untrusted。"
+  },
+  "cards_max_cards": {
+    "description": "每次最多注入卡片数",
+    "type": "int",
+    "default": 4,
+    "slider": {
+      "min": 0,
+      "max": 8,
+      "step": 1
+    }
+  },
+  "cards_max_chars": {
+    "description": "卡片块最大字符数",
+    "type": "int",
+    "default": 480,
+    "slider": {
+      "min": 120,
+      "max": 1200,
+      "step": 40
+    }
+  },
+  "cards_auto_wrapup_enabled": {
+    "description": "每若干轮自动生成阶段摘要/未完成话题卡片",
+    "type": "bool",
+    "default": true
+  },
+  "cards_wrapup_every_turns": {
+    "description": "自动收尾间隔轮数",
+    "type": "int",
+    "default": 6,
+    "slider": {
+      "min": 2,
+      "max": 30,
+      "step": 1
+    }
+  },
+  "cards_purpose_enabled": {
+    "description": "从收尾生成待办目的卡片",
+    "type": "bool",
+    "default": false
   }
 }
