@@ -402,11 +402,31 @@ def build(tag: str, *, clean: bool = True) -> dict[str, Any]:
     }
     _write_json(ROOT / "catalog.json", catalog)
     _write_json(ROOT / "manifest.json", manifest)
+    raw_base = "https://raw.githubusercontent.com/Stevehim2007/qqbot-plugins/main/artifacts"
+    market_entries = []
+    for item in local:
+        market_item = dict(item)
+        archive_name = Path(str(market_item.get("download", ""))).name
+        if archive_name:
+            market_item["download"] = f"{raw_base}/{archive_name}"
+        market_entries.append(market_item)
+    (ROOT / "market").mkdir(parents=True, exist_ok=True)
+    market_catalog = {
+        "schema_version": 2,
+        "catalog_id": "qqbot-plugins",
+        "plugins": market_entries,
+        "group_param_registry": {
+            "file": "https://raw.githubusercontent.com/Stevehim2007/qqbot-plugins/main/group_param_registry.json",
+            "registry_revision": registry["registry_revision"],
+        },
+    }
+    _write_json(ROOT / "market" / "catalog.json", market_catalog)
     return {
         "tag": tag,
         "plugins": local,
         "catalog": str(ROOT / "catalog.json"),
         "manifest": str(ROOT / "manifest.json"),
+        "market_catalog": str(ROOT / "market" / "catalog.json"),
         "group_param_registry": str(ROOT / "group_param_registry.json"),
         "registry_revision": registry["registry_revision"],
     }

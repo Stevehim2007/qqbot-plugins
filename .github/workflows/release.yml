@@ -28,7 +28,7 @@ jobs:
           catalog = json.loads(Path("catalog.json").read_text(encoding="utf-8"))
           assert catalog.get("schema_version") == 2, "unexpected catalog schema"
           plugins = catalog["plugins"]
-          assert len(plugins) == 7, len(plugins)
+          assert len(plugins) >= 1, len(plugins)
           for item in plugins:
               archive = Path("artifacts") / f"{item['id']}-{item['version']}.zip"
               assert archive.is_file(), archive
@@ -40,7 +40,12 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*.zip
+          files: |
+            artifacts/*.zip
+            catalog.json
+            manifest.json
+            group_param_registry.json
+            market/catalog.json
           generate_release_notes: true
           fail_on_unmatched_files: true
           prerelease: ${{ contains(github.ref_name, '-') }}

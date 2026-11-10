@@ -434,7 +434,10 @@ class CoreReplyPlugin(Star):
         try:
             self_id = str(event.get_self_id() or "")
             if not self_id or self_id in {"qq_official", "unknown_selfid"}:
-                return False
+                # QQ 官方在部分群事件里不返回真实机器人 openid，只给
+                # At:qq_official 占位。此时 GROUP_AT_MESSAGE_CREATE 的
+                # is_at_or_wake_command 才是可靠的“被 @”信号。
+                return bool(getattr(event, "is_at_or_wake_command", False))
             for component in list(getattr(getattr(event, "message_obj", None), "message", None) or []):
                 if type(component).__name__ != "At":
                     continue

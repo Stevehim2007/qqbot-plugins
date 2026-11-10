@@ -481,6 +481,25 @@ class UnmentionedCommandTests(unittest.TestCase):
         run(plugin.allow_unmentioned_utility_commands(fortune_event))
         self.assertFalse(fortune_event.is_at_or_wake_command)
 
+    def test_official_group_fallback_mention_uses_wake_flag(self):
+        from astrbot.api import message_components as Comp
+
+        official_at = FakeEvent(
+            "/每日运势",
+            self_id="qq_official",
+            components=[Comp.At("qq_official")],
+            wake=True,
+        )
+        self.assertTrue(core_main.CoreReplyPlugin._has_bot_mention(official_at))
+
+        full_message = FakeEvent(
+            "每日运势",
+            self_id="qq_official",
+            components=[Comp.Plain("每日运势")],
+            wake=False,
+        )
+        self.assertFalse(core_main.CoreReplyPlugin._has_bot_mention(full_message))
+
     def test_handler_respects_global_switch(self):
         plugin, _ctx, _cfg = make_plugin(
             config={"enabled": True, "utility_commands_require_at": True}
