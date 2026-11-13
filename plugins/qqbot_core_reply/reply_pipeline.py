@@ -405,6 +405,30 @@ class ReplyPipeline:
                 private_enabled=self.participation.private_enabled(),
                 mention_enabled=self.participation.mention_enabled(),
             )
+            group_probability = self.participation.group_probability()
+            if policy is not None:
+                try:
+                    group_probability = float(
+                        policy.get("params", {}).get(
+                            "participation.reply_probability",
+                            group_probability,
+                        )
+                    )
+                except (TypeError, ValueError):
+                    pass
+            if (
+                not is_private
+                and not mentioned
+                and group_probability <= 0
+                and not self.config.bool("ambient_group_chat_enabled")
+            ):
+                logger.info(
+                    "group reply blocked: no mention and probability=0 group=%s text=%r",
+                    group_id,
+                    str(text or "")[:80],
+                )
+                self.block_default_llm(event)
+                return None
             history = self.history_for(event)
             self.remember_history(
                 event,
