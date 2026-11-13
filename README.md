@@ -23,3 +23,10 @@
 ## 发布
 
 每个插件单独打 ZIP，ZIP 唯一顶层目录必须等于插件 ID；清单记录 SHA256、大小和 GitHub Release URL。
+
+## 平台 ID 语义
+
+- `qq_official`：群/用户 ID 是 32 位 openid（例如 `6D71B9EAD547FAF9F8970A1C31C22043`）。
+- `aiocqhttp` / OneBot：群/用户 ID 是数字 QQ 群号/QQ 号，由 NapCat 等第三方网关负责登录。
+
+两类 ID 不互相转换，也不能混填。群策略、群白名单、记忆 scope、人格分组、Food 群位置均按当前实例平台填写。

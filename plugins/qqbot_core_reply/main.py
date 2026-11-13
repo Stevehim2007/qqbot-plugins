@@ -672,7 +672,7 @@ class CoreReplyPlugin(Star):
                 data = _scope()
                 lines = [
                     f"分群策略 revision {data.get('revision', 0)}",
-                    f"本群 openid: {group_id}",
+                    f"本群 ID（官方 openid / OneBot 群号）: {group_id}",
                 ]
                 plugins = data.get("plugins") if isinstance(data.get("plugins"), dict) else {}
                 if not plugins:

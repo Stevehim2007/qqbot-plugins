@@ -40,7 +40,7 @@
     "default": 1800
   },
   "food_group_locations": {
-    "description": "群号到默认地点路径的 JSON 对象字符串",
+    "description": "群 ID（官方 openid / OneBot 数字群号）到默认地点路径的 JSON 对象字符串",
     "type": "text",
     "default": "{}"
   },

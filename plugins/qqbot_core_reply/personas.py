@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-GROUP_ID_RE = re.compile(r"^\d{1,20}$")
+GROUP_ID_RE = re.compile(r"^(?:\d{1,20}|[A-Fa-f0-9]{32})$")
 
 
 @dataclass(slots=True)

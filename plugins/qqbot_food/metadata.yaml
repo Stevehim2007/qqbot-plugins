@@ -1,7 +1,7 @@
 name: qqbot_food
 display_name: Food 餐厅查询与评价提交
 desc: 独立 Food 餐厅查询、标签/地点解析、草稿确认与评价提交；固定 https://food.dlsz.top，仅标准库，不调用聊天模型。
-version: 3.0.4
+version: 3.0.5
 author: QQ Bot Studio
 support_platforms:
   - aiocqhttp

@@ -82,6 +82,10 @@ _SCOPES = frozenset({"global", "persona", "conversation", "group", "user"})
 _FORBIDDEN_ARG_KEYS = frozenset(
     {"path", "file", "filename", "sql", "shell", "command", "script", "eval", "exec"}
 )
+# Policy parameter names are data, not executable arguments.  Keep the
+# substring guard for tool arguments, but allow the registered policy flags
+# whose names legitimately contain a guarded word.
+_ALLOWED_POLICY_ARG_KEYS = frozenset({"help_command_enabled", "allow_unmentioned_command"})
 
 
 class ControlError(ValueError):
@@ -252,8 +256,10 @@ def _validate_json_body(value: Any, *, depth: int = 0, nodes: list[int] | None =
         for key, item in value.items():
             if not isinstance(key, str) or not key or len(key) > 128:
                 raise ControlError("invalid_json", http_status=400)
-            if key.casefold() in _FORBIDDEN_ARG_KEYS or any(
-                token in key.casefold() for token in ("sql", "shell", "command")
+            normalised_key = key.casefold()
+            if normalised_key not in _ALLOWED_POLICY_ARG_KEYS and (
+                normalised_key in _FORBIDDEN_ARG_KEYS
+                or any(token in normalised_key for token in ("sql", "shell", "command"))
             ):
                 raise ControlError("forbidden_argument", http_status=400)
             _validate_json_body(item, depth=depth + 1, nodes=nodes)

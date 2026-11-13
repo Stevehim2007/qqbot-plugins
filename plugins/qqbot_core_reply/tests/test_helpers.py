@@ -112,6 +112,23 @@ class PersonaTests(unittest.TestCase):
         self.assertIn("123", parsed.groups)
         self.assertGreaterEqual(parsed.errors, 1)
 
+    def test_official_openid_group_id_accepted(self):
+        openid = "6D71B9EAD547FAF9F8970A1C31C22043"
+        parsed = persona_engine.parse_group_personas(
+            json.dumps({"groups": {openid: {"name": "官方群", "prompt": "OPENID"}}})
+        )
+        self.assertIn(openid, parsed.groups)
+        prompt, name, source = persona_engine.resolve_persona(
+            parsed, group_id=openid, legacy_prompt="legacy"
+        )
+        self.assertEqual((prompt, name, source), ("OPENID", "官方群", "group"))
+
+    def test_platform_id_formats_are_distinct(self):
+        self.assertTrue(persona_engine.GROUP_ID_RE.fullmatch("123456789"))
+        self.assertTrue(persona_engine.GROUP_ID_RE.fullmatch("6D71B9EAD547FAF9F8970A1C31C22043"))
+        self.assertFalse(persona_engine.GROUP_ID_RE.fullmatch("abc"))
+        self.assertFalse(persona_engine.GROUP_ID_RE.fullmatch("6D71B9EAD547FAF9F8970A1C31C2204"))
+
     def test_resolve_group_exact(self):
         parsed = persona_engine.parse_group_personas(
             json.dumps({"groups": {"123": {"name": "G", "prompt": "GP"}}})

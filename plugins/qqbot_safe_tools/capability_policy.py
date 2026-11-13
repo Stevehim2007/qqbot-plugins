@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import threading
 import time
@@ -20,6 +21,26 @@ from typing import Any, Mapping
 
 SCHEMA_VERSION = 2
 MAX_AUDIT_ENTRIES = 500
+OFFICIAL_OPENID_RE = re.compile(r"^[A-Fa-f0-9]{32}$")
+ONEBOT_GROUP_RE = re.compile(r"^\d{1,20}$")
+
+
+def classify_scope_id(value: Any) -> str:
+    """Classify the two disjoint platform ID formats.
+
+    Official QQ uses 32-hex openids; OneBot uses numeric QQ/group IDs.  The
+    values never overlap, so storing the raw value is safe, but the UI should
+    tell the operator which namespace they are editing.
+    """
+
+    text = str(value or "").strip()
+    if ":" in text:
+        return "platform_prefixed"
+    if ONEBOT_GROUP_RE.fullmatch(text):
+        return "onebot_numeric"
+    if OFFICIAL_OPENID_RE.fullmatch(text):
+        return "official_openid"
+    return "custom"
 
 
 class PolicyError(ValueError):
@@ -153,7 +174,14 @@ def _coerce_scalar(spec: ParamSpec, value: Any) -> Any:
             raise PolicyError("invalid_param", "expected boolean")
         return value
     if spec.kind == "int":
-        if isinstance(value, bool) or not isinstance(value, int):
+        if isinstance(value, bool):
+            raise PolicyError("invalid_param", "expected integer")
+        if isinstance(value, str):
+            text = value.strip()
+            if not text or (text[0] in "+-" and not text[1:].isdigit()) or (text[0] not in "+-" and not text.isdigit()):
+                raise PolicyError("invalid_param", "expected integer")
+            value = int(text, 10)
+        if not isinstance(value, int):
             raise PolicyError("invalid_param", "expected integer")
         if spec.minimum is not None and value < spec.minimum:
             raise PolicyError("invalid_param", "integer below minimum")
@@ -161,7 +189,14 @@ def _coerce_scalar(spec: ParamSpec, value: Any) -> Any:
             raise PolicyError("invalid_param", "integer above maximum")
         return value
     if spec.kind == "float":
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
+        if isinstance(value, bool):
+            raise PolicyError("invalid_param", "expected number")
+        if isinstance(value, str):
+            try:
+                value = float(value.strip())
+            except (TypeError, ValueError):
+                raise PolicyError("invalid_param", "expected number") from None
+        if not isinstance(value, (int, float)):
             raise PolicyError("invalid_param", "expected number")
         number = float(value)
         if spec.minimum is not None and number < spec.minimum:
@@ -653,6 +688,7 @@ class CapabilityPolicy:
                 "ok": True,
                 "scope_type": kind,
                 "scope_id": target,
+                "scope_kind": classify_scope_id(target) if kind in {"group", "private"} else "",
                 "template": str(entry.get("template", "") or ""),
                 "plugins": plugins,
                 "effective": effective,

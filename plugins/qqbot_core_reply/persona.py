@@ -262,7 +262,7 @@ class PersonaService:
         if identity_enabled:
             lines.extend(
                 [
-                    f"群号：{group_id if group_id else '无（私聊）'}",
+                    f"群 ID：{group_id if group_id else '无（私聊）'}",
                     f"发送者昵称：{sender_name or '未知'}",
                     f"发送者QQ：{sender_qq or '未知'}",
                     (

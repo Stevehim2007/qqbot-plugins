@@ -14,7 +14,19 @@ from qqbot_safe_tools.capability_policy import (
     CapabilityPolicy,
     PolicyError,
     SCHEMA_VERSION,
+    classify_scope_id,
 )
+
+
+class ScopeIdTests(unittest.TestCase):
+    def test_platform_id_kinds_are_distinct(self):
+        self.assertEqual(classify_scope_id("123456789"), "onebot_numeric")
+        self.assertEqual(
+            classify_scope_id("6D71B9EAD547FAF9F8970A1C31C22043"),
+            "official_openid",
+        )
+        self.assertEqual(classify_scope_id("qq_official:abc"), "platform_prefixed")
+        self.assertEqual(classify_scope_id("not-an-id"), "custom")
 
 
 class CapabilityPolicyTests(unittest.TestCase):
@@ -91,11 +103,18 @@ class CapabilityPolicyTests(unittest.TestCase):
                 params={"decoration_probability": 1.5},
             )
         self.assertEqual(ctx.exception.code, "invalid_param")
+        self.policy.set_override(
+            plugin_id="qqbot_core_reply",
+            group_id="g1",
+            params={"participation.reply_probability": "0.2"},
+        )
+        effective = self.policy.effective("qqbot_core_reply", group_id="g1")
+        self.assertEqual(effective.params["participation.reply_probability"], 0.2)
         with self.assertRaises(PolicyError) as ctx:
             self.policy.set_override(
                 plugin_id="qqbot_core_reply",
                 group_id="g1",
-                params={"participation.reply_probability": "0.2"},
+                params={"participation.reply_probability": "abc"},
             )
         self.assertEqual(ctx.exception.code, "invalid_param")
 
