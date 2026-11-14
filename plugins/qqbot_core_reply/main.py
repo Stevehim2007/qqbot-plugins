@@ -515,11 +515,23 @@ class CoreReplyPlugin(Star):
         try:
             if self.pipeline.is_private(event):
                 return
-            text = str(getattr(event, "message_str", "") or "").strip()
-            if text or not bool(getattr(event, "is_at_or_wake_command", False)):
-                return
             components = list(getattr(getattr(event, "message_obj", None), "message", None) or [])
             if any(type(component).__name__ in {"Image", "Face"} for component in components):
+                return
+            text_components = [
+                str(getattr(component, "text", "") or "")
+                for component in components
+                if type(component).__name__ == "Text"
+            ]
+            content_text = "".join(text_components).strip()
+            if not text_components:
+                content_text = str(getattr(event, "message_str", "") or "").strip()
+            if content_text:
+                return
+            if not (
+                self._has_bot_mention(event)
+                or bool(getattr(event, "is_at_or_wake_command", False))
+            ):
                 return
             self.pipeline.block_default_llm(event)
             yield event.plain_result("在呢，怎么啦？")

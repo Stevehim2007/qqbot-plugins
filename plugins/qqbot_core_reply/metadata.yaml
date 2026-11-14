@@ -1,7 +1,7 @@
 name: qqbot_core_reply
 display_name: QQ 核心回复
 desc: 唯一主回复/LLM owner；自包含 stdlib-only，负责 direct/astrbot memory、人格、会话、工具说明 handshake 与本地点歌。
-version: 4.0.25
+version: 4.0.26
 author: QQ Bot Studio
 support_platforms:
   - aiocqhttp
