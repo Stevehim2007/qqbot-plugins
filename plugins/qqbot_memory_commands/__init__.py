@@ -1,3 +1,3 @@
 """Standalone deterministic memory management commands for AstrBot."""
 
-__version__ = "4.1.0"
+__version__ = "4.2.0"

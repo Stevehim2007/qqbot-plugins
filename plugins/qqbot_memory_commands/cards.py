@@ -8,22 +8,26 @@ memory provider can be migrated incrementally.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+import re
 import secrets
 import sqlite3
 import time
+import unicodedata
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 ACTIVE_CARD_LIMIT = 60
 ARCHIVE_AFTER_SECONDS = 365 * 24 * 60 * 60
 PURGE_AFTER_ARCHIVE_SECONDS = 365 * 24 * 60 * 60
 MIN_CLARITY = 0.05
 
 CARD_KINDS = frozenset({"fact", "preference", "episode", "open_topic", "purpose"})
+SOURCE_KINDS = frozenset({"rule", "llm", "wrapup", "manual", "import", "rebuild"})
 CARD_SUBTYPES = frozenset({"", "session_summary", "phase_summary"})
 HALF_LIFE_DAYS: dict[str, float] = {
     "fact": 120.0,
@@ -35,6 +39,19 @@ HALF_LIFE_DAYS: dict[str, float] = {
 VALID_STATUS = frozenset({"active", "archived", "purged"})
 MAX_CONTENT_CHARS = 2000
 MAX_TITLE_CHARS = 120
+MAX_TAGS = 8
+MAX_TAG_CHARS = 16
+MAX_PHASE_CHARS = 160
+
+
+def _normalise_text(value: Any) -> str:
+    text = unicodedata.normalize("NFC", str(value or ""))
+    return re.sub(r"\s+", " ", text.strip())
+
+
+def _source_key(scope: str, kind: str, content: str) -> str:
+    raw = f"{_normalise_text(scope)}|{_normalise_text(kind)}|{_normalise_text(content)}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 class CardError(ValueError):
@@ -172,16 +189,102 @@ class CardStore:
             "INSERT OR REPLACE INTO card_meta(key, value) VALUES('schema_version', ?)",
             (str(SCHEMA_VERSION),),
         )
+        self._migrate_v4()
+
+    def _migrate_v4(self) -> None:
+        """Additive v3 -> v4 migration. Safe to run on every startup."""
+
+        def columns(table: str) -> set[str]:
+            return {str(row["name"]) for row in self.connection.execute(f"PRAGMA table_info({table})")}
+
+        additions = {
+            "source_key": "TEXT NOT NULL DEFAULT ''",
+            "polarity": "INTEGER NOT NULL DEFAULT 0",
+            "tags": "TEXT NOT NULL DEFAULT '[]'",
+            "relationship_target": "TEXT NOT NULL DEFAULT ''",
+            "relationship_kind": "TEXT NOT NULL DEFAULT ''",
+            "source_kind": "TEXT NOT NULL DEFAULT 'rule'",
+            "superseded_by": "TEXT NOT NULL DEFAULT ''",
+            "pinned": "INTEGER NOT NULL DEFAULT 0",
+            "use_count": "INTEGER NOT NULL DEFAULT 0",
+            "source_turn_ids": "TEXT NOT NULL DEFAULT '[]'",
+            "merged_into": "TEXT NOT NULL DEFAULT ''",
+            "expires_at": "REAL",
+        }
+        card_cols = columns("card")
+        for name, ddl in additions.items():
+            if name not in card_cols:
+                self.connection.execute(f"ALTER TABLE card ADD COLUMN {name} {ddl}")
+        event_cols = columns("card_event")
+        for name, ddl in (("reason", "TEXT NOT NULL DEFAULT ''"), ("by", "TEXT NOT NULL DEFAULT 'system'")):
+            if name not in event_cols:
+                self.connection.execute(f"ALTER TABLE card_event ADD COLUMN {name} {ddl}")
+        wrap_cols = columns("wrapup_ledger")
+        for name, ddl in (("kind", "TEXT NOT NULL DEFAULT 'full'"), ("trigger", "TEXT NOT NULL DEFAULT 'manual'")):
+            if name not in wrap_cols:
+                self.connection.execute(f"ALTER TABLE wrapup_ledger ADD COLUMN {name} {ddl}")
+        purpose_cols = columns("purpose_usage")
+        for name, ddl in (("turn_id", "TEXT NOT NULL DEFAULT ''"), ("result", "TEXT NOT NULL DEFAULT 'offered'")):
+            if name not in purpose_cols:
+                self.connection.execute(f"ALTER TABLE purpose_usage ADD COLUMN {name} {ddl}")
+        self.connection.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS card_binding ON card(group_id, persona_id, actor_id, status);
+            CREATE INDEX IF NOT EXISTS card_decay ON card(scope, status, clarity, importance, last_used_at);
+            CREATE INDEX IF NOT EXISTS card_expires ON card(status, expires_at) WHERE status='active';
+            CREATE UNIQUE INDEX IF NOT EXISTS card_source_key_uq
+              ON card(source_key) WHERE status IN ('active','archived') AND source_key != '';
+            CREATE TABLE IF NOT EXISTS session_state (
+              conversation_id TEXT PRIMARY KEY,
+              session_revision INTEGER NOT NULL DEFAULT 0,
+              phase_summary TEXT NOT NULL DEFAULT '',
+              phase_updated_at REAL,
+              open_topics_json TEXT NOT NULL DEFAULT '[]',
+              purpose_json TEXT NOT NULL DEFAULT '{}',
+              last_wrapup_revision INTEGER NOT NULL DEFAULT 0,
+              updated_at REAL NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS audit_log (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              at REAL NOT NULL,
+              actor_hash TEXT NOT NULL DEFAULT '',
+              action TEXT NOT NULL,
+              target_type TEXT NOT NULL,
+              target_id TEXT NOT NULL DEFAULT '',
+              scope TEXT NOT NULL DEFAULT '',
+              before_json TEXT NOT NULL DEFAULT '{}',
+              after_json TEXT NOT NULL DEFAULT '{}',
+              reason TEXT NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS audit_at ON audit_log(at);
+            CREATE INDEX IF NOT EXISTS audit_scope ON audit_log(scope, at);
+            """
+        )
+        try:
+            self.connection.executescript(
+                """
+                CREATE VIRTUAL TABLE IF NOT EXISTS card_fts USING fts5(
+                  card_id UNINDEXED, title, content, tags, tokenize='unicode61'
+                );
+                """
+            )
+        except sqlite3.OperationalError:
+            pass
+        self.connection.execute(
+            "INSERT OR REPLACE INTO card_meta(key, value) VALUES('schema_version', '2')"
+        )
 
     def _row(self, row: sqlite3.Row | None) -> dict[str, Any] | None:
         if row is None:
             return None
         card = dict(row)
         card["source_record_ids"] = _from_json(card.get("source_record_ids"), [])
+        card["source_turn_ids"] = _from_json(card.get("source_turn_ids"), [])
+        card["tags"] = _from_json(card.get("tags"), [])
         card["evidence"] = _from_json(card.get("evidence"), {})
         return card
 
-    def _event(self, card: Mapping[str, Any], action: str, *, now: float) -> None:
+    def _event(self, card: Mapping[str, Any], action: str, *, now: float, reason: str = "", by: str = "system") -> None:
         snapshot = {
             key: card.get(key)
             for key in (
@@ -199,13 +302,25 @@ class CardStore:
                 "clarity",
                 "status",
                 "source_record_ids",
+                "source_turn_ids",
+                "archive_reason",
                 "archive_reason",
                 "revision",
+                "polarity",
+                "tags",
+                "relationship_target",
+                "relationship_kind",
+                "source_kind",
+                "superseded_by",
+                "pinned",
+                "use_count",
+                "merged_into",
+                "expires_at",
             )
         }
         self.connection.execute(
-            "INSERT INTO card_event(card_id, action, snapshot_json, created_at) VALUES(?,?,?,?)",
-            (str(card["id"]), action, _json(snapshot), now),
+            "INSERT INTO card_event(card_id, action, reason, by, snapshot_json, created_at) VALUES(?,?,?,?,?,?)",
+            (str(card["id"]), action, reason, by, _json(snapshot), now),
         )
 
     def create(
@@ -221,8 +336,17 @@ class CardStore:
         actor_id: str = "",
         importance: float = 0.5,
         confidence: float = 0.5,
+        polarity: int = 0,
+        tags: Iterable[str] = (),
+        relationship_target: str = "",
+        relationship_kind: str = "",
+        source_kind: str = "rule",
         source_record_ids: Iterable[str] = (),
+        source_turn_ids: Iterable[str] = (),
         evidence: Mapping[str, Any] | None = None,
+        pinned: bool = False,
+        expires_at: float | None = None,
+        source_key: str = "",
         now: float | None = None,
     ) -> dict[str, Any]:
         scope = _text(scope, field="scope", max_chars=128, required=True)
@@ -235,8 +359,30 @@ class CardStore:
         if kind != "episode" and subtype:
             raise CardError("只有 episode 支持子类型。")
         content = _text(content, field="content", max_chars=MAX_CONTENT_CHARS, required=True)
-        title = _text(title, field="title", max_chars=MAX_TITLE_CHARS)
+        title = _text(title, field="title", max_chars=MAX_TITLE_CHARS) or content[:60]
+        relation = str(relationship_kind or "").strip()
+        if relation and relation not in {"friend", "roommate", "colleague", "classmate", "family", "rival", "other"}:
+            raise CardError("未知关系类型。")
+        source_kind = str(source_kind or "rule").strip()
+        if source_kind not in SOURCE_KINDS:
+            raise CardError("未知卡片来源。")
+        clean_tags: list[str] = []
+        for value in list(tags)[:MAX_TAGS]:
+            tag = _text(value, field="tag", max_chars=MAX_TAG_CHARS)
+            if tag and tag not in clean_tags:
+                clean_tags.append(tag)
+        try:
+            polarity = max(-1, min(1, int(polarity)))
+        except (TypeError, ValueError):
+            raise CardError("polarity 必须是 -1、0 或 1。") from None
+        key = str(source_key or "").strip() or _source_key(scope, kind, content)
         timestamp = _now(now)
+        existing = self.connection.execute(
+            "SELECT * FROM card WHERE source_key = ? AND status IN ('active','archived') LIMIT 1",
+            (key,),
+        ).fetchone()
+        if existing is not None:
+            return self._row(existing)  # type: ignore[return-value]
         card_id = f"card-{secrets.token_urlsafe(12)}"
         clarity = _clamp(confidence, 0.5)
         with self.connection:
@@ -244,35 +390,26 @@ class CardStore:
                 """
                 INSERT INTO card(
                     id, scope, group_id, persona_id, actor_id, kind, subtype, title,
-                    content, importance, confidence, clarity, status, source_record_ids,
-                    evidence, created_at, updated_at, last_used_at, revision
-                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    content, source_key, importance, confidence, clarity, polarity,
+                    tags, relationship_target, relationship_kind, source_kind,
+                    status, source_record_ids, source_turn_ids, evidence, pinned,
+                    created_at, updated_at, last_used_at, expires_at, revision
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
-                    card_id,
-                    scope,
-                    str(group_id or ""),
-                    str(persona_id or ""),
-                    str(actor_id or ""),
-                    kind,
-                    subtype,
-                    title,
-                    content,
-                    _clamp(importance, 0.5),
-                    _clamp(confidence, 0.5),
-                    clarity,
-                    "active",
+                    card_id, scope, str(group_id or ""), str(persona_id or ""), str(actor_id or ""),
+                    kind, subtype, title, content, key, _clamp(importance, 0.5),
+                    _clamp(confidence, 0.5), clarity, polarity, _json(clean_tags),
+                    str(relationship_target or ""), relation, source_kind, "active",
                     _json(list(dict.fromkeys(str(value) for value in source_record_ids if value))),
-                    _json(dict(evidence or {})),
-                    timestamp,
-                    timestamp,
-                    timestamp,
-                    0,
+                    _json(list(dict.fromkeys(str(value) for value in source_turn_ids if value))),
+                    _json(dict(evidence or {})), 1 if pinned else 0, timestamp, timestamp,
+                    timestamp, float(expires_at) if expires_at is not None else None, 0,
                 ),
             )
             card = self.get(card_id)
             assert card is not None
-            self._event(card, "create", now=timestamp)
+            self._event(card, "create", now=timestamp, reason="created", by=source_kind)
         self._enforce_active_limit(scope, now=timestamp)
         return card
 
@@ -281,6 +418,7 @@ class CardStore:
         overflow = len(active) - ACTIVE_CARD_LIMIT
         if overflow <= 0:
             return []
+        active = [card for card in active if not int(card.get("pinned") or 0)]
         active.sort(key=lambda card: effective_clarity(card, now))
         archived: list[dict[str, Any]] = []
         for card in active[:overflow]:
@@ -323,19 +461,18 @@ class CardStore:
         return [card for row in rows if (card := self._row(row)) is not None]
 
     def touch(self, card_id: str, *, now: float | None = None) -> dict[str, Any] | None:
+        """Record a real prompt use without resetting the decay clock (D33)."""
+
         timestamp = _now(now)
         with self.connection:
             current = self.get(card_id)
             if not current or current["status"] != "active":
                 return current
             self.connection.execute(
-                "UPDATE card SET last_used_at = ?, updated_at = ?, revision = revision + 1 WHERE id = ?",
-                (timestamp, timestamp, str(card_id)),
+                "UPDATE card SET last_used_at = ?, use_count = use_count + 1 WHERE id = ?",
+                (timestamp, str(card_id)),
             )
-            card = self.get(card_id)
-            if card is not None:
-                self._event(card, "touch", now=timestamp)
-            return card
+            return self.get(card_id)
 
     def archive(
         self,
@@ -367,7 +504,13 @@ class CardStore:
 
         archived: list[dict[str, Any]] = []
         for card in self.list_cards(scope=scope, status="active", limit=500):
-            if effective_clarity(card, now) < MIN_CLARITY:
+            if int(card.get("pinned") or 0):
+                continue
+            clarity = effective_clarity(card, now)
+            half_life = max(0.1, float(HALF_LIFE_DAYS.get(str(card.get("kind") or "fact"), 30.0)))
+            last_used = float(card.get("last_used_at") or card.get("updated_at") or card.get("created_at") or 0.0)
+            stale_days = max(0.0, (_now(now) - last_used) / 86400.0)
+            if clarity < 0.05 or (clarity < 0.10 and stale_days >= 2 * half_life):
                 updated = self.archive(str(card["id"]), reason="decayed", now=now)
                 if updated is not None:
                     archived.append(updated)
@@ -401,6 +544,101 @@ class CardStore:
         ).fetchall()
         return {str(row["status"]): int(row["n"]) for row in rows}
 
+    def get_session_state(self, conversation_id: str) -> dict[str, Any] | None:
+        row = self.connection.execute(
+            "SELECT * FROM session_state WHERE conversation_id = ?", (str(conversation_id),)
+        ).fetchone()
+        if row is None:
+            return None
+        data = dict(row)
+        data["open_topics"] = _from_json(data.pop("open_topics_json"), [])
+        data["purpose"] = _from_json(data.pop("purpose_json"), {})
+        return data
+
+    def put_session_state(
+        self,
+        *,
+        conversation_id: str,
+        session_revision: int,
+        phase_summary: str = "",
+        open_topics: Iterable[str] = (),
+        purpose: Mapping[str, Any] | None = None,
+        last_wrapup_revision: int | None = None,
+        now: float | None = None,
+    ) -> dict[str, Any]:
+        timestamp = _now(now)
+        summary = _text(phase_summary, field="phase_summary", max_chars=MAX_PHASE_CHARS)
+        topics = [_text(item, field="open_topic", max_chars=120) for item in list(open_topics)[:2]]
+        topics = [item for item in topics if item]
+        with self.connection:
+            self.connection.execute(
+                """
+                INSERT INTO session_state(
+                    conversation_id, session_revision, phase_summary, phase_updated_at,
+                    open_topics_json, purpose_json, last_wrapup_revision, updated_at
+                ) VALUES(?,?,?,?,?,?,?,?)
+                ON CONFLICT(conversation_id) DO UPDATE SET
+                    session_revision=excluded.session_revision,
+                    phase_summary=excluded.phase_summary,
+                    phase_updated_at=excluded.phase_updated_at,
+                    open_topics_json=excluded.open_topics_json,
+                    purpose_json=excluded.purpose_json,
+                    last_wrapup_revision=MAX(session_state.last_wrapup_revision, excluded.last_wrapup_revision),
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    str(conversation_id), int(session_revision), summary, timestamp,
+                    _json(topics), _json(dict(purpose or {})),
+                    int(last_wrapup_revision) if last_wrapup_revision is not None else 0,
+                    timestamp,
+                ),
+            )
+        state = self.get_session_state(conversation_id)
+        assert state is not None
+        return state
+
+    def audit(
+        self,
+        *,
+        action: str,
+        target_type: str,
+        target_id: str = "",
+        scope: str = "",
+        actor_hash: str = "",
+        before: Mapping[str, Any] | None = None,
+        after: Mapping[str, Any] | None = None,
+        reason: str = "",
+        now: float | None = None,
+    ) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO audit_log(at, actor_hash, action, target_type, target_id, scope,
+                                  before_json, after_json, reason)
+            VALUES(?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                _now(now), str(actor_hash or ""), str(action), str(target_type), str(target_id),
+                str(scope), _json(dict(before or {})), _json(dict(after or {})), str(reason or ""),
+            ),
+        )
+
+    def audit_entries(self, *, scope: str = "", limit: int = 50) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM audit_log"
+        params: list[Any] = []
+        if scope:
+            sql += " WHERE scope = ?"
+            params.append(str(scope))
+        sql += " ORDER BY id DESC LIMIT ?"
+        params.append(max(1, min(500, int(limit))))
+        rows = self.connection.execute(sql, tuple(params)).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["before"] = _from_json(item.pop("before_json"), {})
+            item["after"] = _from_json(item.pop("after_json"), {})
+            result.append(item)
+        return result
+
     def get_wrapup(self, conversation_id: str, session_revision: int) -> dict[str, Any] | None:
         row = self.connection.execute(
             "SELECT * FROM wrapup_ledger WHERE conversation_id = ? AND session_revision = ?",
@@ -421,6 +659,8 @@ class CardStore:
         status: str,
         payload: Mapping[str, Any],
         result: Mapping[str, Any] | None = None,
+        kind: str = "wrapup",
+        trigger: str = "auto",
         now: float | None = None,
     ) -> dict[str, Any]:
         timestamp = _now(now)
@@ -429,12 +669,14 @@ class CardStore:
                 """
                 INSERT INTO wrapup_ledger(
                     conversation_id, session_revision, status, payload_json,
-                    result_json, created_at, updated_at
-                ) VALUES(?,?,?,?,?,?,?)
+                    result_json, kind, trigger, created_at, updated_at
+                ) VALUES(?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(conversation_id, session_revision) DO UPDATE SET
                     status=excluded.status,
                     payload_json=excluded.payload_json,
                     result_json=excluded.result_json,
+                    kind=excluded.kind,
+                    trigger=excluded.trigger,
                     updated_at=excluded.updated_at
                 """,
                 (
@@ -443,6 +685,8 @@ class CardStore:
                     str(status),
                     _json(dict(payload)),
                     _json(dict(result or {})),
+                    str(kind or "wrapup"),
+                    str(trigger or "auto"),
                     timestamp,
                     timestamp,
                 ),
@@ -453,15 +697,45 @@ class CardStore:
 
 
 
-def score_card(card: Mapping[str, Any], *, now: float | None = None, relevance: float = 0.5) -> float:
-    """Five-factor ordering score used by prompt selection."""
+def _query_relevance(query: str, card: Mapping[str, Any]) -> float:
+    q = _normalise_text(query).casefold()
+    if not q:
+        return 0.5
+    content = _normalise_text(card.get("content") or "").casefold()
+    title = _normalise_text(card.get("title") or "").casefold()
+    tags = " ".join(str(item) for item in card.get("tags") or []).casefold()
+    terms = [term for term in re.split(r"[\s,，。.!！?？;；]+", q) if term]
+    if not terms:
+        return 0.5
+    haystack = f"{content} {title} {tags}"
+    hits = sum(1 for term in set(terms) if term in haystack)
+    return min(1.0, 0.25 + 0.75 * hits / max(1, len(set(terms))))
+
+
+def score_card(
+    card: Mapping[str, Any],
+    *,
+    now: float | None = None,
+    relevance: float = 0.5,
+    relationship: float = 0.5,
+) -> float:
+    """v4 five-factor ordering score; recency uses last real prompt use (D33)."""
 
     clarity = effective_clarity(card, now)
     importance = _clamp(card.get("importance", 0.5), 0.5)
-    updated = float(card.get("updated_at") or card.get("created_at") or _now(now))
-    days = max(0.0, (_now(now) - updated) / 86400.0)
-    recency = 0.5 ** (days / 30.0)
-    return 0.45 * _clamp(relevance) + 0.20 * importance + 0.15 * recency + 0.10 * 0.5 + 0.10 * clarity
+    anchor = card.get("last_used_at") or card.get("updated_at") or card.get("created_at") or _now(now)
+    days = max(0.0, (_now(now) - float(anchor)) / 86400.0)
+    recency = 0.5 ** (days / 14.0)
+    open_weight = 1.0 if str(card.get("kind") or "") in {"open_topic", "purpose"} else 0.0
+    return (
+        0.40 * _clamp(relevance)
+        + 0.20 * importance
+        + 0.15 * recency
+        + 0.10 * _clamp(relationship)
+        + 0.05 * open_weight
+        + 0.05 * clarity
+        + 0.05 * (1.0 if int(card.get("pinned") or 0) else 0.0)
+    )
 
 
 def render_prompt_block(cards: Iterable[Mapping[str, Any]], *, max_chars: int = 480) -> str:
@@ -499,19 +773,52 @@ def select_for_prompt(
     now: float | None = None,
     max_cards: int = 4,
     max_chars: int = 480,
+    query: str = "",
+    persona_id: str = "",
+    actor_id: str = "",
+    relationship_scores: Mapping[str, float] | None = None,
 ) -> list[dict[str, Any]]:
-    cards = store.list_cards(scope=scope, status="active", limit=100)
-    cards = [card for card in cards if effective_clarity(card, now) >= MIN_CLARITY]
-    cards.sort(key=lambda card: score_card(card, now=now), reverse=True)
+    cards = store.list_cards(scope=scope, status="active", limit=200)
+    timestamp = _now(now)
+    eligible: list[dict[str, Any]] = []
+    for card in cards:
+        if effective_clarity(card, now) < MIN_CLARITY:
+            continue
+        expires_at = card.get("expires_at")
+        if expires_at is not None and float(expires_at) <= timestamp:
+            continue
+        if persona_id and card.get("persona_id") and str(card.get("persona_id")) != persona_id:
+            continue
+        if actor_id and card.get("actor_id") and str(card.get("actor_id")) != actor_id:
+            continue
+        eligible.append(card)
+
+    per_kind = {"fact": 2, "preference": 1, "episode": 1, "open_topic": 1, "purpose": 1}
+    selected_kind: dict[str, int] = {}
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for card in eligible:
+        relationship = 0.5
+        if relationship_scores:
+            target = str(card.get("relationship_target") or "")
+            relationship = _clamp(relationship_scores.get(target, 0.5), 0.5)
+        scored.append((score_card(card, now=now, relevance=_query_relevance(query, card), relationship=relationship), card))
+    scored.sort(key=lambda item: item[0], reverse=True)
+
     selected: list[dict[str, Any]] = []
     used = 0
-    for card in cards[: max(0, max_cards)]:
+    for _score, card in scored:
+        if len(selected) >= max(0, max_cards):
+            break
+        kind = str(card.get("kind") or "fact")
+        if selected_kind.get(kind, 0) >= per_kind.get(kind, 1):
+            continue
         content = str(card.get("content") or "").strip()
         if not content:
             continue
         if used + len(content) > max_chars:
             continue
         selected.append(card)
+        selected_kind[kind] = selected_kind.get(kind, 0) + 1
         used += len(content)
     return selected
 

@@ -1,6 +1,6 @@
-"""Deterministic conversation wrap-up for memory cards v3.
+"""Deterministic conversation wrap-up for memory cards v4.
 
-The wrap-up layer never calls a model and never writes the raw memory store.
+The wrap-up layer never calls a model and never writes the raw memory store; it updates the derived card/session state only.
 It derives episode/open-topic cards from already available messages and uses
 the card store's ``wrapup_ledger`` for idempotency.
 """
@@ -174,16 +174,40 @@ def apply_plan(store: cards.CardStore, plan: Mapping[str, Any], *, now: float | 
                 actor_id=str(plan.get("actor_id") or ""),
                 importance=float(item.get("importance") or 0.5),
                 confidence=float(item.get("confidence") or 0.5),
+                source_kind="wrapup",
+                source_turn_ids=plan.get("source_turn_ids") or (),
+                source_key=str(item.get("source_key") or ""),
                 evidence={"source": "wrapup", "conversation_id": conversation_id, "session_revision": revision},
                 now=now,
             )
             created.append(card)
+        purpose = next((item for item in plan.get("cards") or [] if str(item.get("kind")) == "purpose"), None)
+        store.put_session_state(
+            conversation_id=conversation_id,
+            session_revision=revision,
+            phase_summary=str(plan.get("phase_summary") or ""),
+            open_topics=[str(plan.get("open_topic") or "")] if plan.get("open_topic") else [],
+            purpose={"text": str(purpose.get("content") or ""), "confidence": float(purpose.get("confidence") or 0.5)} if purpose else {},
+            last_wrapup_revision=revision,
+            now=now,
+        )
         record = store.put_wrapup(
             conversation_id=conversation_id,
             session_revision=revision,
             status="applied",
             payload=plan,
             result={"card_ids": [card["id"] for card in created]},
+            kind="wrapup",
+            trigger=str(plan.get("trigger") or "auto"),
+            now=now,
+        )
+        store.audit(
+            action="wrapup.apply",
+            target_type="conversation",
+            target_id=conversation_id,
+            scope=str(plan.get("scope") or ""),
+            after={"revision": revision, "card_ids": [card["id"] for card in created]},
+            reason=str(plan.get("trigger") or "auto"),
             now=now,
         )
     except Exception as exc:  # noqa: BLE001 - record failure without masking it
@@ -193,6 +217,8 @@ def apply_plan(store: cards.CardStore, plan: Mapping[str, Any], *, now: float | 
             status="failed",
             payload=plan,
             result={"error": type(exc).__name__},
+            kind="wrapup",
+            trigger=str(plan.get("trigger") or "auto"),
             now=now,
         )
         raise

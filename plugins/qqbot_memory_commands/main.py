@@ -215,16 +215,27 @@ class MemoryCommandsPlugin(Star):
         except Exception:
             return True
 
+    def _platform_namespace(self, event: AstrMessageEvent) -> str:
+        origin = str(getattr(event, "unified_msg_origin", "") or "")
+        lowered = origin.casefold()
+        if "qq_official" in lowered or "qqbot-official" in lowered:
+            return "qq_official"
+        if "qqbot-onebot" in lowered:
+            return "onebot"
+        return "default"
+
     def _card_scope(self, event: AstrMessageEvent) -> str:
+        platform = self._platform_namespace(event)
         try:
             private = bool(event.is_private_chat())
         except Exception:  # noqa: BLE001
             private = False
+        prefix = "" if platform == "default" else f"{platform}:"
         if private:
             sender = str(getattr(event, "get_sender_id", lambda: "")() or "").strip()
-            return f"user:{sender}" if sender else ""
+            return f"user:{prefix}{sender}" if sender else ""
         group = str(getattr(event, "get_group_id", lambda: "")() or "").strip()
-        return f"group:{group}" if group else ""
+        return f"group:{prefix}{group}" if group else ""
 
     async def _cards_reply(self, event: AstrMessageEvent) -> str:
         if self.card_store is None:
@@ -235,7 +246,16 @@ class MemoryCommandsPlugin(Star):
         stats = self.card_store.stats(scope=scope)
         active = int(stats.get("active", 0))
         archived = int(stats.get("archived", 0))
-        return f"记忆卡片：活跃 {active} 张，归档 {archived} 张。当前 scope：{scope}。"
+        text = f"记忆卡片：活跃 {active} 张，归档 {archived} 张。当前 scope：{scope}。"
+        state = self.card_store.get_session_state(scope)
+        if state:
+            phase = str(state.get("phase_summary") or "").strip()
+            if phase:
+                text += f" 阶段摘要：{phase}"
+            topics = state.get("open_topics") or []
+            if topics:
+                text += " 未完成话题：" + "；".join(str(item) for item in topics[:2])
+        return text
 
     @filter.on_llm_request()
     async def inject_memory_cards(self, event: AstrMessageEvent, req: Any) -> None:
@@ -251,11 +271,20 @@ class MemoryCommandsPlugin(Star):
         try:
             max_cards = max(0, min(8, int(self.config.get("cards_max_cards", 4) or 4)))
             max_chars = max(120, min(1200, int(self.config.get("cards_max_chars", 480) or 480)))
+            query = str(getattr(event, "message_str", "") or "").strip()
+            actor_id = str(getattr(event, "get_sender_id", lambda: "")() or "").strip()
+            try:
+                persona_id = str(event.get_extra("qqbot_core_reply_persona_id", "") or "").strip()
+            except Exception:  # noqa: BLE001
+                persona_id = ""
             selected = cards.select_for_prompt(
                 self.card_store,
                 scope=scope,
                 max_cards=max_cards,
                 max_chars=max_chars,
+                query=query,
+                persona_id=persona_id,
+                actor_id=actor_id,
             )
             block = cards.render_prompt_block(selected, max_chars=max_chars)
             if not block:
