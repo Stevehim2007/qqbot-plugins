@@ -221,7 +221,13 @@ class CoreReplyPlugin(Star):
 
         self.participation = ParticipationPolicy(self.config, self.state)
         self.cooldown = CooldownGate(self.state)
-        self.persona = PersonaService(context, self.config, self.state, logger)
+        try:
+            data_dir = Path(StarTools.get_data_dir(PLUGIN_NAME))
+        except Exception:
+            data_dir = None
+        self.persona = PersonaService(
+            context, self.config, self.state, logger, data_dir=data_dir
+        )
         self.gateway = ModelGateway(context, self.config, self.state, self.persona)
         self.pipeline = ReplyPipeline(
             context,

@@ -399,8 +399,8 @@ class MainFlowTests(unittest.TestCase):
         results = run(collect_event(plugin, event))
         prompt = ctx.llm_calls[0]["prompt"]
         self.assertIn("Alice", prompt)
-        self.assertIn("1001", prompt)
-        self.assertIn("123456789", prompt)
+        self.assertNotIn("1001", prompt)
+        self.assertNotIn("123456789", prompt)
         self.assertNotIn("Alice", results[0].text)
         self.assertNotIn("1001", results[0].text)
         self.assertNotIn("123456789", results[0].text)
@@ -630,3 +630,46 @@ class MainFlowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class ModelParticipationTests(unittest.TestCase):
+    def test_model_mode_speak_uses_two_model_calls(self):
+        plugin, ctx, _ = make_plugin(
+            overrides={
+                "enabled": True,
+                "participation.mode": "model",
+                "reply_probability": 0,
+                "group_cooldown_seconds": 0,
+                "user_cooldown_seconds": 0,
+                "participation.model_confidence": 0.5,
+            }
+        )
+        ctx.llm_responses = [
+            '{"action":"speak","confidence":0.9,"reason_code":"question"}',
+            "模型决定回复",
+        ]
+        event = group_event()
+        results = run(collect_event(plugin, event))
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].text, "模型决定回复")
+        self.assertEqual(len(ctx.llm_calls), 2)
+        self.assertIn("判断标准", ctx.llm_calls[0]["prompt"])
+        self.assertTrue(event.stopped)
+
+    def test_model_mode_observe_blocks_without_reply_call(self):
+        plugin, ctx, _ = make_plugin(
+            overrides={
+                "enabled": True,
+                "participation.mode": "model",
+                "reply_probability": 0,
+                "participation.model_confidence": 0.5,
+            }
+        )
+        ctx.llm_responses = [
+            '{"action":"observe","confidence":0.9,"reason_code":"not_for_me"}'
+        ]
+        event = group_event()
+        results = run(collect_event(plugin, event))
+        self.assertEqual(results, [])
+        self.assertEqual(len(ctx.llm_calls), 1)
+        self.assertTrue(event.llm_blocked)
+        self.assertFalse(event.stopped)

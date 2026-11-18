@@ -484,5 +484,70 @@
     "default": true,
     "description": "允许 AstrBot 实例管理员在群内使用 /分群，即使其不是该 QQ 群的群主/管理员。",
     "hint": "关闭后只有 QQ 群主/管理员可以使用 /分群；完整配置仍可在 Studio 操作。"
+  },
+  "allow_favorability_adjust": {
+    "description": "允许模型调整当前说话人的好感度",
+    "type": "bool",
+    "default": true
+  },
+  "allow_favorability_get": {
+    "description": "允许模型读取当前说话人的好感度定性状态",
+    "type": "bool",
+    "default": true
+  },
+  "favorability_cooldown_seconds": {
+    "description": "同一说话人两次调整的最小间隔",
+    "type": "int",
+    "default": 300,
+    "slider": {
+      "min": 0,
+      "max": 3600,
+      "step": 10
+    }
+  },
+  "favorability_get_cooldown_seconds": {
+    "description": "好感度读取冷却秒数",
+    "type": "int",
+    "default": 0,
+    "slider": {
+      "min": 0,
+      "max": 3600,
+      "step": 5
+    }
+  },
+  "favorability_per_event_max": {
+    "description": "单次好感度调整绝对上限",
+    "type": "int",
+    "default": 5,
+    "slider": {
+      "min": 0.5,
+      "max": 5,
+      "step": 1
+    }
+  },
+  "favorability_daily_max": {
+    "description": "每说话人每日净变化上限",
+    "type": "int",
+    "default": 20,
+    "slider": {
+      "min": 1,
+      "max": 20,
+      "step": 1
+    }
+  },
+  "favorability_min_confidence": {
+    "description": "模型调整好感度的最低置信度（百分比）",
+    "type": "int",
+    "default": 60,
+    "slider": {
+      "min": 0,
+      "max": 100,
+      "step": 5
+    }
+  },
+  "favorability_enabled": {
+    "description": "启用好感度调整（默认影子关闭）",
+    "type": "bool",
+    "default": false
   }
 }

@@ -127,6 +127,8 @@ class ToolRegistryParsingTests(unittest.TestCase):
                 "send_sticker",
                 "collect_sticker",
                 "list_sticker_categories",
+                "favorability_adjust",
+                "favorability_get",
             },
         )
 

@@ -9,6 +9,7 @@ AstrBot's public ConversationManager/memory services.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -80,6 +81,7 @@ class RuntimeState:
         self.recent_history: dict[str, list[dict[str, Any]]] = {}
         self.ambient_last_at: dict[str, float] = {}
         self.ambient_message_count: dict[str, int] = {}
+        self.model_participation_counts: dict[str, int] = {}
         self.last_song_group: dict[str, float] = {}
         self.last_song_user: dict[str, float] = {}
         self.turns: dict[str, TurnRecord] = {}
@@ -234,6 +236,9 @@ class RuntimeState:
         text: str,
         has_image: bool = False,
         has_face: bool = False,
+        actor_hash: str = "",
+        role: str = "",
+        reply_to: str = "",
     ) -> None:
         if not self.history_enabled():
             return
@@ -245,8 +250,19 @@ class RuntimeState:
             max_chars=self.config.int("group_identity_message_max_chars", 20, 500),
             keep_newlines=True,
         )
+        safe_qq = str(qq).strip()
+        if not actor_hash:
+            actor_hash = hashlib.sha256(
+                f"{session_key}|{safe_qq}|{_safe_text(nickname, max_chars=32)}".encode(
+                    "utf-8", "ignore"
+                )
+            ).hexdigest()[:16]
         entry = {
             "nickname": _safe_text(nickname, max_chars=32),
+            "display_name": _safe_text(nickname, max_chars=32),
+            "actor_hash": str(actor_hash)[:32],
+            "role": _safe_text(role, max_chars=32),
+            "reply_to": str(reply_to)[:32],
             "qq": str(qq).strip()
             if str(qq).strip()
             and all(ch.isalnum() or ch in "_.:-" for ch in str(qq).strip())
@@ -263,6 +279,25 @@ class RuntimeState:
         else:
             del items[:-limit]
         self.prune_history(self.clock())
+
+    def claim_model_participation(self, session_key: str, limit: int) -> bool:
+        """Return True when this group may spend one model participation call."""
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError):
+            limit = 0
+        if limit <= 0:
+            return True
+        day = time.strftime("%Y%m%d")
+        key = f"{day}:{session_key}"
+        used = self.model_participation_counts.get(key, 0)
+        if used >= limit:
+            return False
+        self.model_participation_counts[key] = used + 1
+        if len(self.model_participation_counts) > 512:
+            for stale in list(self.model_participation_counts)[:-256]:
+                self.model_participation_counts.pop(stale, None)
+        return True
 
     def bump_ambient_message_count(self, session_key: str) -> int:
         count = self.ambient_message_count.get(session_key, 0) + 1

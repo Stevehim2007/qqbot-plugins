@@ -325,6 +325,22 @@ def builtin_descriptors() -> tuple[ToolDescriptor, ...]:
             "food.draft_create", "food_positional", write=True, requires_confirmation=True,
             marker_example='[[tool:submit_food_review restaurant="店名" location="位置" taste="4.5" value="3.5" comment="评价" tags="火锅,夜宵"]]',
         ),
+        ToolDescriptor(
+            "favorability_adjust", "qqbot_safe_tools", "tool_favorability_adjust",
+            "模型根据当前对话决定对当前说话人增减好感度；delta 由模型决定，禁止刷好感。",
+            {"delta": p(type="number", required=True, min=-5, max=5), "confidence": p(type="number", min=0, max=1, default=1), "reason": p(max_chars=80), "event": p(max_chars=32)},
+            "allow_favorability_adjust", "favorability_cooldown_seconds", 0,
+            "social.favorability.adjust", "kwargs", write=True,
+            marker_example='[[tool:favorability_adjust delta=1 confidence=0.8 reason="对方真诚道谢" event="thanks"]]',
+        ),
+        ToolDescriptor(
+            "favorability_get", "qqbot_safe_tools", "tool_favorability_get",
+            "读取当前说话人的好感度定性状态；不返回精确分数。",
+            {},
+            "allow_favorability_get", "favorability_get_cooldown_seconds", 0,
+            "social.favorability.get", "kwargs",
+            marker_example="[[tool:favorability_get()]]",
+        ),
     )
 
 

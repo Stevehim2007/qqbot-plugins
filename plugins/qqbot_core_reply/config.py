@@ -15,6 +15,15 @@ from typing import Any
 _MISSING = object()
 
 DEFAULTS: dict[str, Any] = {
+    "participation.mode": "probability",
+    "participation.model_confidence": 0.6,
+    "participation.model_timeout_seconds": 4,
+    "participation.model_max_tokens": 48,
+    "participation.model_daily_limit": 300,
+    "participation.model_prompt": "",
+    "context.actor_labels_enabled": True,
+    "context.roster_enabled": True,
+    "context.roster_limit": 8,
     # Safe default per the authoritative migration contract: a newly
     # installed package must not take over replies before explicit handover.
     "enabled": False,
@@ -95,6 +104,11 @@ DEFAULTS: dict[str, Any] = {
     "group_persona_max_prompt_chars": 4000,
     "group_persona_max_name_chars": 64,
     "prompt_profiles": "[]",
+    "persona.active_id": "",
+    "persona.corpus_enabled": False,
+    "persona.corpus_path": "",
+    "persona.corpus_limit": 2,
+    "persona.corpus_max_chars": 240,
     "prompt_profile_active_id": "",
     # Sender identity + bounded history.
     "group_identity_context_enabled": True,

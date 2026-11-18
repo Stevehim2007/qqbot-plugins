@@ -496,6 +496,8 @@ PROVIDER_METHODS: dict[str, tuple[str, ...]] = {
         "confirmation.confirm",
         "confirmation.cancel",
         "tool.operation_status",
+        "social.favorability.get",
+        "social.favorability.adjust",
     ),
     "qqbot_web_reader": ("web.read", "web.next_page"),
     "qqbot_image_search": (
@@ -559,6 +561,8 @@ _SPECS: list[OperationSpec] = [
     _op("qqbot_safe_tools", "confirmation.confirm", write=True),
     _op("qqbot_safe_tools", "confirmation.cancel", write=True),
     _op("qqbot_safe_tools", "tool.operation_status"),
+    _op("qqbot_safe_tools", "social.favorability.get"),
+    _op("qqbot_safe_tools", "social.favorability.adjust", write=True),
     _op("qqbot_web_reader", "web.read"),
     _op("qqbot_web_reader", "web.next_page"),
     _op("qqbot_image_search", "image.search"),

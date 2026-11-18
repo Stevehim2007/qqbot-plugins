@@ -32,6 +32,8 @@ ALLOW_KEYS = {
     "allow_send_sticker",
     "allow_collect_sticker",
     "allow_list_categories",
+    "allow_favorability_adjust",
+    "allow_favorability_get",
 }
 COOLDOWN_KEYS = {
     "web_fetch_cooldown_seconds",
@@ -41,6 +43,8 @@ COOLDOWN_KEYS = {
     "sticker_cooldown_seconds",
     "collect_sticker_cooldown_seconds",
     "list_categories_cooldown_seconds",
+    "favorability_cooldown_seconds",
+    "favorability_get_cooldown_seconds",
 }
 LIMIT_KEYS = {
     "max_keyword_chars",
@@ -140,12 +144,12 @@ class ConfigSchemaTests(unittest.TestCase):
 class PackagingTests(unittest.TestCase):
     def test_version_file_is_current(self):
         version = (PLUGIN_ROOT / "VERSION").read_text(encoding="utf-8").strip()
-        self.assertEqual(version, "3.2.6")
+        self.assertEqual(version, "3.3.0")
 
     def test_metadata_version_matches(self):
         metadata = (PLUGIN_ROOT / "metadata.yaml").read_text(encoding="utf-8")
         self.assertIn("name: qqbot_safe_tools", metadata)
-        self.assertIn("version: 3.2.6", metadata)
+        self.assertIn("version: 3.3.0", metadata)
         self.assertIn('astrbot_version: ">=4.29,<5"', metadata)
         self.assertIn("aiocqhttp", metadata)
 
@@ -255,6 +259,7 @@ class StaticSecurityTests(unittest.TestCase):
             "output_gate",
             "registry",
             "tool_registry",
+            "social_state",
         }
         for name, tree in self._trees():
             for node in ast.walk(tree):

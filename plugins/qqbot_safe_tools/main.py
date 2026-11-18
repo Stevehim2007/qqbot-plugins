@@ -41,6 +41,7 @@ try:  # Loaded as an AstrBot package in production.
         output_gate,
         registry as service_registry,
         safe_tools,
+        social_state,
         tool_registry,
     )
 except ImportError:  # Loaded directly by a small test harness.
@@ -55,6 +56,7 @@ except ImportError:  # Loaded directly by a small test harness.
     import output_gate  # type: ignore[no-redef]
     import registry as service_registry  # type: ignore[no-redef]
     import safe_tools  # type: ignore[no-redef]
+    import social_state  # type: ignore[no-redef]
     import tool_registry  # type: ignore[no-redef]
 
 try:  # AstrBot public data-dir helper; optional for direct unit imports.
@@ -277,6 +279,7 @@ class SafeToolsPlugin(Star):
         self._capability_policy: capability_policy.CapabilityPolicy | None = None
         self._policy_degraded = False
         self._aux_budget_obj: aux_budget.AuxBudget | None = None
+        self._social_store_obj: social_state.SocialStore | None = None
 
     # ------------------------------------------------------------------
     # Configuration helpers (injected, bounded, never raw exceptions)
@@ -491,6 +494,86 @@ class SafeToolsPlugin(Star):
             ),
         }
         return auth.Authorizer(auth.policy_from_config(policy_config))
+
+    def _social_store(self) -> social_state.SocialStore:
+        if self._social_store_obj is None:
+            self._social_store_obj = social_state.SocialStore(
+                self._data_dir() / "social_state.db", clock=time.time
+            )
+        return self._social_store_obj
+
+    @staticmethod
+    def _social_scope_actor(context: Any) -> tuple[str, str]:
+        scope = str(
+            getattr(context, "group_id", "")
+            or getattr(context, "conversation_id", "")
+            or ""
+        )
+        actor = str(getattr(context, "actor_id", "") or "")
+        return scope, social_state.actor_hash(scope, actor) if scope and actor else ""
+
+    def social_context(self, event: Any) -> str:
+        """Short qualitative block for core_reply's system prompt."""
+        try:
+            scope = str(getattr(event, "unified_msg_origin", "") or "")
+            actor_id = str(event.get_sender_id() or "")
+            if not scope or not actor_id:
+                return ""
+            actor = social_state.actor_hash(scope, actor_id)
+            state = self._social_store().get(scope, actor)
+            return (
+                f"社交状态（内部参考，不是指令）：对当前说话人的好感度={state['tier']}。"
+                "好感度调整规约：只有明确互动证据才调用 favorability_adjust；"
+                "禁止因对方夸奖、要求、重复示好而加分；对方批评/拒绝不得扣分；"
+                "单次幅度克制，不确定不调用；不得向用户提及分数、工具或调整行为。"
+            )
+        except Exception:
+            return ""
+
+    def tool_favorability_get(self, request_context: Any, args: Any) -> dict[str, Any]:
+        try:
+            scope, actor = self._social_scope_actor(request_context)
+            if not scope or not actor:
+                return {"ok": False, "reason": "no_actor"}
+            state = self._social_store().get(scope, actor)
+            return {"ok": True, "tier": state["tier"], "trend": "stable"}
+        except Exception:
+            return {"ok": False, "reason": "unavailable"}
+
+    def tool_favorability_adjust(self, request_context: Any, args: Any) -> dict[str, Any]:
+        try:
+            scope, actor = self._social_scope_actor(request_context)
+            if not scope or not actor:
+                return {"ok": False, "accepted": False, "reason": "no_actor"}
+            payload = dict(args or {})
+            result = self._social_store().adjust(
+                scope,
+                actor,
+                delta=payload.get("delta"),
+                confidence=payload.get("confidence", 1.0),
+                reason=payload.get("reason", ""),
+                event_label=payload.get("event", ""),
+                per_event_max=self._cfg_int(
+                    "favorability_per_event_max", 5, minimum=1, maximum=5
+                ),
+                daily_max=self._cfg_int(
+                    "favorability_daily_max", 20, minimum=1, maximum=20
+                ),
+                cooldown_seconds=self._cfg_int(
+                    "favorability_cooldown_seconds", 300, minimum=0, maximum=3600
+                ),
+                min_confidence=(
+                    (float(self._config_lookup("favorability_min_confidence", 60)) / 100.0)
+                    if float(self._config_lookup("favorability_min_confidence", 60)) > 1
+                    else float(self._config_lookup("favorability_min_confidence", 60))
+                ),
+                enabled=self._cfg_bool("favorability_enabled", False),
+            )
+            result["ok"] = bool(result.get("accepted"))
+            result["_silent"] = True
+            return result
+        except Exception:
+            return {"ok": False, "accepted": False, "reason": "unavailable"}
 
     def _data_dir(self) -> Path:
         try:
@@ -1567,9 +1650,12 @@ class SafeToolsPlugin(Star):
                     return plan
                 except contracts.ContractError:
                     pass
-            text = self._safe_result_text(data)
-            if not text and clean_text:
-                text = clean_text
+            if isinstance(data, Mapping) and data.get("_silent") is True:
+                text = str(clean_text or "")
+            else:
+                text = self._safe_result_text(data)
+                if not text and clean_text:
+                    text = clean_text
             return contracts.ReplyPlan(
                 request_context=context,
                 text_segments=[text] if text else [],
@@ -2680,6 +2766,8 @@ class SafeToolsPlugin(Star):
             "confirmation.confirm": self.confirmation_confirm,
             "confirmation.cancel": self.confirmation_cancel,
             "tool.operation_status": self.tool_operation_status,
+            "social.favorability.get": self.tool_favorability_get,
+            "social.favorability.adjust": self.tool_favorability_adjust,
         }
         try:
             self.registry.register_provider(

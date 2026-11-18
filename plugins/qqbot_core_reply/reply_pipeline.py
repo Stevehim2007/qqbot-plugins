@@ -223,12 +223,78 @@ class ReplyPipeline:
             text=message_text,
             has_image=has_image,
             has_face=has_face,
+            actor_hash=self.persona.actor_hash(event),
+            role=str(getattr(event, "member_role", "") or ""),
         )
 
     def history_for(self, event: Any) -> list[dict[str, Any]]:
         if self.is_private(event):
             return []
         return self.state.history_for(str(getattr(event, "unified_msg_origin", "") or ""))
+
+    async def model_participation(
+        self,
+        event: Any,
+        text: str,
+        history: list[dict[str, Any]],
+    ) -> str:
+        """Return speak/observe/fallback for model-driven group participation."""
+        if self.config.string("participation.mode", "probability").lower() != "model":
+            return "fallback"
+        session_key = str(getattr(event, "unified_msg_origin", "") or "")
+        if not self.state.claim_model_participation(
+            session_key,
+            self.config.int("participation.model_daily_limit", 0, 5000),
+        ):
+            logger.info("model participation daily limit reached group=%s", session_key)
+            return "observe"
+        decision = await self.gateway.decide_participation(
+            event,
+            message_text=text,
+            chat_history=history,
+        )
+        action = str(decision.get("action") or "")
+        if action not in {"speak", "observe"}:
+            logger.info(
+                "model participation fallback: %s", decision.get("reason_code", "")
+            )
+            return "fallback"
+        if action == "observe":
+            logger.info(
+                "model participation observe confidence=%.3f reason=%s",
+                float(decision.get("confidence", 0) or 0),
+                decision.get("reason_code", ""),
+            )
+            return "observe"
+        threshold = self.config.float(
+            "participation.model_confidence", 0.0, 1.0
+        )
+        if float(decision.get("confidence", 0) or 0) < threshold:
+            logger.info(
+                "model participation low confidence=%.3f threshold=%.3f",
+                float(decision.get("confidence", 0) or 0),
+                threshold,
+            )
+            return "observe"
+        group_cooldown, user_cooldown = self.cooldown.effective_cooldowns(
+            self.config,
+            self.config.string("cooldown.key_mode", "legacy_compatible"),
+        )
+        if not self.cooldown.try_claim_random(
+            session_key=session_key,
+            user_key=self.participation.cooldown_keys(event)[1],
+            group_cooldown=group_cooldown,
+            user_cooldown=user_cooldown,
+            probability=1.0,
+        ):
+            return "observe"
+        logger.info(
+            "model participation speak confidence=%.3f reason=%s",
+            float(decision.get("confidence", 0) or 0),
+            decision.get("reason_code", ""),
+        )
+        return "speak"
+
 
     # ------------------------------------------------------------------
     # Request/turn construction
@@ -416,11 +482,15 @@ class ReplyPipeline:
                     )
                 except (TypeError, ValueError):
                     pass
+            participation_mode = self.config.string(
+                "participation.mode", "probability"
+            ).lower()
             if (
                 not is_private
                 and not mentioned
                 and group_probability <= 0
                 and not self.config.bool("ambient_group_chat_enabled")
+                and participation_mode != "model"
             ):
                 logger.info(
                     "group reply blocked: no mention and probability=0 group=%s text=%r",
@@ -437,7 +507,19 @@ class ReplyPipeline:
                 has_face=has_face,
             )
             mode = ""
-            if not explicit and not is_private:
+            if not explicit and not is_private and participation_mode == "model":
+                decision = await self.model_participation(event, text, history)
+                if decision == "observe":
+                    self.block_default_llm(event)
+                    return None
+                if decision == "speak":
+                    mode = "model"
+                else:
+                    decision = ""
+                if not mode:
+                    # Model failed: fall through to the old probability path.
+                    pass
+            if not explicit and not is_private and not mode:
                 session_key = str(getattr(event, "unified_msg_origin", "") or "")
                 if self.config.bool("ambient_group_chat_enabled"):
                     self.state.bump_ambient_message_count(session_key)

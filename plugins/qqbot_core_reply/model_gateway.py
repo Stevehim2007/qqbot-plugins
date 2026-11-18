@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 import inspect
+import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -75,6 +77,72 @@ class ModelGateway:
                 return str(found)
         return ""
 
+    async def decide_participation(
+        self,
+        event: Any,
+        *,
+        message_text: str,
+        chat_history: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Ask the model whether the bot should speak. Failures never raise."""
+        provider_id = await self.current_provider_id(event)
+        if not provider_id:
+            return {"action": "error", "confidence": 0.0, "reason_code": "no_provider"}
+        history_lines: list[str] = []
+        for item in (chat_history or [])[-8:]:
+            name = str(item.get("display_name") or item.get("nickname") or "群友")[:24]
+            text = str(item.get("text") or "")[:160].replace("\n", " ")
+            if text:
+                history_lines.append(f"- {name}: {text}")
+        system_prompt = self.config.string("participation.model_prompt").strip() or (
+            "你是QQ群聊参与判定器。只判断当前机器人是否应该主动回复最后一条消息。"
+            "输出严格JSON，不要解释，不要markdown。"
+        )
+        prompt = "\n".join(
+            [
+                "判断标准：",
+                "1. 只有消息确实需要机器人回应、接话、补充信息或值得参与时才 speak。",
+                "2. 普通闲聊、别人之间的对话、纯感叹、无需回应时 observe。",
+                "3. 不要因为被提到就默认 speak；@ 消息不走本判定。",
+                "4. 不要输出群号、QQ号、昵称或任何隐私。",
+                "最近消息：",
+                *(history_lines or ["- 无"]),
+                "最后一条消息：",
+                str(message_text or "")[:500],
+                '只输出：{"action":"speak"|"observe","confidence":0.0,"reason_code":"short"}',
+            ]
+        )
+        try:
+            raw = await self.llm_generate(
+                chat_provider_id=provider_id,
+                prompt=prompt,
+                system_prompt=system_prompt,
+                max_tokens=self.config.int("participation.model_max_tokens", 8, 128),
+                temperature=0.0,
+                timeout_seconds=self.config.int(
+                    "participation.model_timeout_seconds", 1, 30
+                ),
+            )
+        except Exception:
+            return {"action": "error", "confidence": 0.0, "reason_code": "timeout"}
+        match = re.search(r"\{[^{}]*\}", str(raw or ""), re.S)
+        if not match:
+            return {"action": "error", "confidence": 0.0, "reason_code": "invalid_json"}
+        try:
+            payload = json.loads(match.group(0))
+        except (TypeError, ValueError):
+            return {"action": "error", "confidence": 0.0, "reason_code": "invalid_json"}
+        action = str(payload.get("action") or "").strip().lower()
+        if action not in {"speak", "observe"}:
+            return {"action": "error", "confidence": 0.0, "reason_code": "invalid_action"}
+        try:
+            confidence = max(0.0, min(1.0, float(payload.get("confidence", 0))))
+        except (TypeError, ValueError):
+            confidence = 0.0
+        reason = str(payload.get("reason_code") or "")[:64]
+        reason = "".join(ch for ch in reason if ord(ch) >= 32)
+        return {"action": action, "confidence": confidence, "reason_code": reason}
+
     async def current_provider_id(self, event: Any) -> str:
         configured = self.config.string("llm.provider_id").strip()
         if configured:
@@ -133,6 +201,7 @@ class ModelGateway:
         generator = getattr(self.context, "llm_generate", None)
         if not callable(generator):
             raise RuntimeError("AstrBot Context.llm_generate unavailable")
+        timeout_override = kwargs.pop("timeout_seconds", None)
         timeout = self.config.effective_int(
             "llm.timeout_seconds",
             "llm_timeout_seconds",
@@ -140,6 +209,11 @@ class ModelGateway:
             minimum=1,
             maximum=300,
         )
+        if timeout_override is not None:
+            try:
+                timeout = max(1, min(30, int(float(timeout_override))))
+            except (TypeError, ValueError):
+                pass
         pending = generator(**kwargs)
         if inspect.isawaitable(pending):
             import asyncio

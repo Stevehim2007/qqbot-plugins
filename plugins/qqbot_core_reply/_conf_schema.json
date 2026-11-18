@@ -766,5 +766,114 @@
     "type": "bool",
     "default": false,
     "description": "允许 /option 在群聊中免 @ 触发；仅在 utility_commands_require_at=false 时生效。"
+  },
+  "participation.mode": {
+    "description": "群内参与判定模式：probability=概率，model=模型自主决定",
+    "type": "string",
+    "default": "probability",
+    "options": [
+      "probability",
+      "model"
+    ]
+  },
+  "participation.model_confidence": {
+    "description": "模型参与判定置信度阈值",
+    "type": "float",
+    "default": 0.6,
+    "slider": {
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    }
+  },
+  "participation.model_timeout_seconds": {
+    "description": "参与判定模型超时秒数",
+    "type": "int",
+    "default": 4,
+    "slider": {
+      "min": 1,
+      "max": 30,
+      "step": 1
+    }
+  },
+  "participation.model_max_tokens": {
+    "description": "参与判定最大输出 token",
+    "type": "int",
+    "default": 48,
+    "slider": {
+      "min": 8,
+      "max": 128,
+      "step": 8
+    }
+  },
+  "participation.model_prompt": {
+    "description": "参与判定系统提示词（空=内置）",
+    "type": "text",
+    "default": ""
+  },
+  "participation.model_daily_limit": {
+    "description": "每群每日模型参与判定次数上限（0=不限）",
+    "type": "int",
+    "default": 300,
+    "slider": {
+      "min": 0,
+      "max": 5000,
+      "step": 50
+    }
+  },
+  "context.actor_labels_enabled": {
+    "description": "在上下文中用说话人标签区分群成员",
+    "type": "bool",
+    "default": true
+  },
+  "context.roster_enabled": {
+    "description": "注入群内最近说话人 roster",
+    "type": "bool",
+    "default": true
+  },
+  "context.roster_limit": {
+    "description": "roster 最多人数",
+    "type": "int",
+    "default": 8,
+    "slider": {
+      "min": 0,
+      "max": 20,
+      "step": 1
+    }
+  },
+  "persona.active_id": {
+    "description": "当前人格 ID（persona corpus 隔离键）",
+    "type": "string",
+    "default": ""
+  },
+  "persona.corpus_enabled": {
+    "description": "启用角色台词语料库（独立于记忆）",
+    "type": "bool",
+    "default": false
+  },
+  "persona.corpus_path": {
+    "description": "语料文件路径；留空使用插件数据目录",
+    "type": "string",
+    "default": ""
+  },
+  "persona.corpus_limit": {
+    "description": "每轮最多注入的语料条数",
+    "type": "int",
+    "default": 2,
+    "slider": {
+      "min": 0,
+      "max": 4,
+      "step": 1
+    }
+  },
+  "persona.corpus_max_chars": {
+    "description": "每轮语料最大字符数",
+    "type": "int",
+    "default": 240,
+    "slider": {
+      "min": 0,
+      "max": 480,
+      "step": 20
+    }
   }
 }
