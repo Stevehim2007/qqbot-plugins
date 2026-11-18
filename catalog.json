@@ -44,7 +44,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "b25ce1f347994c33ec492dbc5704c9554d713b0d76e0358827a4fb74c1f1eab9",
+      "sha256": "2c778e2a24764a8b6b911b7e61ba3b1d27f18d26bdc021bf5b8384d2e70c245b",
       "size": 116418,
       "root": "qqbot_core_reply",
       "download": "qqbot_core_reply-4.1.1.zip"
@@ -52,7 +52,7 @@
     {
       "id": "qqbot_safe_tools",
       "name": "Safe Tools 协议",
-      "version": "3.3.1",
+      "version": "3.3.2",
       "description": "唯一负责 [[tool:...]] marker 解析、校验、权限、冷却与跨插件安全调度的插件；不调用 LLM。",
       "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
@@ -81,10 +81,10 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "8427dd35bb96ab0f0112cd38d09515631da2109ed8c987c94ce9caad0b8fe1e6",
-      "size": 133556,
+      "sha256": "b4f2cc3c5b068e3279fdac1b68ee99084df9ff23d10d17212d9dd51a4b9bd242",
+      "size": 133613,
       "root": "qqbot_safe_tools",
-      "download": "qqbot_safe_tools-3.3.1.zip"
+      "download": "qqbot_safe_tools-3.3.2.zip"
     },
     {
       "id": "qqbot_web_reader",
@@ -150,7 +150,7 @@
           "marker_example": "[[tool:fetch_webpage url=\"https://example.com/article\" max_chars=3000]]"
         }
       ],
-      "sha256": "492a6d9052d7866b8bc729d7065b1322ec1f5167ca66d9b47aaecd918430eac4",
+      "sha256": "a0188cd53d4c06fcd2dc9699f32f4bc94ac46e242c5f62213eab15cefeb4c6de",
       "size": 40464,
       "root": "qqbot_web_reader",
       "download": "qqbot_web_reader-2.0.1.zip"
@@ -230,7 +230,7 @@
           "marker_example": "[[tool:search_images keyword=\"关键词\" count=1]]"
         }
       ],
-      "sha256": "f1aa2af6c66c5d645feedde3ee49a44d7e2d05bcad65b6223c756899ea00fea2",
+      "sha256": "24603ae4b116f6146207dfa7476f1c49ce61f3d7f1485c6560225aa00fa3e0fa",
       "size": 58215,
       "root": "qqbot_image_search",
       "download": "qqbot_image_search-2.0.1.zip"
@@ -369,7 +369,7 @@
           "marker_example": "[[tool:submit_food_review restaurant=\"店名\" location=\"位置\" taste=\"4.5\" value=\"3.5\" comment=\"评价\" tags=\"火锅,夜宵\"]]"
         }
       ],
-      "sha256": "3f58ad751cd48cfa68ef2ae23a8300f2cbee3ffd37c20106934a34b690f88c39",
+      "sha256": "1d5c5ba49489b09d0ec0df599f09ae27d1d3c2d0be4cf0e0483fc6f1bfb215a1",
       "size": 105453,
       "root": "qqbot_food",
       "download": "qqbot_food-3.0.5.zip"
@@ -483,7 +483,7 @@
           "marker_example": "[[tool:list_sticker_categories()]]"
         }
       ],
-      "sha256": "2a0d6ac2cacb72e732bf81e586308ddf6a2510972672b5a69d2d0eafd1e5f635",
+      "sha256": "92579d5d45165fae9575b04db19c312d25b93f6ccfc1b3d904b230aff9a9e23a",
       "size": 103588,
       "root": "qqbot_stickers",
       "download": "qqbot_stickers-3.0.3.zip"
@@ -538,7 +538,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "273bdcf2dd9ace171167139ba78502ca44da574e26c1d53ccddb059db91d42af",
+      "sha256": "8200fe70ddcfc1b711551fcda9f43fd6baffdb4ada11b1f85706f3a269f5bace",
       "size": 91876,
       "root": "qqbot_memory_commands",
       "download": "qqbot_memory_commands-4.2.0.zip"
@@ -567,7 +567,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "1c9f8cdfd1bbf213dbd5beaf3117ad09098e54845f5784aea815dc9d30a43ee1",
+      "sha256": "6108c311bbea2bb1e7d6c59a79d86701407ca13e8f46b6ce93877d212ae628a6",
       "size": 5166,
       "root": "qqbot_fortune",
       "download": "qqbot_fortune-1.0.2.zip"
@@ -618,7 +618,7 @@
           }
         ]
       },
-      "sha256": "96d204702a550246870764d9de4f42f3dde14807b445221211df194ca5f6e9ec",
+      "sha256": "4a10bb7d9dd648a8048e6d009020e4a208c50b9ab29a1bf17d73b87d8375f08e",
       "size": 10450,
       "root": "qqbot_weather",
       "download": "qqbot_weather-1.0.2.zip"
@@ -647,7 +647,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "0aeed03e7d2851ddacaaaeb4f0e379fab533e656cb5dd0cf6e579ffd6c3ec7fa",
+      "sha256": "da1ad77274351be1d68812a9be3a3fc1bd55797836282ab1b8e6aa5310ff8078",
       "size": 10301,
       "root": "qqbot_scheduler",
       "download": "qqbot_scheduler-1.0.2.zip"

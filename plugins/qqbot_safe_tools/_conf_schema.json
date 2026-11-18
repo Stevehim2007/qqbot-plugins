@@ -302,7 +302,7 @@
   "marker_allowed_tools": {
     "description": "允许的marker工具名，逗号分隔",
     "type": "string",
-    "default": "fetch_webpage,search_images,search_food_restaurants,submit_food_review,send_sticker,collect_sticker,list_sticker_categories"
+    "default": "fetch_webpage,search_images,search_food_restaurants,submit_food_review,send_sticker,collect_sticker,list_sticker_categories,favorability_adjust,favorability_get"
   },
   "auth_policy_version": {
     "description": "服务端授权策略版本",
@@ -317,7 +317,7 @@
   "auth_rules": {
     "description": "服务端授权规则JSON；默认仅本人scope只读，跨scope拒绝",
     "type": "string",
-    "default": "[{\"actor_ids\":[\"*\"],\"scope_types\":[\"*\"],\"operations\":[\"*\"],\"allow_read\":true,\"allow_write\":false,\"cross_scope\":false}]"
+    "default": "[{\"actor_ids\":[\"*\"],\"scope_types\":[\"*\"],\"operations\":[\"social.favorability.adjust\"],\"allow_read\":true,\"allow_write\":true,\"cross_scope\":false},{\"actor_ids\":[\"*\"],\"scope_types\":[\"*\"],\"operations\":[\"*\"],\"allow_read\":true,\"allow_write\":false,\"cross_scope\":false}]"
   },
   "auth_admin_actor_ids": {
     "description": "管理员actor稳定ID JSON/逗号列表",

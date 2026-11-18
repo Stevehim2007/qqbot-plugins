@@ -477,11 +477,19 @@ class SafeToolsPlugin(Star):
                     {
                         "actor_ids": ["*"],
                         "scope_types": ["*"],
+                        "operations": ["social.favorability.adjust"],
+                        "allow_read": True,
+                        "allow_write": True,
+                        "cross_scope": False,
+                    },
+                    {
+                        "actor_ids": ["*"],
+                        "scope_types": ["*"],
                         "operations": ["*"],
                         "allow_read": True,
                         "allow_write": False,
                         "cross_scope": False,
-                    }
+                    },
                 ],
                 ensure_ascii=False,
             )
