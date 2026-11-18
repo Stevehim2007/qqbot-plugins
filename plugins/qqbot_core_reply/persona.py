@@ -299,7 +299,8 @@ class PersonaService:
             )
             try:
                 getter = getattr(self.context, "get_registered_star", None)
-                star = getter("qqbot_safe_tools") if callable(getter) else None
+                meta = getter("qqbot_safe_tools") if callable(getter) else None
+                star = getattr(meta, "star_cls", None) or meta
                 hint = star.social_context(event) if star is not None else ""
                 if hint:
                     lines.append(str(hint)[:600])

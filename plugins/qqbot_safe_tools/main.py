@@ -515,7 +515,11 @@ class SafeToolsPlugin(Star):
     def social_context(self, event: Any) -> str:
         """Short qualitative block for core_reply's system prompt."""
         try:
-            scope = str(getattr(event, "unified_msg_origin", "") or "")
+            scope = str(
+                getattr(event, "get_group_id", lambda: "")()
+                or getattr(event, "unified_msg_origin", "")
+                or ""
+            )
             actor_id = str(event.get_sender_id() or "")
             if not scope or not actor_id:
                 return ""
