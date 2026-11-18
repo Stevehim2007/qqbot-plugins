@@ -777,6 +777,21 @@
       "unified"
     ]
   },
+  "participation.unified_addressed_only": {
+    "description": "unified 模式下只把叫名字/直接提问/第二人称的消息交给模型，普通陈述直接沉默（避免每条闲聊都消耗完整生成）",
+    "type": "bool",
+    "default": true
+  },
+  "participation.unified_names": {
+    "description": "unified 模式识别为“在叫机器人”的昵称列表",
+    "type": "list",
+    "default": []
+  },
+  "participation.unified_address_markers": {
+    "description": "unified 模式视为“可能在跟机器人说话”的文本标记",
+    "type": "list",
+    "default": ["?", "？", "你", "您"]
+  },
   "participation.model_confidence": {
     "description": "模型参与判定置信度阈值",
     "type": "float",

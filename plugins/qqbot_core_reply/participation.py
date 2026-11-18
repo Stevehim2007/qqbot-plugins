@@ -5,8 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 try:  # package import
+    from .cooldown import CooldownGate
     from .state import RuntimeState
 except ImportError:  # test harness
+    from cooldown import CooldownGate
     from state import RuntimeState
 
 
@@ -67,6 +69,45 @@ class ParticipationPolicy:
         if is_private:
             return bool(private_enabled)
         return bool((mention_enabled and mentioned) or wake)
+
+    def unified_worth_considering(self, message_text: str) -> bool:
+        """Cheap social gate before the full unified generation.
+
+        This is not a probability decision: it only filters obvious
+        statements that are not addressed to the bot at all.  The model still
+        decides whether to speak for questions/mentions/name calls.
+        """
+        if not self.config.effective_bool(
+            "participation.unified_addressed_only", default=True
+        ):
+            return True
+        text = str(message_text or "").strip()
+        if not text:
+            return False
+        folded = text.casefold()
+        names = self.config.effective_list("participation.unified_names")
+        if any(str(name).strip().casefold() in folded for name in names if str(name).strip()):
+            return True
+        markers = self.config.effective_list(
+            "participation.unified_address_markers"
+        )
+        return any(str(marker) and str(marker) in text for marker in markers)
+
+    def unified_cooldown_remaining(self, event: Any) -> int:
+        session_key, user_key = self.cooldown_keys(event)
+        group_cd, user_cd = CooldownGate.effective_cooldowns(self.config)
+        return CooldownGate(self.state).remaining(
+            session_key=session_key,
+            user_key=user_key,
+            group_cooldown=group_cd,
+            user_cooldown=user_cd,
+        )
+
+    def mark_unified_reply(self, event: Any) -> None:
+        now = self.state.clock()
+        session_key, user_key = self.cooldown_keys(event)
+        self.state.last_group_reply[session_key] = now
+        self.state.last_user_reply[user_key] = now
 
     def group_random_eligible(
         self,

@@ -681,6 +681,7 @@ class ModelParticipationTests(unittest.TestCase):
                 "enabled": True,
                 "participation.mode": "unified",
                 "reply_probability": 0,
+                "participation.unified_addressed_only": False,
                 "memory_mode": "direct",
             }
         )
@@ -699,6 +700,7 @@ class ModelParticipationTests(unittest.TestCase):
                 "enabled": True,
                 "participation.mode": "unified",
                 "reply_probability": 0,
+                "participation.unified_addressed_only": False,
                 "memory_mode": "direct",
             }
         )
@@ -710,12 +712,43 @@ class ModelParticipationTests(unittest.TestCase):
         self.assertEqual(len(ctx.llm_calls), 1)
         self.assertIn("群聊参与", ctx.llm_calls[0].get("system_prompt", ""))
 
+    def test_unified_addressed_gate_blocks_unaddressed_statement(self):
+        plugin, ctx, _ = make_plugin(
+            overrides={
+                "enabled": True,
+                "participation.mode": "unified",
+                "reply_probability": 0,
+                "memory_mode": "direct",
+            }
+        )
+        event = group_event("今天天气不错，适合晒被子。")
+        results = run(collect_event(plugin, event))
+        self.assertEqual(results, [])
+        self.assertEqual(ctx.llm_calls, [])
+        self.assertTrue(event.llm_blocked)
+
+    def test_unified_addressed_gate_allows_question(self):
+        plugin, ctx, _ = make_plugin(
+            overrides={
+                "enabled": True,
+                "participation.mode": "unified",
+                "reply_probability": 0,
+                "memory_mode": "direct",
+            }
+        )
+        ctx.llm_responses = ["我觉得还行。"]
+        event = group_event("你怎么看？")
+        results = run(collect_event(plugin, event))
+        self.assertEqual(len(results), 1)
+        self.assertEqual(len(ctx.llm_calls), 1)
+
     def test_unified_mode_astrbot_hook_injects_and_suppresses_sentinel(self):
         plugin, ctx, _ = make_plugin(
             overrides={
                 "enabled": True,
                 "participation.mode": "unified",
                 "reply_probability": 0,
+                "participation.unified_addressed_only": False,
                 "memory_mode": "astrbot",
             }
         )

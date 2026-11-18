@@ -109,7 +109,10 @@ class CorpusStore:
         for item in self.list(persona_id, prompt_profile_id):
             text = str(item.get("text") or "")
             terms = set(str(tag).lower() for tag in item.get("tags") or [])
+            query_folded = query.lower()
             score = len(query_terms & terms) * 2
+            if any(tag and tag in query_folded for tag in terms):
+                score += 2
             if query_terms and any(term and term in text.lower() for term in query_terms):
                 score += 1
             if score:
