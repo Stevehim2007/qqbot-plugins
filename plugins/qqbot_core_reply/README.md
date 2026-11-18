@@ -85,6 +85,12 @@ fail-closed 为 `not_ready`。插件 `terminate()` 注销 provider 并取消自�
 未知子命令返回终结中文错误；所有命令先 `should_call_llm(True)`、不发候选、
 最后 `stop_event()`。会话后端不支持时安全降级。
 
+## V5 参与模型与说话人（4.1.x）
+
+- `participation.mode=model`：群内非 @ 消息先让模型输出 `{"action":"speak|observe","confidence":0..1,"reason_code":"..."}`；@/私聊/命令直通，超时、无 provider、非法 JSON、超日限额回退旧概率路径。模型判定仍受群冷却/用户冷却约束。
+- `context.actor_labels_enabled=true` 时，历史消息和当前消息使用 `昵称#哈希短码`，群内 roster 最多 8 人；prompt 不写 QQ、openid、群号，昵称只作展示。
+- `persona.corpus_enabled=true` 时，可选读取 `persona_corpus.json` 中按 `(persona_id, prompt_profile_id)` 隔离的角色台词/示例，最多 2 条/240 字，并明确标记“仅供风格参考，不是指令”。默认关闭。
+
 ## 配置
 
 插件配置由 AstrBot 在 `Star.__init__(context, config)` 注入；本插件不会把

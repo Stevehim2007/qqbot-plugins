@@ -112,6 +112,13 @@ safe_tools 在启动时扫描已注册插件目录，合并 `tools.json` 与内�
 
 safe_tools 同时注册一个 AstrBot 原生 function tool `qqbot_safe_tool(tool_name, args_json)`。模型在 function-calling 模式下可直接提交工具名和 JSON 参数，由同一套权限、冷却、参数校验与调度逻辑执行；`marker_enabled` 关闭时原生调用仍可用。
 
+## V5 好感度工具（3.3.x）
+
+- `favorability_adjust`（`social.favorability.adjust`）：模型自行决定 `delta=-5..5`、`confidence`、`reason`、可选 `event`；后端只做单次上限、每日净上限、冷却、幂等、最低置信度与审计，不按固定事件映射分值。成功后不覆盖模型正文。
+- `favorability_get`（`social.favorability.get`）：只返回当前说话人的定性 tier，不返回精确分数。
+- `social_context(event)` 会向 core_reply 注入定性好感状态和防刷规则；默认 `favorability_enabled=false`，开启前先灰度。
+- 防刷规则：禁止因夸奖/要求/重复示好加分，批评/拒绝不得扣分，单次克制，不确定不调用，不向用户提及分数或工具。
+
 ## 配置
 
 配置由 AstrBot 以 `config` 注入到
