@@ -768,12 +768,13 @@
     "description": "允许 /option 在群聊中免 @ 触发；仅在 utility_commands_require_at=false 时生效。"
   },
   "participation.mode": {
-    "description": "群内参与判定模式：probability=概率，model=模型自主决定",
+    "description": "群内参与判定模式：probability=概率，model=独立小模型判定，unified=同一人格一次生成并自行决定是否回复",
     "type": "string",
     "default": "probability",
     "options": [
       "probability",
-      "model"
+      "model",
+      "unified"
     ]
   },
   "participation.model_confidence": {

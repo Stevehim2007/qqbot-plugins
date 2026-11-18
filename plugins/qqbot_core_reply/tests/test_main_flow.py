@@ -8,6 +8,7 @@ from support import (
     Clock,
     FakeContext,
     FakeEvent,
+    FakeResult,
     FakeStarMeta,
     ScriptedRng,
     collect_event,
@@ -673,3 +674,67 @@ class ModelParticipationTests(unittest.TestCase):
         self.assertEqual(len(ctx.llm_calls), 1)
         self.assertTrue(event.llm_blocked)
         self.assertFalse(event.stopped)
+
+    def test_unified_mode_suppresses_no_reply_without_second_call(self):
+        plugin, ctx, _ = make_plugin(
+            overrides={
+                "enabled": True,
+                "participation.mode": "unified",
+                "reply_probability": 0,
+                "memory_mode": "direct",
+            }
+        )
+        ctx.llm_responses = ["[[NO_REPLY]]"]
+        event = group_event()
+        results = run(collect_event(plugin, event))
+        self.assertEqual(results, [])
+        self.assertEqual(len(ctx.llm_calls), 1)
+        self.assertIn("群聊参与", ctx.llm_calls[0].get("system_prompt", ""))
+        self.assertTrue(event.llm_blocked)
+        self.assertTrue(event.stopped)
+
+    def test_unified_mode_speaks_from_same_persona_generation(self):
+        plugin, ctx, _ = make_plugin(
+            overrides={
+                "enabled": True,
+                "participation.mode": "unified",
+                "reply_probability": 0,
+                "memory_mode": "direct",
+            }
+        )
+        ctx.llm_responses = ["我在，刚刚看到。" ]
+        event = group_event()
+        results = run(collect_event(plugin, event))
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].text, "我在，刚刚看到。")
+        self.assertEqual(len(ctx.llm_calls), 1)
+        self.assertIn("群聊参与", ctx.llm_calls[0].get("system_prompt", ""))
+
+    def test_unified_mode_astrbot_hook_injects_and_suppresses_sentinel(self):
+        plugin, ctx, _ = make_plugin(
+            overrides={
+                "enabled": True,
+                "participation.mode": "unified",
+                "reply_probability": 0,
+                "memory_mode": "astrbot",
+            }
+        )
+        event = group_event()
+        results = run(collect_event(plugin, event))
+        self.assertEqual(results, [])
+        self.assertTrue(event.is_at_or_wake_command)
+        self.assertTrue(extras(event)["qqbot_core_reply_unified_participation"])
+        self.assertEqual(len(ctx.llm_calls), 0)
+
+        class Req:
+            system_prompt = "base persona"
+
+        req = Req()
+        run(plugin.pipeline.handle_memory_context(event, req))
+        self.assertIn("群聊参与", req.system_prompt)
+
+        event._result = FakeResult(
+            kind="plain", chain=[Comp.Plain("[[NO_REPLY]]")]
+        )
+        run(plugin.pipeline.handle_decorating_result(event))
+        self.assertEqual(event._result.chain, [])

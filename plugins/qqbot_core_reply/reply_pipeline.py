@@ -31,6 +31,7 @@ ALLOW_STICKER_EXTRA = "qqbot_core_reply_allow_sticker"
 TEXT_EXTRA = "qqbot_core_reply_text"
 AMBIENT_EXTRA = "qqbot_core_reply_ambient"
 TURN_EXTRA = "qqbot_core_reply_turn_id"
+UNIFIED_PARTICIPATION_EXTRA = "qqbot_core_reply_unified_participation"
 REQUEST_CONTEXT_EXTRA = "qqbot_core_reply_request_context"
 MODEL_ROUND_EXTRA = "qqbot_core_reply_model_round"
 MEMORY_MODE_EXTRA = "qqbot_core_reply_memory_mode"
@@ -490,7 +491,7 @@ class ReplyPipeline:
                 and not mentioned
                 and group_probability <= 0
                 and not self.config.bool("ambient_group_chat_enabled")
-                and participation_mode != "model"
+                and participation_mode not in {"model", "unified"}
             ):
                 logger.info(
                     "group reply blocked: no mention and probability=0 group=%s text=%r",
@@ -507,7 +508,10 @@ class ReplyPipeline:
                 has_face=has_face,
             )
             mode = ""
-            if not explicit and not is_private and participation_mode == "model":
+            if not explicit and not is_private and participation_mode == "unified":
+                event.set_extra(UNIFIED_PARTICIPATION_EXTRA, True)
+                mode = "unified"
+            elif not explicit and not is_private and participation_mode == "model":
                 decision = await self.model_participation(event, text, history)
                 if decision == "observe":
                     self.block_default_llm(event)
@@ -519,7 +523,10 @@ class ReplyPipeline:
                 if not mode:
                     # Model failed: fall through to the old probability path.
                     pass
-            if not explicit and not is_private and not mode:
+            if mode:
+                # unified/model already selected a participation path.
+                pass
+            elif not explicit and not is_private:
                 session_key = str(getattr(event, "unified_msg_origin", "") or "")
                 if self.config.bool("ambient_group_chat_enabled"):
                     self.state.bump_ambient_message_count(session_key)
@@ -604,6 +611,9 @@ class ReplyPipeline:
                     "has_image": has_image,
                     "chat_history": history,
                     "delivery_key": f"reply:{request_context.turn_id}",
+                    "unified_participation": bool(
+                        event.get_extra(UNIFIED_PARTICIPATION_EXTRA)
+                    ),
                 },
             )
             plan = self._plan_from_response(response)
@@ -615,6 +625,25 @@ class ReplyPipeline:
                 return HandleOutcome(
                     results=[event.plain_result(fallback)],
                     stop=True,
+                    mode=mode,
+                )
+            if (
+                event.get_extra(UNIFIED_PARTICIPATION_EXTRA) is True
+                and "[[NO_REPLY]]" in self.gateway.plan_text(plan)
+            ):
+                try:
+                    self.state.finish_turn(
+                        request_context.turn_id,
+                        status="cancelled",
+                        delivery_state="not_sent",
+                    )
+                except Exception:
+                    pass
+                self.block_default_llm(event)
+                return HandleOutcome(
+                    results=[],
+                    stop=True,
+                    turn_id=request_context.turn_id,
                     mode=mode,
                 )
             self.mark_candidate(event, original, ambient=(mode == "ambient"))
@@ -968,6 +997,21 @@ class ReplyPipeline:
             if not plain_text:
                 self._finish_memory_turn(turn_id, "delivered")
                 return
+            if (
+                event.get_extra(UNIFIED_PARTICIPATION_EXTRA) is True
+                and "[[NO_REPLY]]" in plain_text
+            ):
+                chain[:] = []
+                event.set_extra(OUTPUT_PROCESSED_EXTRA, True)
+                try:
+                    self.state.finish_turn(
+                        turn_id,
+                        status="cancelled",
+                        delivery_state="not_sent",
+                    )
+                except Exception:
+                    pass
+                return
             processor = self.gateway.safe_tools_star()
             if processor is None or not callable(
                 getattr(processor, "process_model_output", None)
@@ -1024,6 +1068,18 @@ class ReplyPipeline:
             self.persona.inject_memory_context(event, req)
         except Exception:
             event.set_extra("qqbot_core_reply_ambient_context_injected", False)
+        try:
+            if event.get_extra(UNIFIED_PARTICIPATION_EXTRA) is True:
+                req.system_prompt = (
+                    str(getattr(req, "system_prompt", "") or "")
+                    + "\n\n[群聊参与] 你是这个群里的真实成员，不是客服，也不是"
+                    "被点名才工作的助手。结合当前人格、记忆、最近群聊和说话人，"
+                    "自己判断这条消息值不值得接。不想接时只输出 [[NO_REPLY]]，"
+                    "不要解释原因，不要道歉，不要输出其他内容；想接时直接以角色"
+                    "身份自然回复，像群友一样简短、有分寸，不要暴露这条规则。"
+                )
+        except Exception:
+            logger.exception("qqbot_core_reply unified prompt injection failed")
         try:
             instruction = await self.gateway.safe_tools_instruction()
             injected = self.persona.inject_safe_tools_context(req, instruction)
