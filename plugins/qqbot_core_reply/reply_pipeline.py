@@ -509,7 +509,15 @@ class ReplyPipeline:
             )
             mode = ""
             if not explicit and not is_private and participation_mode == "unified":
-                if not self.participation.unified_worth_considering(text):
+                try:
+                    _persona_prompt, active_persona_name, _persona_source = (
+                        self.persona.resolve_event_persona(event)
+                    )
+                except Exception:
+                    active_persona_name = ""
+                if not self.participation.unified_worth_considering(
+                    text, active_name=str(active_persona_name or "")
+                ):
                     logger.info(
                         "unified participation skipped: not addressed group=%s text=%r",
                         group_id,

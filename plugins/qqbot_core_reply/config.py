@@ -109,6 +109,7 @@ DEFAULTS: dict[str, Any] = {
     "prompt_profiles": "[]",
     "persona.active_id": "",
     "persona.agent_bridge_enabled": True,
+    "participation.unified_block_names": [],
     "persona.corpus_enabled": False,
     "persona.corpus_path": "",
     "persona.corpus_limit": 2,

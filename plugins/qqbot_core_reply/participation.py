@@ -71,7 +71,9 @@ class ParticipationPolicy:
             return bool(private_enabled)
         return bool((mention_enabled and mentioned) or wake)
 
-    def unified_worth_considering(self, message_text: str) -> bool:
+    def unified_worth_considering(
+        self, message_text: str, *, active_name: str = ""
+    ) -> bool:
         """Cheap social gate before the full unified generation.
 
         This is not a probability decision: it only filters obvious
@@ -91,6 +93,19 @@ class ParticipationPolicy:
             for name in self.config.effective_list("participation.unified_names")
             if str(name).strip()
         ]
+        active_name = str(active_name or "").strip()
+        if active_name and active_name not in names:
+            names.insert(0, active_name)
+        # An old/global account name must not keep waking a different persona.
+        blocked = [
+            str(name).strip()
+            for name in self.config.effective_list(
+                "participation.unified_block_names"
+            )
+            if str(name).strip() and str(name).strip() != active_name
+        ]
+        if any(name.casefold() in folded for name in blocked):
+            return False
         named = any(name.casefold() in folded for name in names)
         if named:
             # A bare name call ("电子羊") still deserves a short "在".

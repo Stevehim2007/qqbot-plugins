@@ -867,6 +867,11 @@
     "type": "bool",
     "default": true
   },
+  "participation.unified_block_names": {
+    "description": "这些旧名字不会唤醒当前人格；当前 profile 名字仍可唤醒（用于避免把旧账号名当成人格）",
+    "type": "list",
+    "default": []
+  },
   "persona.corpus_enabled": {
     "description": "启用角色台词语料库（独立于记忆）",
     "type": "bool",
