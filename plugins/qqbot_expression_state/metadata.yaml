@@ -1,0 +1,10 @@
+name: qqbot_expression_state
+display_name: 表达状态
+desc: 情绪与说话风格的确定性状态；只向人格提示注入短块，不改写模型正文。
+version: 1.0.0
+author: QQ Bot Studio
+support_platforms:
+  - aiocqhttp
+  - qq_official
+  - qq_official_webhook
+astrbot_version: ">=4.29,<5"

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "registry_revision": "5f028b18f45fab54db92e204001a334385b186802251b362eeb1e8e4e602f43f",
+  "registry_revision": "79f71e6452a514e4d3c4ed75c0342a382403c7b91ea98d69ba8de636cdc6820b",
   "plugins": {
     "qqbot_core_reply": {
       "participation.reply_probability": {
@@ -196,6 +196,35 @@
         "minimum": null,
         "maximum": null,
         "max_chars": 16,
+        "enum": []
+      }
+    },
+    "qqbot_expression_state": {
+      "emotion.half_life_minutes": {
+        "kind": "int",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": 5,
+        "maximum": 1440,
+        "max_chars": null,
+        "enum": []
+      },
+      "style.enabled": {
+        "kind": "bool",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": null,
+        "maximum": null,
+        "max_chars": null,
+        "enum": []
+      },
+      "style.refresh_hours": {
+        "kind": "int",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": 1,
+        "maximum": 168,
+        "max_chars": null,
         "enum": []
       }
     },

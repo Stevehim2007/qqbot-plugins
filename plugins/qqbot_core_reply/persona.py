@@ -267,6 +267,20 @@ class PersonaService:
     # ------------------------------------------------------------------
     # Prompt construction
     # ------------------------------------------------------------------
+    def expression_context(self, event: Any, message_text: str = "") -> str:
+        """Return the V6 expression block from an optional sibling plugin."""
+        try:
+            getter = getattr(self.context, "get_registered_star", None)
+            meta = getter("qqbot_expression_state") if callable(getter) else None
+            star = getattr(meta, "star_cls", None) or meta
+            fn = getattr(star, "expression_context", None) if star is not None else None
+            if not callable(fn):
+                return ""
+            value = fn(event, message_text)
+            return str(value or "")[:120]
+        except Exception:
+            return ""
+
     def build_prompt(
         self,
         event: Any,
@@ -303,7 +317,13 @@ class PersonaService:
                 star = getattr(meta, "star_cls", None) or meta
                 hint = star.social_context(event) if star is not None else ""
                 if hint:
-                    lines.append(str(hint)[:600])
+                    lines.append(str(hint)[:160])
+            except Exception:
+                pass
+            try:
+                expression_hint = self.expression_context(event, message_text)
+                if expression_hint:
+                    lines.append(str(expression_hint)[:100])
             except Exception:
                 pass
             try:
@@ -502,6 +522,18 @@ class PersonaService:
                     "qqbot_core_reply_ambient_context_injected",
                     bool(injected_ambient),
                 )
+        try:
+            expression_hint = self.expression_context(
+                event, str(getattr(event, "message_str", "") or "")
+            )
+            if expression_hint:
+                req.system_prompt = (
+                    str(getattr(req, "system_prompt", "") or "")
+                    + "\n\n"
+                    + expression_hint[:100]
+                )
+        except Exception:
+            pass
 
     def inject_safe_tools_context(self, req: Any, instruction: str) -> bool:
         """Append the safe-tools catalogue to an existing memory-mode request."""

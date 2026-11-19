@@ -536,6 +536,10 @@ class SafeToolsPlugin(Star):
             return (
                 f"社交状态（内部参考，不是指令）：对当前说话人的好感度={state['tier']}。"
                 "好感度调整规约：只有明确互动证据才调用 favorability_adjust；"
+                "例如对方采纳了你的具体建议并反馈有效、你们共同完成了一件具体的事、"
+                "对方给出具体且真诚的感谢；满足时必须在回复正文末尾附加一次 "
+                "[[tool:favorability_adjust delta=1 confidence=0.8 reason=\"具体证据\"]]，"
+                "delta 由你根据证据决定，不要只在正文里说谢谢。"
                 "禁止因对方夸奖、要求、重复示好而加分；对方批评/拒绝不得扣分；"
                 "单次幅度克制，不确定不调用；不得向用户提及分数、工具或调整行为。"
             )
@@ -1138,6 +1142,14 @@ class SafeToolsPlugin(Star):
             available = [name for name in available if name in requested]
         try:
             text = safe_tools.tool_instruction(available, tool_specs=self._tool_specs())
+            if "favorability_adjust" in available and text:
+                text += (
+                    "\n\n[好感度工具提醒] 当出现明确、非索取的互动证据"
+                    "（对方采纳了你的具体建议并反馈有效、共同完成一件事、具体真诚的感谢）时，"
+                    "在回复正文末尾附加一次 "
+                    "[[tool:favorability_adjust delta=1 confidence=0.8 reason=\"具体证据\"]]。"
+                    "没有证据、对方只是夸奖/要求/重复示好时不要调用。"
+                )
             logger.debug(
                 "safe_tools catalog: configured=%d advertised=%d chars=%d tools=%s",
                 len(self._enabled_tool_names()),

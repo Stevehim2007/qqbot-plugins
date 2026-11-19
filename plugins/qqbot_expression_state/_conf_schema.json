@@ -1,0 +1,46 @@
+{
+  "enabled": {
+    "description": "启用表达状态观察与注入",
+    "type": "bool",
+    "default": true
+  },
+  "observe_enabled": {
+    "description": "记录情绪/风格观察；关闭后完全不写库",
+    "type": "bool",
+    "default": true
+  },
+  "apply_effects": {
+    "description": "把表达状态注入人格提示；关闭为影子模式（仍可观察）",
+    "type": "bool",
+    "default": true
+  },
+  "half_life_minutes": {
+    "description": "情绪半衰期（分钟）",
+    "type": "int",
+    "default": 45,
+    "slider": {"min": 5, "max": 240, "step": 5}
+  },
+  "max_event_delta": {
+    "description": "单条消息对 valence/arousal 的最大影响",
+    "type": "float",
+    "default": 0.15,
+    "slider": {"min": 0.01, "max": 0.15, "step": 0.01}
+  },
+  "style_min_samples": {
+    "description": "生成风格画像所需最少观察条数",
+    "type": "int",
+    "default": 30,
+    "slider": {"min": 10, "max": 200, "step": 5}
+  },
+  "inject_max_chars": {
+    "description": "表达块最大字符数；与社交块合计不超过 260",
+    "type": "int",
+    "default": 120,
+    "slider": {"min": 40, "max": 160, "step": 10}
+  },
+  "allow_unmentioned_command": {
+    "type": "bool",
+    "default": false,
+    "description": "保留给命令门控；表达状态本身不新增数据命令。"
+  }
+}
