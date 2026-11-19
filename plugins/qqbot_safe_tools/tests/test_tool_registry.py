@@ -201,8 +201,14 @@ class PluginRegistryTests(unittest.TestCase):
             exclusive=True,
         )
         self.assertTrue(plugin.registry.has_providers())
-        self.assertEqual(len(plugin._advertised_tool_names()), 7)
-        self.assertTrue(plugin.tool_instruction().strip())
+        advertised = plugin._advertised_tool_names()
+        self.assertEqual(len(advertised), 9)
+        self.assertIn("favorability_adjust", advertised)
+        self.assertIn("favorability_get", advertised)
+        text = plugin.tool_instruction()
+        self.assertTrue(text.strip())
+        self.assertIn("favorability_adjust", text)
+        self.assertIn("[[tool:favorability_adjust", text)
 
     def test_marker_mode_ignores_bridge_only_provider_registry(self):
         plugin = make_plugin()

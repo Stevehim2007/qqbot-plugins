@@ -34,6 +34,22 @@ class EntrypointSmokeTests(unittest.TestCase):
         self.assertEqual(parsed.intents[0].name, "send_sticker")
         self.assertTrue(parsed.intents[0].valid)
 
+    def test_social_scope_actor_supports_event_and_request_context(self):
+        plugin = make_plugin()
+        event = Event(session="qqbot-onebot:GroupMessage:291690445")
+        scope, actor = plugin._social_scope_actor(event)
+        self.assertEqual(scope, "qqbot-onebot:GroupMessage:291690445")
+        self.assertTrue(actor)
+
+        context = SimpleNamespace(
+            requested_scope={"kind": "group", "group_id": "291690445"},
+            conversation_id="qqbot-onebot:GroupMessage:291690445",
+            actor_id="3889010444",
+        )
+        scope, actor = plugin._social_scope_actor(context)
+        self.assertEqual(scope, "291690445")
+        self.assertTrue(actor)
+
     def test_decorating_entrypoint_replaces_chain(self):
         plugin = make_plugin()
         api = SimpleNamespace(

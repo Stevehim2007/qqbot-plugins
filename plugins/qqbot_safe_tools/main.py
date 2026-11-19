@@ -512,12 +512,35 @@ class SafeToolsPlugin(Star):
 
     @staticmethod
     def _social_scope_actor(context: Any) -> tuple[str, str]:
-        scope = str(
-            getattr(context, "group_id", "")
-            or getattr(context, "conversation_id", "")
-            or ""
-        )
-        actor = str(getattr(context, "actor_id", "") or "")
+        # This helper is called from two paths: a real AstrMessageEvent
+        # (legacy marker execution) and a core_reply RequestContext
+        # (ABI-style calls).  Support both instead of silently returning
+        # ``no_actor`` for one of them.
+        if hasattr(context, "get_sender_id") or hasattr(context, "sender_id"):
+            scope = str(
+                getattr(context, "get_group_id", lambda: "")()
+                or getattr(context, "unified_msg_origin", "")
+                or ""
+            )
+            sender_getter = getattr(context, "get_sender_id", None)
+            actor = str(
+                (sender_getter() if callable(sender_getter) else None)
+                or getattr(context, "sender_id", "")
+                or ""
+            )
+        else:
+            requested = getattr(context, "requested_scope", {}) or {}
+            if isinstance(requested, dict):
+                requested_group = str(requested.get("group_id", "") or "")
+            else:
+                requested_group = ""
+            scope = str(
+                requested_group
+                or getattr(context, "group_id", "")
+                or getattr(context, "conversation_id", "")
+                or ""
+            )
+            actor = str(getattr(context, "actor_id", "") or "")
         return scope, social_state.actor_hash(scope, actor) if scope and actor else ""
 
     def social_context(self, event: Any) -> str:
@@ -1203,6 +1226,12 @@ class SafeToolsPlugin(Star):
             if mapping is None:
                 return None
             plugin_id, method_name = mapping
+        if plugin_id == "qqbot_safe_tools":
+            # The safe-tools plugin owns its native social tools.  AstrBot may
+            # not expose the running plugin through get_registered_star() from
+            # inside itself, so resolve self-owned descriptors against self.
+            method = getattr(self, method_name, None)
+            return method if callable(method) else None
         star = self._registered_star(plugin_id)
         if star is None:
             return None
@@ -1248,7 +1277,9 @@ class SafeToolsPlugin(Star):
         except asyncio.CancelledError:
             raise
         except Exception:
-            # Never expose exception text, class names or stack traces to QQ.
+            # Never expose exception text, class names or stack traces to QQ;
+            # keep a local diagnostic line for Studio/server logs.
+            logger.exception("safe_tools tool method failed")
             return False, None, "failed"
 
     # ------------------------------------------------------------------
@@ -1423,6 +1454,10 @@ class SafeToolsPlugin(Star):
             kwargs = {"category": str(args.get("category", "") or "").strip()}
         elif name == "list_sticker_categories":
             kwargs = {}
+        elif name in {"favorability_adjust", "favorability_get"}:
+            # Social tools are owned by this plugin and use the
+            # (request_context, args_dict) ABI, not keyword expansion.
+            positional = (dict(args),)
         else:
             descriptor = self._tool_descriptor(name)
             if descriptor is None or descriptor.call_style != "kwargs":
@@ -1771,6 +1806,49 @@ class SafeToolsPlugin(Star):
                 had_marker=True,
                 reason="invalid",
             )
+        # Self-owned social tools execute directly on this plugin.  The ABI
+        # registry only knows the safe-tools bridge provider, not the social
+        # operation, so routing these markers through the ABI dispatcher
+        # would always fail with ``failed``.
+        self_owned = bool(parsed.intents) and all(
+            (self._tool_descriptor(intent.name) or None) is not None
+            and self._tool_descriptor(intent.name).plugin_id == "qqbot_safe_tools"
+            for intent in parsed.intents
+        )
+        if self_owned and event is not None:
+            ok, result, reason = await self._handle_parsed_marker(event, parsed)
+            logger.debug(
+                "self-owned social marker: ok=%s result=%r reason=%s",
+                ok, result, reason,
+            )
+            if ok and isinstance(result, dict) and result.get("ok"):
+                return output_gate.GateOutcome(
+                    reply_plan=contracts.ReplyPlan.from_text(
+                        request_context,
+                        parsed.clean_text,
+                        delivery_key=self._reply_plan_delivery_key(
+                            request_context, model_round, "success"
+                        ),
+                    ),
+                    had_marker=True,
+                )
+            fallback_text = self._build_fallback_text(
+                parsed.clean_text, reason or "failed"
+            )
+            return output_gate.GateOutcome(
+                reply_plan=contracts.ReplyPlan(
+                    request_context=request_context,
+                    text_segments=[fallback_text],
+                    media_segments=[],
+                    terminal=True,
+                    delivery_key=self._reply_plan_delivery_key(
+                        request_context, model_round, "fallback"
+                    ),
+                ),
+                had_marker=True,
+                reason=reason or "failed",
+            )
+
         if self._abi_mode(strict_abi):
             ok, result, reason = await self._handle_marker_abi(
                 request_context, parsed, model_round=model_round
