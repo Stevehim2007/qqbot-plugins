@@ -65,6 +65,32 @@ class MemoryWrapupTests(unittest.TestCase):
         )
         self.assertFalse(any(item["kind"] == "purpose" for item in plan_off["cards"]))
 
+
+    def test_transport_noise_is_not_memorized(self):
+        summary = wrapup.summarize_messages([
+            {"role": "user", "content": "[[NO_REPLY]]"},
+            {"role": "assistant", "content": "![img](https://example.test/a.png)"},
+            {"role": "user", "content": "记住我喜欢吃火锅"},
+        ])
+        self.assertNotIn("NO_REPLY", summary)
+        self.assertNotIn("mqqapi", summary)
+        self.assertNotIn("example.test", summary)
+        self.assertIn("火锅", summary)
+
+    def test_apply_skips_empty_cleaned_episode(self):
+        plan = {
+            "conversation_id": "c-noise",
+            "session_revision": 1,
+            "scope": "conversation:c-noise",
+            "cards": [
+                {"kind": "episode", "content": "[[NO_REPLY]]"},
+                {"kind": "episode", "content": "![x](https://example.test/x.png)"},
+            ],
+        }
+        result = wrapup.apply_plan(self.store, plan)
+        self.assertTrue(result["applied"])
+        self.assertEqual(result["wrapup"]["result"]["card_ids"], [])
+
     def test_empty_messages_are_safe(self):
         plan = wrapup.preview(
             conversation_id="c4",

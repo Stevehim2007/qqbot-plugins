@@ -19,6 +19,23 @@ MAX_OPEN_TOPIC_CHARS = 120
 
 _QUESTION_RE = re.compile(r"[?？]\s*$")
 _SPACE_RE = re.compile(r"\s+")
+_MENTION_RE = re.compile(r"@[^\s()]{1,64}\(\d{3,}\)")
+_MARKDOWN_RE = re.compile(r"!?\[[^\]]*\]\([^)]*\)")
+_BAD_MARKERS = ("[[NO_REPLY]]", "mqqapi://", "ComponentType.")
+
+
+def _clean_fragment(text: str) -> str:
+    """Drop transport noise before a message becomes a memory card."""
+
+    value = str(text or "")
+    if any(marker in value for marker in _BAD_MARKERS):
+        return ""
+    value = _MARKDOWN_RE.sub("", value)
+    value = _MENTION_RE.sub("", value)
+    value = _SPACE_RE.sub(" ", value).strip()
+    if len(value) < 2:
+        return ""
+    return value[:180].rstrip()
 
 
 def _content(message: Any) -> str:
@@ -50,7 +67,7 @@ def summarize_messages(messages: Iterable[Any], *, max_chars: int = MAX_SUMMARY_
         role = _role(message)
         if role not in {"user", "assistant"}:
             continue
-        text = _content(message)
+        text = _clean_fragment(_content(message))
         if not text:
             continue
         parts.append(("用户：" if role == "user" else "助手：") + text)
@@ -163,10 +180,16 @@ def apply_plan(store: cards.CardStore, plan: Mapping[str, Any], *, now: float | 
         for item in plan.get("cards") or []:
             if not isinstance(item, Mapping):
                 continue
+            kind = str(item.get("kind") or "episode")
+            content = str(item.get("content") or "")
+            if kind == "episode":
+                content = _clean_fragment(content)
+                if not content:
+                    continue
             card = store.create(
                 scope=str(plan.get("scope") or "conversation"),
-                content=str(item.get("content") or ""),
-                kind=str(item.get("kind") or "episode"),
+                content=content,
+                kind=kind,
                 subtype=str(item.get("subtype") or ""),
                 title=str(item.get("title") or ""),
                 group_id=str(plan.get("group_id") or ""),

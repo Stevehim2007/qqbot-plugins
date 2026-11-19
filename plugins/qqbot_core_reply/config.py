@@ -108,6 +108,7 @@ DEFAULTS: dict[str, Any] = {
     "group_persona_max_name_chars": 64,
     "prompt_profiles": "[]",
     "persona.active_id": "",
+    "persona.agent_bridge_enabled": True,
     "persona.corpus_enabled": False,
     "persona.corpus_path": "",
     "persona.corpus_limit": 2,

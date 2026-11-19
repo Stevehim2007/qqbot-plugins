@@ -862,6 +862,11 @@
     "type": "string",
     "default": ""
   },
+  "persona.agent_bridge_enabled": {
+    "description": "把当前 profile 同步为 AstrBot 会话人格；切换人格时新建会话，避免旧身份/历史串味",
+    "type": "bool",
+    "default": true
+  },
   "persona.corpus_enabled": {
     "description": "启用角色台词语料库（独立于记忆）",
     "type": "bool",

@@ -684,6 +684,10 @@ class ReplyPipeline:
         message_text: str,
         mode: str,
     ) -> HandleOutcome:
+        try:
+            await self.persona.sync_agent_persona(event)
+        except Exception:
+            logger.warning("qqbot_core_reply agent persona sync failed; continuing")
         request_context = self.request_context(
             event,
             capability="chat.memory",
@@ -1085,6 +1089,30 @@ class ReplyPipeline:
         if not candidate:
             logger.debug("qqbot_core_reply llm hook skipped: candidate=false")
             return
+        try:
+            # AstrBot's own persona list is often empty.  In AstrBot memory
+            # mode the active qqbot persona profile must still reach the
+            # provider, otherwise a configured profile such as "麻衣" is
+            # silently replaced by AstrBot's default assistant prompt.
+            if event.get_extra("qqbot_core_reply_persona_injected") is not True:
+                persona_prompt, _persona_name, _source = (
+                    self.persona.resolve_event_persona(event)
+                )
+                persona_prompt = str(persona_prompt or "").strip()
+                if persona_prompt:
+                    logger.info(
+                        "qqbot persona injection: name=%s source=%s chars=%d",
+                        _persona_name, _source, len(persona_prompt),
+                    )
+                    base_prompt = str(getattr(req, "system_prompt", "") or "")
+                    if persona_prompt not in base_prompt:
+                        # Replace AstrBot's generic assistant prompt instead
+                        # of prepending to it: two competing personalities
+                        # make the model drift back to the assistant voice.
+                        req.system_prompt = persona_prompt
+                    event.set_extra("qqbot_core_reply_persona_injected", True)
+        except Exception:
+            logger.exception("qqbot_core_reply persona prompt injection failed")
         try:
             self.persona.inject_memory_context(event, req)
         except Exception:

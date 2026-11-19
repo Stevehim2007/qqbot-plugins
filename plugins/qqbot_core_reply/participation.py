@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 try:  # package import
@@ -85,13 +86,34 @@ class ParticipationPolicy:
         if not text:
             return False
         folded = text.casefold()
-        names = self.config.effective_list("participation.unified_names")
-        if any(str(name).strip().casefold() in folded for name in names if str(name).strip()):
-            return True
+        names = [
+            str(name).strip()
+            for name in self.config.effective_list("participation.unified_names")
+            if str(name).strip()
+        ]
+        named = any(name.casefold() in folded for name in names)
+        if named:
+            # A bare name call ("电子羊") still deserves a short "在".
+            remainder = text
+            for name in names:
+                remainder = re.sub(re.escape(name), "", remainder, flags=re.IGNORECASE)
+            remainder = re.sub(r"[\s，。！？、,.!?;；:：~～]+", "", remainder)
+            if not remainder:
+                return True
         markers = self.config.effective_list(
             "participation.unified_address_markers"
         )
-        return any(str(marker) and str(marker) in text for marker in markers)
+        if any(str(marker) and str(marker) in text for marker in markers):
+            return True
+        request_words = (
+            "帮", "请", "能不能", "可以", "怎么", "为什么", "要不要", "建议",
+            "怎么办", "教我", "告诉我", "吗", "呢",
+        )
+        if any(word in text for word in request_words):
+            return True
+        # A name plus a plain statement ("电子羊，今天天气不错") is not
+        # enough; quiet personas should be allowed to stay silent.
+        return False
 
     def unified_cooldown_remaining(self, event: Any) -> int:
         session_key, user_key = self.cooldown_keys(event)

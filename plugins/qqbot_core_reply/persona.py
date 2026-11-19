@@ -131,6 +131,69 @@ class PersonaService:
         raw = f"{platform}|{group}|{qq}".encode("utf-8", "ignore")
         return hashlib.sha256(raw).hexdigest()[:16]
 
+    async def sync_agent_persona(self, event: Any) -> bool:
+        """Keep AstrBot's conversation-bound persona in sync with the active profile.
+
+        AstrBot stores the selected persona on the conversation.  Replacing
+        ``req.system_prompt`` alone is not enough: the conversation can keep
+        the previous persona and its history, which makes the model answer as
+        the old character even when the profile text changed.  This method
+        creates/updates the dedicated AstrBot persona and rebinds the
+        conversation when the profile changes.
+        """
+
+        if not self.config.bool("persona.agent_bridge_enabled", True):
+            return False
+        bridge = getattr(self, "bridge", None)
+        if bridge is None or not getattr(bridge, "supported", False):
+            return False
+        try:
+            prompt, _name, source = self.resolve_event_persona(event)
+            prompt = str(prompt or "").strip()
+            if not prompt:
+                return False
+            agent_id = ""
+            if source == "profile":
+                agent_id = persona_bridge_engine.persona_id_for_profile(
+                    self.config.string("prompt_profile_active_id")
+                )
+            elif source == "group":
+                agent_id = persona_bridge_engine.persona_id_for(
+                    self._safe_group_id(event), "group"
+                )
+            elif source == "default":
+                agent_id = persona_bridge_engine.persona_id_for("", "default")
+            if not agent_id:
+                return False
+            if not await bridge.ensure_persona(agent_id, prompt):
+                return False
+            platform_id = ""
+            for getter_name in ("get_platform_id", "get_platform_name"):
+                getter = getattr(event, getter_name, None)
+                if callable(getter):
+                    try:
+                        platform_id = str(getter() or "").strip()
+                    except Exception:
+                        platform_id = ""
+                    if platform_id:
+                        break
+            umo = str(getattr(event, "unified_msg_origin", "") or "").strip()
+            if not umo:
+                return False
+            return await bridge.bind_conversation(
+                unified_msg_origin=umo,
+                platform_id=platform_id,
+                persona_id=agent_id,
+                new_conversation_on_persona_change=True,
+                persona_prompt_changed=bool(
+                    getattr(bridge, "last_persona_changed", False)
+                ),
+            )
+        except Exception:
+            if self.logger:
+                self.logger.warning("qqbot_core_reply agent persona sync failed")
+            return False
+
     def resolve_event_persona(self, event: Any) -> tuple[str, str, str]:
         legacy_prompt = self.config.string("system_prompt")
         parsed = None
