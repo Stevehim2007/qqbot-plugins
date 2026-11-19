@@ -107,6 +107,10 @@ class ParticipationPolicy:
         if any(name.casefold() in folded for name in blocked):
             return False
         named = any(name.casefold() in folded for name in names)
+        if not named and self.config.effective_bool(
+            "participation.unified_require_name", default=False
+        ):
+            return False
         if named:
             # A bare name call ("电子羊") still deserves a short "在".
             remainder = text

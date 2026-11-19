@@ -22,6 +22,7 @@ DEFAULTS: dict[str, Any] = {
     "participation.model_daily_limit": 300,
     "participation.model_prompt": "",
     "participation.unified_addressed_only": True,
+    "participation.unified_require_name": False,
     "participation.unified_names": [],
     "participation.unified_address_markers": ["?", "？", "你", "您"],
     "context.actor_labels_enabled": True,

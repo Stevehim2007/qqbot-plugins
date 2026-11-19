@@ -867,6 +867,11 @@
     "type": "bool",
     "default": true
   },
+  "participation.unified_require_name": {
+    "description": "统一模式下必须出现当前人格名或别名才考虑接话；打开后可避免普通问句/第二人称触发回复",
+    "type": "bool",
+    "default": false
+  },
   "participation.unified_block_names": {
     "description": "这些旧名字不会唤醒当前人格；当前 profile 名字仍可唤醒（用于避免把旧账号名当成人格）",
     "type": "list",
