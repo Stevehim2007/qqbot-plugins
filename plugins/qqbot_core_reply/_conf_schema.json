@@ -777,6 +777,11 @@
       "unified"
     ]
   },
+  "participation.group_mention_only": {
+    "description": "群聊硬门：开启后，未真实 @ 机器人的群消息在进入任何业务逻辑前被直接丢弃（私聊不受影响）",
+    "type": "bool",
+    "default": false
+  },
   "participation.unified_addressed_only": {
     "description": "unified 模式下只把叫名字/直接提问/第二人称的消息交给模型，普通陈述直接沉默（避免每条闲聊都消耗完整生成）",
     "type": "bool",

@@ -21,6 +21,7 @@ DEFAULTS: dict[str, Any] = {
     "participation.model_max_tokens": 48,
     "participation.model_daily_limit": 300,
     "participation.model_prompt": "",
+    "participation.group_mention_only": False,
     "participation.unified_addressed_only": True,
     "participation.unified_require_name": False,
     "participation.unified_names": [],

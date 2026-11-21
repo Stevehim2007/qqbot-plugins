@@ -446,7 +446,13 @@ class CoreReplyPlugin(Star):
                 # At:qq_official 占位。此时 GROUP_AT_MESSAGE_CREATE 的
                 # is_at_or_wake_command 才是可靠的“被 @”信号。
                 return bool(getattr(event, "is_at_or_wake_command", False))
-            for component in list(getattr(getattr(event, "message_obj", None), "message", None) or []):
+            components = list(
+                getattr(getattr(event, "message_obj", None), "message", None) or []
+            )
+            if not components:
+                getter = getattr(event, "get_messages", None)
+                components = list(getter() or []) if callable(getter) else []
+            for component in components:
                 if type(component).__name__ != "At":
                     continue
                 if str(getattr(component, "qq", "") or "") == self_id:
@@ -454,6 +460,35 @@ class CoreReplyPlugin(Star):
         except Exception:
             return False
         return False
+
+    @filter.platform_adapter_type(_PLATFORM_TYPES, priority=999)
+    @filter.event_message_type(filter.EventMessageType.ALL, priority=999)
+    async def hard_group_mention_gate(self, event: AstrMessageEvent):
+        """Drop unmentioned group messages before any business handler runs.
+
+        This is intentionally an event gate, not a probability/decision hint:
+        with participation.group_mention_only=True a group message that does
+        not really mention the bot never reaches the pipeline, tools, memory
+        observers, or the model. Private chats and real @ mentions pass.
+        """
+        try:
+            if not self.config.bool("enabled", False):
+                return
+            if not self.config.bool("participation.group_mention_only", False):
+                return
+            if self.pipeline.is_private(event):
+                return
+            if self._has_bot_mention(event):
+                return
+            event.is_at_or_wake_command = False
+            event.should_call_llm(False)
+            event.stop_event()
+            logger.info(
+                "group mention hard gate: dropped unmentioned group message umo=%r",
+                str(getattr(event, "unified_msg_origin", "") or ""),
+            )
+        except Exception:
+            logger.exception("group mention hard gate failed")
 
     @filter.event_message_type(filter.EventMessageType.ALL, priority=120)
     async def require_mention_for_utility_commands(self, event: AstrMessageEvent):

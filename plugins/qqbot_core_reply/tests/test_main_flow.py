@@ -771,3 +771,40 @@ class ModelParticipationTests(unittest.TestCase):
         )
         run(plugin.pipeline.handle_decorating_result(event))
         self.assertEqual(event._result.chain, [])
+
+
+class HardGroupMentionGateTests(unittest.TestCase):
+    def test_non_at_group_message_is_dropped_before_pipeline(self):
+        plugin, ctx, _ = make_plugin(
+            overrides={
+                "enabled": True,
+                "participation.group_mention_only": True,
+            }
+        )
+        event = group_event("随便聊聊")
+        run(plugin.hard_group_mention_gate(event))
+        self.assertTrue(event.stopped)
+        self.assertFalse(event.llm_requested)
+        self.assertEqual(ctx.llm_calls, [])
+
+    def test_at_group_message_passes_gate(self):
+        plugin, _, _ = make_plugin(
+            overrides={
+                "enabled": True,
+                "participation.group_mention_only": True,
+            }
+        )
+        event = group_event("hello", at_bot=True)
+        run(plugin.hard_group_mention_gate(event))
+        self.assertFalse(event.stopped)
+
+    def test_private_message_passes_gate(self):
+        plugin, _, _ = make_plugin(
+            overrides={
+                "enabled": True,
+                "participation.group_mention_only": True,
+            }
+        )
+        event = FakeEvent("hello", private=True)
+        run(plugin.hard_group_mention_gate(event))
+        self.assertFalse(event.stopped)
