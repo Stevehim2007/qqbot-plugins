@@ -22,6 +22,7 @@ from typing import Any
 
 SCHEMA_VERSION = 2
 ACTIVE_CARD_LIMIT = 60
+ACTIVE_CARD_TARGET = 48
 ARCHIVE_AFTER_SECONDS = 365 * 24 * 60 * 60
 PURGE_AFTER_ARCHIVE_SECONDS = 365 * 24 * 60 * 60
 MIN_CLARITY = 0.05
@@ -260,16 +261,45 @@ class CardStore:
             CREATE INDEX IF NOT EXISTS audit_scope ON audit_log(scope, at);
             """
         )
+        self.fts_available = True
         try:
+            version_row = self.connection.execute(
+                "SELECT value FROM card_meta WHERE key='fts_version'"
+            ).fetchone()
+            if not version_row or str(version_row["value"]) != "2":
+                self.connection.executescript(
+                    """
+                    DROP TRIGGER IF EXISTS card_fts_ai;
+                    DROP TRIGGER IF EXISTS card_fts_au;
+                    DROP TRIGGER IF EXISTS card_fts_ad;
+                    DROP TABLE IF EXISTS card_fts;
+                    """
+                )
             self.connection.executescript(
                 """
                 CREATE VIRTUAL TABLE IF NOT EXISTS card_fts USING fts5(
-                  card_id UNINDEXED, title, content, tags, tokenize='unicode61'
+                  card_id UNINDEXED, title, content, tags, tokenize='trigram'
                 );
+                CREATE TRIGGER IF NOT EXISTS card_fts_ai AFTER INSERT ON card BEGIN
+                  INSERT INTO card_fts(card_id, title, content, tags)
+                  VALUES (new.id, new.title, new.content, new.tags);
+                END;
+                CREATE TRIGGER IF NOT EXISTS card_fts_au AFTER UPDATE ON card BEGIN
+                  DELETE FROM card_fts WHERE card_id = old.id;
+                  INSERT INTO card_fts(card_id, title, content, tags)
+                  SELECT new.id, new.title, new.content, new.tags WHERE new.status = 'active';
+                END;
+                CREATE TRIGGER IF NOT EXISTS card_fts_ad AFTER DELETE ON card BEGIN
+                  DELETE FROM card_fts WHERE card_id = old.id;
+                END;
                 """
             )
+            self.connection.execute(
+                "INSERT OR REPLACE INTO card_meta(key,value) VALUES('fts_version','2')"
+            )
+            self.rebuild_fts()
         except sqlite3.OperationalError:
-            pass
+            self.fts_available = False
         self.connection.execute(
             "INSERT OR REPLACE INTO card_meta(key, value) VALUES('schema_version', '2')"
         )
@@ -415,11 +445,11 @@ class CardStore:
 
     def _enforce_active_limit(self, scope: str, *, now: float | None = None) -> list[dict[str, Any]]:
         active = self.list_cards(scope=scope, status="active", limit=500)
-        overflow = len(active) - ACTIVE_CARD_LIMIT
-        if overflow <= 0:
+        if len(active) <= ACTIVE_CARD_LIMIT:
             return []
         active = [card for card in active if not int(card.get("pinned") or 0)]
         active.sort(key=lambda card: effective_clarity(card, now))
+        overflow = max(0, len(active) - ACTIVE_CARD_TARGET)
         archived: list[dict[str, Any]] = []
         for card in active[:overflow]:
             result = self.archive(str(card["id"]), reason="capacity", now=now)
@@ -459,6 +489,132 @@ class CardStore:
             tuple(params),
         ).fetchall()
         return [card for row in rows if (card := self._row(row)) is not None]
+
+    def rebuild_fts(self) -> int:
+        """Rebuild the FTS index from active cards; safe no-op without FTS5."""
+
+        if not getattr(self, "fts_available", False):
+            return 0
+        with self.connection:
+            self.connection.execute("DELETE FROM card_fts")
+            self.connection.execute(
+                "INSERT INTO card_fts(card_id, title, content, tags) "
+                "SELECT id, title, content, tags FROM card WHERE status='active'"
+            )
+        row = self.connection.execute("SELECT COUNT(*) AS n FROM card_fts").fetchone()
+        return int(row["n"] if row else 0)
+
+    def fts_match(self, *, scope: str, query: str, limit: int = 200) -> set[str]:
+        """Return card ids matching the query, using FTS5 when available."""
+
+        if not getattr(self, "fts_available", False) or not _normalise_text(query):
+            return set()
+        terms = [
+            term
+            for term in re.findall(r"[0-9A-Za-z_\u4e00-\u9fff]{2,}", _normalise_text(query))
+            if len(term) <= 40
+        ][:12]
+        if not terms:
+            return set()
+        expression = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms)
+        try:
+            rows = self.connection.execute(
+                "SELECT DISTINCT f.card_id FROM card_fts f "
+                "JOIN card c ON c.id = f.card_id "
+                "WHERE c.scope = ? AND c.status = 'active' AND card_fts MATCH ? LIMIT ?",
+                (str(scope), expression, max(1, min(500, int(limit)))),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return set()
+        return {str(row["card_id"]) for row in rows}
+
+    def sweep(self, *, scope: str | None = None, now: float | None = None) -> dict[str, int]:
+        """Archive decayed cards and purge stale archived cards."""
+
+        scopes = [str(scope)] if scope else [
+            str(row["scope"]) for row in self.connection.execute("SELECT DISTINCT scope FROM card")
+        ]
+        archived = 0
+        for item in scopes:
+            archived += len(self.archive_decayed(scope=item, now=now))
+        cutoff = _now(now) - PURGE_AFTER_ARCHIVE_SECONDS
+        with self.connection:
+            cursor = self.connection.execute(
+                "DELETE FROM card WHERE status='archived' AND archived_at IS NOT NULL AND archived_at < ?",
+                (cutoff,),
+            )
+        return {"archived": archived, "purged": int(cursor.rowcount or 0)}
+
+    def delete_card(self, card_id: str, *, reason: str = "manual") -> bool:
+        """Hard-delete one card and its FTS entry, keeping an audit trail."""
+
+        current = self.get(card_id)
+        if not current:
+            return False
+        with self.connection:
+            self.connection.execute("DELETE FROM card WHERE id = ?", (str(card_id),))
+            self.audit(
+                action="card.delete",
+                target_type="card",
+                target_id=str(card_id),
+                scope=str(current.get("scope") or ""),
+                before=current,
+                reason=reason,
+            )
+        return True
+
+    def export_scope(self, *, scope: str) -> dict[str, Any]:
+        rows = self.connection.execute(
+            "SELECT * FROM card WHERE scope = ? ORDER BY created_at ASC", (str(scope),)
+        ).fetchall()
+        return {"scope": str(scope), "cards": [card for row in rows if (card := self._row(row)) is not None]}
+
+    def metrics(self, *, scope: str | None = None) -> dict[str, Any]:
+        where = " WHERE scope = ?" if scope else ""
+        params = (str(scope),) if scope else ()
+        row = self.connection.execute(
+            "SELECT COUNT(*) AS total, "
+            "SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) AS active, "
+            "SUM(CASE WHEN status='archived' THEN 1 ELSE 0 END) AS archived, "
+            "SUM(CASE WHEN pinned=1 THEN 1 ELSE 0 END) AS pinned "
+            f"FROM card{where}",
+            params,
+        ).fetchone()
+        fts = 0
+        if getattr(self, "fts_available", False):
+            frow = self.connection.execute("SELECT COUNT(*) AS n FROM card_fts").fetchone()
+            fts = int(frow["n"] if frow else 0)
+        return {
+            "total": int(row["total"] or 0),
+            "active": int(row["active"] or 0),
+            "archived": int(row["archived"] or 0),
+            "pinned": int(row["pinned"] or 0),
+            "fts_rows": fts,
+        }
+
+    def record_purpose_usage(
+        self,
+        *,
+        group_id: str,
+        purpose_id: str,
+        turn_id: str = "",
+        result: str = "offered",
+        now: float | None = None,
+    ) -> None:
+        with self.connection:
+            self.connection.execute(
+                "INSERT INTO purpose_usage(group_id, purpose_id, used_at, turn_id, result) VALUES (?,?,?,?,?)",
+                (str(group_id), str(purpose_id), _now(now), str(turn_id), str(result)[:32]),
+            )
+
+    def purpose_stats(self, *, group_id: str = "") -> dict[str, Any]:
+        clause = " WHERE group_id = ?" if group_id else ""
+        params = (str(group_id),) if group_id else ()
+        rows = self.connection.execute(
+            "SELECT result, COUNT(*) AS n FROM purpose_usage" + clause + " GROUP BY result",
+            params,
+        ).fetchall()
+        return {"counts": {str(row["result"]): int(row["n"]) for row in rows}}
 
     def touch(self, card_id: str, *, now: float | None = None) -> dict[str, Any] | None:
         """Record a real prompt use without resetting the decay clock (D33)."""
@@ -796,12 +952,20 @@ def select_for_prompt(
     per_kind = {"fact": 2, "preference": 1, "episode": 1, "open_topic": 1, "purpose": 1}
     selected_kind: dict[str, int] = {}
     scored: list[tuple[float, dict[str, Any]]] = []
+    fts_ids = set()
+    try:
+        fts_ids = store.fts_match(scope=scope, query=query) if query else set()
+    except Exception:
+        fts_ids = set()
     for card in eligible:
         relationship = 0.5
         if relationship_scores:
             target = str(card.get("relationship_target") or "")
             relationship = _clamp(relationship_scores.get(target, 0.5), 0.5)
-        scored.append((score_card(card, now=now, relevance=_query_relevance(query, card), relationship=relationship), card))
+        relevance = _query_relevance(query, card)
+        if str(card.get("id") or "") in fts_ids:
+            relevance = min(1.0, relevance + 0.25)
+        scored.append((score_card(card, now=now, relevance=relevance, relationship=relationship), card))
     scored.sort(key=lambda item: item[0], reverse=True)
 
     selected: list[dict[str, Any]] = []

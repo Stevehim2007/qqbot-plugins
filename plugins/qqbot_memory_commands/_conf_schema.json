@@ -277,7 +277,17 @@
     "default": true
   },
   "cards_wrapup_every_turns": {
-    "description": "自动收尾间隔轮数",
+    "description": "完整收尾间隔轮数（默认 8 轮）",
+    "type": "int",
+    "default": 8,
+    "slider": {
+      "min": 2,
+      "max": 30,
+      "step": 1
+    }
+  },
+  "cards_phase_every_turns": {
+    "description": "阶段摘要间隔轮数（默认 6 轮）",
     "type": "int",
     "default": 6,
     "slider": {
@@ -290,5 +300,30 @@
     "description": "从收尾生成待办目的卡片",
     "type": "bool",
     "default": false
+  },
+  "cards_group_member_enabled": {
+    "description": "群内按发言人使用独立卡片 scope（可选第六 scope）",
+    "type": "bool",
+    "default": false
+  },
+  "cards_llm_aux_enabled": {
+    "description": "完整收尾时允许辅助模型生成阶段摘要（失败自动回退规则）",
+    "type": "bool",
+    "default": false
+  },
+  "cards_llm_daily_limit": {
+    "description": "辅助收尾每日调用上限",
+    "type": "int",
+    "default": 50
+  },
+  "cards_llm_circuit_errors": {
+    "description": "辅助收尾连续失败熔断阈值",
+    "type": "int",
+    "default": 3
+  },
+  "cards_llm_timeout_seconds": {
+    "description": "辅助收尾超时秒数",
+    "type": "int",
+    "default": 8
   }
 }

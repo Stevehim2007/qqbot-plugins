@@ -157,6 +157,7 @@ def preview(
     persona_id: str = "",
     actor_id: str = "",
     purpose_enabled: bool = False,
+    phase_hint: str = "",
 ) -> dict[str, Any]:
     """Return a deterministic wrap-up plan; no persistence."""
 
@@ -205,10 +206,78 @@ def preview(
         "group_id": str(group_id or ""),
         "persona_id": str(persona_id or ""),
         "actor_id": str(actor_id or ""),
-        "phase_summary": summary,
+        "phase_summary": _compact(phase_hint, MAX_PHASE_CHARS) if phase_hint else summary,
         "open_topic": open_topic,
         "cards": planned,
     }
+
+
+def phase_preview(
+    *,
+    conversation_id: str,
+    session_revision: int,
+    scope: str,
+    messages: Iterable[Any],
+    group_id: str = "",
+    persona_id: str = "",
+    actor_id: str = "",
+) -> dict[str, Any]:
+    """Lightweight six-turn phase state; does not create prompt cards."""
+
+    visible = list(messages)
+    return {
+        "conversation_id": str(conversation_id),
+        "session_revision": int(session_revision),
+        "scope": scope,
+        "group_id": str(group_id or ""),
+        "persona_id": str(persona_id or ""),
+        "actor_id": str(actor_id or ""),
+        "phase_summary": _user_phase(visible),
+        "open_topic": last_open_topic(visible),
+        "cards": [],
+        "kind": "phase",
+    }
+
+
+def apply_phase(store: cards.CardStore, plan: Mapping[str, Any], *, now: float | None = None) -> dict[str, Any]:
+    """Persist a phase update without creating duplicate episode cards."""
+
+    conversation_id = str(plan.get("conversation_id") or "").strip()
+    revision = int(plan.get("session_revision") or 0)
+    if not conversation_id:
+        raise cards.CardError("conversation_id 不能为空。")
+    previous = store.get_wrapup(conversation_id, revision)
+    if previous and previous.get("status") == "applied":
+        return {"applied": False, "reason": "already_applied", "wrapup": previous}
+    topic = str(plan.get("open_topic") or "")
+    store.put_session_state(
+        conversation_id=conversation_id,
+        session_revision=revision,
+        phase_summary=str(plan.get("phase_summary") or ""),
+        open_topics=[topic] if topic else [],
+        last_wrapup_revision=revision,
+        now=now,
+    )
+    record = store.put_wrapup(
+        conversation_id=conversation_id,
+        session_revision=revision,
+        status="applied",
+        payload=plan,
+        result={"kind": "phase"},
+        kind="phase",
+        trigger=str(plan.get("trigger") or "auto"),
+        now=now,
+    )
+    store.audit(
+        action="wrapup.phase",
+        target_type="conversation",
+        target_id=conversation_id,
+        scope=str(plan.get("scope") or ""),
+        after={"revision": revision},
+        reason=str(plan.get("trigger") or "auto"),
+        now=now,
+    )
+    return {"applied": True, "cards": [], "wrapup": record}
 
 
 def apply_plan(store: cards.CardStore, plan: Mapping[str, Any], *, now: float | None = None) -> dict[str, Any]:

@@ -15,7 +15,7 @@ from typing import Any
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 
-from . import cards, commands, contracts, memory_commands, wrapup
+from . import aux, cards, commands, contracts, memory_commands, wrapup
 from .backend import AstrBotBackend
 from .provider import MemoryCommandsProvider, cancel_pending_confirmation
 from .store import OperationStore
@@ -163,6 +163,12 @@ class MemoryCommandsPlugin(Star):
         self.card_store = cards.CardStore(card_path) if card_path != ":memory:" else None
         self._card_turns: dict[str, list[dict[str, str]]] = {}
         self._card_revisions: dict[str, int] = {}
+        self._card_phase_counts: dict[str, int] = {}
+        self._card_full_counts: dict[str, int] = {}
+        self._aux_guard = aux.AuxGuard(
+            daily_limit=int(self.config.get("cards_llm_daily_limit", 50) or 50),
+            circuit_errors=int(self.config.get("cards_llm_circuit_errors", 3) or 3),
+        )
         self.provider = MemoryCommandsProvider(
             self.backend,
             self.store,
@@ -235,7 +241,13 @@ class MemoryCommandsPlugin(Star):
             sender = str(getattr(event, "get_sender_id", lambda: "")() or "").strip()
             return f"user:{prefix}{sender}" if sender else ""
         group = str(getattr(event, "get_group_id", lambda: "")() or "").strip()
-        return f"group:{prefix}{group}" if group else ""
+        if not group:
+            return ""
+        if bool(self.config.get("cards_group_member_enabled", False)):
+            sender = str(getattr(event, "get_sender_id", lambda: "")() or "").strip()
+            if sender:
+                return f"group_member:{prefix}{group}:{sender}"
+        return f"group:{prefix}{group}"
 
     async def _cards_reply(self, event: AstrMessageEvent) -> str:
         if self.card_store is None:
@@ -286,6 +298,17 @@ class MemoryCommandsPlugin(Star):
                 persona_id=persona_id,
                 actor_id=actor_id,
             )
+            for card in selected:
+                if str(card.get("kind") or "") == "purpose":
+                    try:
+                        self.card_store.record_purpose_usage(
+                            group_id=scope,
+                            purpose_id=str(card.get("id") or ""),
+                            turn_id=str(event.get_extra("qqbot_core_reply_turn_id", "") or ""),
+                            result="offered",
+                        )
+                    except Exception:
+                        pass
             block = cards.render_prompt_block(selected, max_chars=max_chars)
             if not block:
                 return
@@ -329,7 +352,8 @@ class MemoryCommandsPlugin(Star):
         if not scope:
             return
         try:
-            every = max(2, min(30, int(self.config.get("cards_wrapup_every_turns", 6) or 6)))
+            every = max(2, min(30, int(self.config.get("cards_wrapup_every_turns", 8) or 8)))
+            phase_every = max(2, min(30, int(self.config.get("cards_phase_every_turns", 6) or 6)))
             text = str(getattr(event, "message_str", "") or "").strip()
             answer = str(
                 getattr(resp, "completion_text", None)
@@ -343,20 +367,43 @@ class MemoryCommandsPlugin(Star):
             if answer:
                 buffer.append({"role": "assistant", "content": answer})
             del buffer[:-12]
-            count = len([item for item in buffer if item.get("role") == "user"])
-            if count < every:
-                return
+            phase_count = int(self._card_phase_counts.get(scope, 0)) + 1
+            full_count = int(self._card_full_counts.get(scope, 0)) + 1
+            self._card_phase_counts[scope] = phase_count
+            self._card_full_counts[scope] = full_count
             revision = int(self._card_revisions.get(scope, 0)) + 1
-            self._card_revisions[scope] = revision
-            plan = wrapup.preview(
-                conversation_id=scope,
-                session_revision=revision,
-                scope=scope,
-                messages=buffer,
-                purpose_enabled=bool(self.config.get("cards_purpose_enabled", False)),
-            )
-            wrapup.apply_plan(self.card_store, plan)
-            self.card_store.archive_decayed(scope=scope)
+            if full_count >= every:
+                self._card_revisions[scope] = revision
+                self._card_full_counts[scope] = 0
+                phase_hint = ""
+                if bool(self.config.get("cards_llm_aux_enabled", False)) and self._aux_guard.allow():
+                    phase_hint = await aux.phase_summary(
+                        self.context,
+                        [str(item.get("content") or "") for item in buffer],
+                        timeout=float(self.config.get("cards_llm_timeout_seconds", 8) or 8),
+                    )
+                    self._aux_guard.record(bool(phase_hint))
+                plan = wrapup.preview(
+                    conversation_id=scope,
+                    session_revision=revision,
+                    scope=scope,
+                    messages=buffer,
+                    purpose_enabled=bool(self.config.get("cards_purpose_enabled", False)),
+                    phase_hint=phase_hint,
+                )
+                wrapup.apply_plan(self.card_store, plan)
+                self.card_store.archive_decayed(scope=scope)
+                self.card_store.sweep(scope=scope)
+            elif phase_count >= phase_every:
+                self._card_revisions[scope] = revision
+                self._card_phase_counts[scope] = 0
+                plan = wrapup.phase_preview(
+                    conversation_id=scope,
+                    session_revision=revision,
+                    scope=scope,
+                    messages=buffer,
+                )
+                wrapup.apply_phase(self.card_store, plan)
         except Exception:  # noqa: BLE001 - memory side effects must not break chat
             return
 
