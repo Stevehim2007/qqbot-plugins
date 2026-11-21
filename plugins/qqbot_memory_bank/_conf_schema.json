@@ -1,0 +1,10 @@
+{
+  "enabled": {"type": "bool", "default": true, "description": "启用知识记忆库"},
+  "auto_extract_enabled": {"type": "bool", "default": false, "description": "自动从对话中提取知识（每 N 轮一次辅助 AI 调用）"},
+  "aux_enabled": {"type": "bool", "default": true, "description": "优先用辅助 AI 提取；失败/关闭时用规则兜底"},
+  "extract_every_turns": {"type": "int", "default": 4, "description": "每多少条用户消息提取一次"},
+  "max_facts_per_extract": {"type": "int", "default": 5, "description": "每次最多提取几条事实"},
+  "max_entries": {"type": "int", "default": 2000, "description": "每个 scope 最多保存多少条"},
+  "search_limit": {"type": "int", "default": 5, "description": "memory_search 默认返回条数"},
+  "allow_forget": {"type": "bool", "default": true, "description": "允许模型调用 memory_forget"}
+}

@@ -1,4 +1,4 @@
-"""Final seven-plugin release contract tests."""
+"""Final twelve-plugin release contract tests."""
 
 from __future__ import annotations
 
@@ -24,6 +24,8 @@ FINAL_PLUGINS = {
     "qqbot_food",
     "qqbot_stickers",
     "qqbot_memory_commands",
+    "qqbot_expression_state",
+    "qqbot_memory_bank",
     "qqbot_fortune",
     "qqbot_weather",
     "qqbot_scheduler",

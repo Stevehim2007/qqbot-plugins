@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "registry_revision": "79f71e6452a514e4d3c4ed75c0342a382403c7b91ea98d69ba8de636cdc6820b",
+  "registry_revision": "43a4cf9be227008ba8999146453dddef1277212f3ed3e75c32373af7e152d39f",
   "plugins": {
     "qqbot_core_reply": {
       "participation.reply_probability": {
@@ -228,6 +228,7 @@
         "enum": []
       }
     },
+    "qqbot_memory_bank": {},
     "qqbot_fortune": {},
     "qqbot_weather": {},
     "qqbot_scheduler": {}

@@ -16,7 +16,7 @@ class MemoryWrapupTests(unittest.TestCase):
         self.store.close()
         self.temp.cleanup()
 
-    def test_preview_builds_summary_phase_and_open_topic(self):
+    def test_preview_skips_casual_chat_and_keeps_open_topic(self):
         plan = wrapup.preview(
             conversation_id="qq_official:GroupMessage:g1",
             session_revision=7,
@@ -27,12 +27,28 @@ class MemoryWrapupTests(unittest.TestCase):
                 {"role": "user", "content": "那家店怎么走？"},
             ],
         )
-        self.assertTrue(plan["cards"])
         kinds = {item["kind"] for item in plan["cards"]}
-        self.assertIn("episode", kinds)
+        self.assertNotIn("episode", kinds)
         self.assertIn("open_topic", kinds)
-        self.assertTrue(plan["phase_summary"])
+        self.assertEqual(plan["phase_summary"], "")
         self.assertEqual(plan["open_topic"], "那家店怎么走？")
+
+    def test_preview_keeps_only_durable_user_facts(self):
+        plan = wrapup.preview(
+            conversation_id="qq_official:GroupMessage:g2",
+            session_revision=1,
+            scope="group:g2",
+            messages=[
+                {"role": "user", "content": "今天食堂的饭好难吃，随便说说。"},
+                {"role": "assistant", "content": "哈哈，确实。"},
+                {"role": "user", "content": "记住我喜欢吃火锅，不吃香菜。"},
+            ],
+        )
+        episodes = [item for item in plan["cards"] if item["kind"] == "episode"]
+        self.assertTrue(episodes)
+        self.assertIn("火锅", episodes[0]["content"])
+        self.assertNotIn("助手", episodes[0]["content"])
+        self.assertNotIn("食堂", episodes[0]["content"])
 
     def test_apply_is_idempotent_and_archives_nothing(self):
         plan = wrapup.preview(

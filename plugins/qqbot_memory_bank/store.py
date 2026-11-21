@@ -1,0 +1,216 @@
+"""Small, deterministic knowledge memory store.
+
+This is deliberately separate from ``qqbot_memory_commands`` cards and from
+``persona_corpus``: entries are retrieved only when the model calls a tool.
+"""
+from __future__ import annotations
+
+import hashlib
+import os
+import re
+import sqlite3
+import time
+from pathlib import Path
+from typing import Any
+
+_SPACE_RE = re.compile(r"\s+")
+_NOISE_RE = re.compile(r"\[\[NO_REPLY\]\]|mqqapi://|https?://|ComponentType\.")
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]+")
+_WORD_RE = re.compile(r"[A-Za-z0-9_\-]{2,}")
+
+
+def _normalise(text: str) -> str:
+    return _SPACE_RE.sub(" ", str(text or "")).strip()
+
+
+def _hash(scope: str, persona_id: str, content: str) -> str:
+    raw = f"{scope}\n{persona_id}\n{_normalise(content).casefold()}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+
+
+def _tokens(text: str) -> set[str]:
+    value = str(text or "").casefold()
+    out = {w for w in _WORD_RE.findall(value)}
+    for run in _CJK_RE.findall(value):
+        if len(run) == 1:
+            out.add(run)
+        else:
+            out.update(run[i : i + 2] for i in range(len(run) - 1))
+    return {t for t in out if t}
+
+
+def clean_fact(text: str) -> str:
+    value = _normalise(text)
+    if any(marker in value for marker in ("[[NO_REPLY]]", "mqqapi://", "ComponentType.")):
+        return ""
+    value = re.sub(r"!?\[[^\]]*\]\([^)]*\)", "", value)
+    value = _SPACE_RE.sub(" ", value).strip(" ，,。；;")
+    if len(value) < 4 or len(value) > 200:
+        return ""
+    return value
+
+
+def heuristic_facts(text: str) -> list[str]:
+    """Conservative fallback used when the auxiliary model is unavailable."""
+    markers = re.compile(
+        r"我叫|我的名字|我喜欢|我不喜欢|我讨厌|我爱|我住在|我养|我每天|我通常|"
+        r"我习惯|记住|以后|下次|答应|计划|想要|希望|生日|过敏|工作|上班|上学"
+    )
+    out: list[str] = []
+    for sentence in re.split(r"[。！？!?；;\n]+", str(text or "")):
+        candidate = clean_fact(sentence)
+        if not candidate or candidate.endswith(("?", "？")):
+            continue
+        if markers.search(candidate):
+            candidate = re.sub(r"^(?:麻衣|衣衣|电子羊)[，,]\s*", "", candidate)
+            candidate = re.sub(r"^记住[:：]?\s*", "", candidate)
+            candidate = re.sub(r"^我", "用户", candidate)
+            candidate = normalise_fact_subject(candidate)
+            if candidate and candidate not in out:
+                out.append(candidate)
+        if len(out) >= 5:
+            break
+    return out
+
+
+def normalise_fact_subject(text: str) -> str:
+    """Make extracted facts stable third-person statements.
+
+    The auxiliary prompt asks for facts about the user, but models often
+    return a predicate-only phrase.  Prefixing a subject also lets the
+    exact-dedupe index merge the auxiliary copy with a model-written copy.
+    """
+    fact = clean_fact(text)
+    if not fact:
+        return ""
+    if not re.match(r"^(?:用户|我|他|她|对方|群友|我们|大家)", fact):
+        fact = "用户" + fact
+    return fact
+
+
+class KnowledgeStore:
+    def __init__(self, path: Path | str) -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._conn = sqlite3.connect(str(self.path), timeout=10)
+        self._conn.row_factory = sqlite3.Row
+        self._init()
+        self._relax_permissions()
+
+    def _init(self) -> None:
+        self._conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS knowledge_entry (
+              id TEXT PRIMARY KEY,
+              scope TEXT NOT NULL,
+              persona_id TEXT NOT NULL DEFAULT '',
+              content TEXT NOT NULL,
+              tags TEXT NOT NULL DEFAULT '',
+              source TEXT NOT NULL DEFAULT 'manual',
+              confidence REAL NOT NULL DEFAULT 1.0,
+              content_hash TEXT NOT NULL,
+              created_at REAL NOT NULL,
+              updated_at REAL NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS knowledge_hash
+              ON knowledge_entry(scope, persona_id, content_hash);
+            CREATE INDEX IF NOT EXISTS knowledge_scope
+              ON knowledge_entry(scope, persona_id, updated_at);
+            """
+        )
+        self._conn.commit()
+
+    def _relax_permissions(self) -> None:
+        try:
+            os.chmod(self.path.parent, 0o777)
+            for suffix in ("", "-wal", "-shm"):
+                p = Path(str(self.path) + suffix)
+                if p.exists():
+                    os.chmod(p, 0o666)
+        except OSError:
+            pass
+
+    def add(
+        self,
+        *,
+        scope: str,
+        content: str,
+        tags: str = "",
+        source: str = "manual",
+        confidence: float = 1.0,
+        persona_id: str = "",
+        max_entries: int = 2000,
+    ) -> dict[str, Any]:
+        fact = clean_fact(content)
+        if not fact:
+            return {"ok": False, "reason": "empty_or_noisy"}
+        scope = str(scope or "")[:200]
+        persona_id = str(persona_id or "")[:128]
+        if not scope:
+            return {"ok": False, "reason": "no_scope"}
+        now = time.time()
+        digest = _hash(scope, persona_id, fact)
+        row = self._conn.execute(
+            "SELECT id FROM knowledge_entry WHERE scope=? AND persona_id=? AND content_hash=?",
+            (scope, persona_id, digest),
+        ).fetchone()
+        if row:
+            self._conn.execute(
+                "UPDATE knowledge_entry SET updated_at=?, confidence=MAX(confidence, ?), tags=? WHERE id=?",
+                (now, float(confidence), str(tags or "")[:160], row["id"]),
+            )
+            self._conn.commit()
+            return {"ok": True, "id": row["id"], "duplicate": True, "content": fact}
+        count = self._conn.execute(
+            "SELECT COUNT(*) FROM knowledge_entry WHERE scope=? AND persona_id=?",
+            (scope, persona_id),
+        ).fetchone()[0]
+        if int(count) >= max(1, int(max_entries)):
+            return {"ok": False, "reason": "bank_full"}
+        entry_id = "kb-" + digest[:20]
+        self._conn.execute(
+            "INSERT INTO knowledge_entry(id, scope, persona_id, content, tags, source, confidence, content_hash, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (entry_id, scope, persona_id, fact, str(tags or "")[:160], str(source or "manual")[:24], float(confidence), digest, now, now),
+        )
+        self._conn.commit()
+        return {"ok": True, "id": entry_id, "duplicate": False, "content": fact}
+
+    def search(self, *, scope: str, query: str, persona_id: str = "", limit: int = 5) -> list[dict[str, Any]]:
+        scope = str(scope or "")[:200]
+        if not scope:
+            return []
+        rows = self._conn.execute(
+            "SELECT * FROM knowledge_entry WHERE scope=? AND (persona_id=? OR persona_id='') ORDER BY updated_at DESC LIMIT 300",
+            (scope, str(persona_id or "")[:128]),
+        ).fetchall()
+        terms = _tokens(query)
+        if not terms:
+            return [dict(r) for r in rows[: max(1, min(20, int(limit)))]]
+        scored: list[tuple[int, dict[str, Any]]] = []
+        for row in rows:
+            item = dict(row)
+            hay = (item["content"] + " " + item["tags"]).casefold()
+            score = sum(1 for term in terms if term in hay)
+            if score:
+                scored.append((score, item))
+        scored.sort(key=lambda pair: (-pair[0], -float(pair[1].get("updated_at") or 0)))
+        return [item for _, item in scored[: max(1, min(20, int(limit)))]]
+
+    def forget(self, *, scope: str, entry_id: str, persona_id: str = "") -> bool:
+        cur = self._conn.execute(
+            "DELETE FROM knowledge_entry WHERE id=? AND scope=? AND persona_id=?",
+            (str(entry_id or ""), str(scope or ""), str(persona_id or "")),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def stats(self, *, scope: str, persona_id: str = "") -> dict[str, Any]:
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS total FROM knowledge_entry WHERE scope=? AND (persona_id=? OR persona_id='')",
+            (str(scope or ""), str(persona_id or "")),
+        ).fetchone()
+        return {"scope": scope, "total": int(row["total"] if row else 0)}
+
+    def close(self) -> None:
+        self._conn.close()

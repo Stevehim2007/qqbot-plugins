@@ -22,6 +22,12 @@ _SPACE_RE = re.compile(r"\s+")
 _MENTION_RE = re.compile(r"@[^\s()]{1,64}\(\d{3,}\)")
 _MARKDOWN_RE = re.compile(r"!?\[[^\]]*\]\([^)]*\)")
 _BAD_MARKERS = ("[[NO_REPLY]]", "mqqapi://", "ComponentType.")
+_DURABLE_RE = re.compile(
+    r"我的名字|我叫|我喜欢|我不喜欢|我讨厌|我爱|我住在|我在.{0,12}(?:工作|上班|上学)|"
+    r"我养|我每天|我通常|我习惯|记住|以后|下次|答应|计划|想要|希望|生日|过敏|"
+    r"工作|上班|上学|住在"
+)
+_SENTENCE_RE = re.compile(r"[^。！？!?；;\n]+")
 
 
 def _clean_fragment(text: str) -> str:
@@ -60,7 +66,11 @@ def _compact(text: str, max_chars: int) -> str:
 
 
 def summarize_messages(messages: Iterable[Any], *, max_chars: int = MAX_SUMMARY_CHARS) -> str:
-    """Build a deterministic, bounded summary from user/assistant turns."""
+    """Legacy transcript formatter kept for diagnostics/backward tests.
+
+    New episode cards do not use this: raw multi-turn transcripts made memory
+    noisy.  ``durable_episode`` is the production writer.
+    """
 
     parts: list[str] = []
     for message in list(messages)[-12:]:
@@ -71,6 +81,53 @@ def summarize_messages(messages: Iterable[Any], *, max_chars: int = MAX_SUMMARY_
         if not text:
             continue
         parts.append(("用户：" if role == "user" else "助手：") + text)
+    return _compact("；".join(parts), max_chars)
+
+
+def durable_episode(messages: Iterable[Any], *, max_chars: int = MAX_SUMMARY_CHARS) -> str:
+    """Keep only explicit, durable user facts; never store raw chat transcripts.
+
+    Casual dialogue, assistant-only turns, questions, and transport noise are
+    intentionally dropped.  This is deliberately conservative: a missed
+    memory is cheaper than a polluted memory bank.
+    """
+
+    facts: list[str] = []
+    seen: set[str] = set()
+    for message in list(messages)[-30:]:
+        if _role(message) != "user":
+            continue
+        text = _clean_fragment(_content(message))
+        if not text:
+            continue
+        for sentence in _SENTENCE_RE.findall(text):
+            candidate = _compact(sentence, 120).strip(" ，,。；;")
+            if len(candidate) < 4 or candidate.endswith(("?", "？")):
+                continue
+            if not _DURABLE_RE.search(candidate):
+                continue
+            key = candidate.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            facts.append(candidate)
+            if len(facts) >= 3:
+                break
+        if len(facts) >= 3:
+            break
+    return _compact("；".join(facts), max_chars)
+
+
+def _user_phase(messages: Iterable[Any], *, max_chars: int = MAX_PHASE_CHARS) -> str:
+    """A short phase line with no assistant echo or transport noise."""
+
+    parts: list[str] = []
+    for message in list(messages)[-6:]:
+        if _role(message) != "user":
+            continue
+        text = _clean_fragment(_content(message))
+        if text:
+            parts.append(text)
     return _compact("；".join(parts), max_chars)
 
 
@@ -104,8 +161,8 @@ def preview(
     """Return a deterministic wrap-up plan; no persistence."""
 
     visible = list(messages)
-    summary = summarize_messages(visible)
-    phase = phase_summary(visible)
+    summary = durable_episode(visible)
+    phase = _user_phase(visible)
     open_topic = last_open_topic(visible)
     planned: list[dict[str, Any]] = []
     if summary:
@@ -116,17 +173,6 @@ def preview(
                 "title": "会话摘要",
                 "content": summary,
                 "importance": 0.45,
-                "confidence": 0.6,
-            }
-        )
-    if phase and phase != summary:
-        planned.append(
-            {
-                "kind": "episode",
-                "subtype": "phase_summary",
-                "title": "阶段摘要",
-                "content": phase,
-                "importance": 0.4,
                 "confidence": 0.6,
             }
         )
@@ -159,7 +205,7 @@ def preview(
         "group_id": str(group_id or ""),
         "persona_id": str(persona_id or ""),
         "actor_id": str(actor_id or ""),
-        "phase_summary": phase,
+        "phase_summary": summary,
         "open_topic": open_topic,
         "cards": planned,
     }
