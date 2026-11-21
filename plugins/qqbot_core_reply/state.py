@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -83,6 +84,7 @@ class RuntimeState:
         self.ambient_message_count: dict[str, int] = {}
         self.model_participation_counts: dict[str, int] = {}
         self.member_language_prefs: dict[str, dict[str, str]] = {}
+        self._language_prefs_path: Any = None
         self.last_song_group: dict[str, float] = {}
         self.last_song_user: dict[str, float] = {}
         self.turns: dict[str, TurnRecord] = {}
@@ -281,6 +283,47 @@ class RuntimeState:
             del items[:-limit]
         self.prune_history(self.clock())
 
+    def attach_language_prefs(self, path: Any) -> None:
+        """Load/persist per-member language preferences across restarts."""
+        from pathlib import Path
+
+        self._language_prefs_path = Path(path)
+        try:
+            raw = json.loads(self._language_prefs_path.read_text("utf-8"))
+        except (OSError, ValueError, TypeError):
+            return
+        if not isinstance(raw, dict):
+            return
+        clean: dict[str, dict[str, str]] = {}
+        for session, bucket in raw.items():
+            if not isinstance(bucket, dict):
+                continue
+            clean[str(session)] = {
+                str(key): str(value)
+                for key, value in bucket.items()
+                if value in {"zh", "en", "ja"}
+            }
+        self.member_language_prefs.update(clean)
+
+    def _persist_member_languages(self) -> None:
+        path = self._language_prefs_path
+        if path is None:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_name(path.name + ".tmp")
+            tmp.write_text(
+                json.dumps(self.member_language_prefs, ensure_ascii=False, sort_keys=True),
+                encoding="utf-8",
+            )
+            tmp.replace(path)
+            try:
+                path.chmod(0o600)
+            except OSError:
+                pass
+        except OSError:
+            pass
+
     def set_member_language(
         self, session_key: str, actor_key: str, language: str
     ) -> None:
@@ -289,6 +332,7 @@ class RuntimeState:
         self.member_language_prefs.setdefault(str(session_key), {})[
             str(actor_key)
         ] = str(language)
+        self._persist_member_languages()
 
     def member_language(
         self, session_key: str, actor_key: str = "", qq: str = ""

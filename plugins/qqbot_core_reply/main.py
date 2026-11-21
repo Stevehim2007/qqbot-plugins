@@ -228,6 +228,8 @@ class CoreReplyPlugin(Star):
         self.persona = PersonaService(
             context, self.config, self.state, logger, data_dir=data_dir
         )
+        if data_dir is not None:
+            self.state.attach_language_prefs(data_dir / "member_language_prefs.json")
         self.gateway = ModelGateway(context, self.config, self.state, self.persona)
         self.pipeline = ReplyPipeline(
             context,
