@@ -1209,14 +1209,24 @@ class ReplyPipeline:
         except Exception:
             event.set_extra("qqbot_core_reply_ambient_context_injected", False)
         try:
-            if event.get_extra(UNIFIED_PARTICIPATION_EXTRA) is True:
-                try:
-                    _persona_prompt, active_name, _persona_source = (
-                        self.persona.resolve_event_persona(event)
-                    )
-                except Exception:
-                    active_name = ""
+            if not self.is_private(event):
+                _persona_prompt, active_name, _persona_source = (
+                    self.persona.resolve_event_persona(event)
+                )
                 metadata = self.unified_metadata(event, active_name)
+                req.system_prompt = (
+                    str(getattr(req, "system_prompt", "") or "")
+                    + "\n\n" + metadata
+                    + "\n[回应规则] 本条消息的发送者是元数据里的“发送者”，"
+                    "“@对象”才是被 @ 的人。若消息要求“跟 @某人说某语言”，"
+                    "该语言只约束 @对象，不约束发送者；不要对发送者使用 @对象的语言。"
+                    "不要因为发送者说了“跟你/那我呢”就把别人的偏好套到自己或第三人身上。"
+                )
+                event.set_extra("qqbot_core_reply_metadata_injected", True)
+        except Exception:
+            logger.exception("qqbot_core_reply metadata injection failed")
+        try:
+            if event.get_extra(UNIFIED_PARTICIPATION_EXTRA) is True:
                 req.system_prompt = (
                     str(getattr(req, "system_prompt", "") or "")
                     + "\n\n" + metadata

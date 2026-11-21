@@ -571,6 +571,14 @@ class PersonaService:
             try:
                 session = str(getattr(event, "unified_msg_origin", "") or "")
                 recent = self.state.history_for(session)[-8:]
+                roster: dict[str, str] = {}
+                for _item in self.state.history_for(session)[-20:]:
+                    _qq = str(_item.get("qq") or "").strip()
+                    _display = str(
+                        _item.get("display_name") or _item.get("nickname") or ""
+                    ).strip()
+                    if _qq and _display:
+                        roster[_qq] = _display[:20]
                 lines: list[str] = []
                 for item in recent:
                     display = str(
@@ -578,6 +586,9 @@ class PersonaService:
                     )[:20]
                     actor = str(item.get("actor_hash") or "")[:4]
                     text = str(item.get("text") or "")[:100].replace("\n", " ")
+                    for _qq, _display in roster.items():
+                        text = text.replace(f"[At:{_qq}]", f"@{_display}")
+                        text = text.replace(f"[At:{_qq.lower()}]", f"@{_display}")
                     if not text:
                         continue
                     label = f"{display}#{actor}" if actor else display
