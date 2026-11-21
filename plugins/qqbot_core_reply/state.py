@@ -82,6 +82,7 @@ class RuntimeState:
         self.ambient_last_at: dict[str, float] = {}
         self.ambient_message_count: dict[str, int] = {}
         self.model_participation_counts: dict[str, int] = {}
+        self.member_language_prefs: dict[str, dict[str, str]] = {}
         self.last_song_group: dict[str, float] = {}
         self.last_song_user: dict[str, float] = {}
         self.turns: dict[str, TurnRecord] = {}
@@ -279,6 +280,25 @@ class RuntimeState:
         else:
             del items[:-limit]
         self.prune_history(self.clock())
+
+    def set_member_language(
+        self, session_key: str, actor_key: str, language: str
+    ) -> None:
+        if not session_key or not actor_key or not language:
+            return
+        self.member_language_prefs.setdefault(str(session_key), {})[
+            str(actor_key)
+        ] = str(language)
+
+    def member_language(
+        self, session_key: str, actor_key: str = "", qq: str = ""
+    ) -> str:
+        bucket = self.member_language_prefs.get(str(session_key), {})
+        if actor_key and bucket.get(str(actor_key)):
+            return str(bucket[str(actor_key)])
+        if qq and bucket.get(f"qq:{qq}"):
+            return str(bucket[f"qq:{qq}"])
+        return ""
 
     def claim_model_participation(self, session_key: str, limit: int) -> bool:
         """Return True when this group may spend one model participation call."""

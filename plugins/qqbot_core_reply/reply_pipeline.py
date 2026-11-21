@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import inspect
 import logging
+import re
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -299,6 +300,83 @@ class ReplyPipeline:
             role=str(getattr(event, "member_role", "") or ""),
         )
 
+    _LANGUAGE_LABELS = {
+        "中文": "zh",
+        "汉语": "zh",
+        "英文": "en",
+        "英语": "en",
+        "日文": "ja",
+        "日语": "ja",
+    }
+
+    def record_member_language_preferences(
+        self, event: Any, text: str, session_key: str
+    ) -> None:
+        """Remember explicit language requests per group member.
+
+        The model can only reliably attribute who a language preference belongs
+        to when the instruction and the member are available as structured
+        facts.  This parser is deliberately limited to explicit language
+        requests; it does not decide whether to reply or change favorability.
+        """
+        value = str(text or "")
+        if not value or not session_key:
+            return
+        language_re = r"(中文|汉语|英文|英语|日文|日语)"
+        self_match = re.search(
+            r"(?:跟我|和我|对我说|跟我说话)[^，。；,;\n]{0,8}?" + language_re,
+            value,
+        )
+        if self_match:
+            try:
+                qq = str(event.get_sender_id() or "").strip()
+            except Exception:
+                qq = ""
+            actor = self.persona.actor_hash(event)
+            key = actor or (f"qq:{qq}" if qq else "")
+            if key:
+                self.state.set_member_language(
+                    session_key, key, self._LANGUAGE_LABELS[self_match.group(1)]
+                )
+        at_targets: list[str] = []
+        try:
+            for component in self.components(event):
+                if self.is_component(component, "At"):
+                    qq = str(getattr(component, "qq", "") or "").strip()
+                    if qq:
+                        try:
+                            self_id = str(event.get_self_id() or "").strip()
+                        except Exception:
+                            self_id = ""
+                        if qq != self_id:
+                            at_targets.append(qq)
+        except Exception:
+            at_targets = []
+        if not at_targets:
+            return
+        target_matches = re.findall(
+            r"(?:跟|和|对)[^，。；,;\n]{0,24}?" + language_re,
+            value,
+        )
+        if not target_matches:
+            return
+        # The last clause is the one that follows the At target in
+        # "跟我说中文，跟 @X 说英语".  The first "跟" belongs to self.
+        target_qq = at_targets[0]
+        language = self._LANGUAGE_LABELS[target_matches[-1]]
+        target_actor = ""
+        try:
+            for item in reversed(self.state.history_for(session_key)):
+                if str(item.get("qq") or "") == target_qq:
+                    target_actor = str(item.get("actor_hash") or "")
+                    if target_actor:
+                        break
+        except Exception:
+            target_actor = ""
+        self.state.set_member_language(
+            session_key, target_actor or f"qq:{target_qq}", language
+        )
+
     def history_for(self, event: Any) -> list[dict[str, Any]]:
         if self.is_private(event):
             return []
@@ -589,6 +667,11 @@ class ReplyPipeline:
                 text,
                 has_image=has_image,
                 has_face=has_face,
+            )
+            self.record_member_language_preferences(
+                event,
+                text,
+                str(getattr(event, "unified_msg_origin", "") or ""),
             )
             mode = ""
             if not explicit and not is_private and participation_mode == "unified":
@@ -1223,6 +1306,24 @@ class ReplyPipeline:
                     "不要因为发送者说了“跟你/那我呢”就把别人的偏好套到自己或第三人身上。"
                 )
                 event.set_extra("qqbot_core_reply_metadata_injected", True)
+                try:
+                    _session = str(getattr(event, "unified_msg_origin", "") or "")
+                    _actor = self.persona.actor_hash(event)
+                    try:
+                        _qq = str(event.get_sender_id() or "").strip()
+                    except Exception:
+                        _qq = ""
+                    _lang = self.state.member_language(_session, _actor, _qq)
+                    if _lang:
+                        _labels = {"zh": "中文", "en": "英语", "ja": "日语"}
+                        req.system_prompt = (
+                            str(getattr(req, "system_prompt", "") or "")
+                            + "\n[成员语言偏好] 当前发送者偏好用"
+                            + _labels.get(_lang, _lang)
+                            + "回复；该偏好只属于当前发送者，不要套到其他人。"
+                        )
+                except Exception:
+                    logger.exception("qqbot_core_reply language preference injection failed")
         except Exception:
             logger.exception("qqbot_core_reply metadata injection failed")
         try:
