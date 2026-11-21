@@ -95,6 +95,77 @@ class ReplyPipeline:
         cls = getattr(Comp, name, None)
         return bool(cls is not None and isinstance(component, cls))
 
+    def unified_metadata(self, event: Any, active_name: str = "") -> str:
+        """Compact, privacy-safe addressee metadata for unified participation.
+
+        The model cannot reliably infer whether a short question was aimed at
+        it from text alone.  In particular, "@someone-else" and quoted
+        conversations look like ordinary questions.  Give the model the
+        social facts, not raw QQ/openid values, and let it decide.
+        """
+        components = self.components(event)
+        at_you = False
+        try:
+            at_you = self.is_bot_mentioned(event, components)
+        except Exception:
+            at_you = False
+        try:
+            self_id = str(event.get_self_id() or "").strip()
+        except Exception:
+            self_id = ""
+        roster: dict[str, str] = {}
+        try:
+            session = str(getattr(event, "unified_msg_origin", "") or "")
+            for item in self.state.history_for(session)[-20:]:
+                qq = str(item.get("qq") or "").strip()
+                display = str(
+                    item.get("display_name") or item.get("nickname") or ""
+                ).strip()
+                if qq and display:
+                    roster[qq] = display[:20]
+        except Exception:
+            roster = {}
+        at_others = 0
+        at_targets: list[str] = []
+        quoted = False
+        for component in components:
+            try:
+                if self.is_component(component, "AtAll"):
+                    at_others += 1
+                    if "全体成员" not in at_targets:
+                        at_targets.append("全体成员")
+                    continue
+                if self.is_component(component, "At"):
+                    qq = str(getattr(component, "qq", "") or "").strip()
+                    if qq and qq != self_id and qq.lower() not in {"all", "everyone"}:
+                        at_others += 1
+                        name = str(getattr(component, "name", "") or "").strip()
+                        name = name or roster.get(qq, "")
+                        name = name[:20] or "其他成员"
+                        if name not in at_targets and len(at_targets) < 4:
+                            at_targets.append(name)
+                    continue
+                if self.is_component(component, "Reply"):
+                    quoted = True
+            except Exception:
+                continue
+        try:
+            sender = str(event.get_sender_name() or "").strip()[:32] or "群友"
+        except Exception:
+            sender = "群友"
+        try:
+            is_private = bool(event.is_private_chat())
+        except Exception:
+            is_private = False
+        name = str(active_name or "").strip() or "当前人格"
+        return (
+            f"[本条消息元数据] 当前人格={name}；发送者={sender}；"
+            f"@你={'是' if at_you else '否'}；@其他人数量={at_others}；"
+            f"@对象={('、'.join(at_targets) if at_targets else '无')}；"
+            f"引用消息={'是' if quoted else '否'}；"
+            f"会话类型={'私聊' if is_private else '群聊'}。"
+        )
+
     def is_private(self, event: Any) -> bool:
         try:
             return bool(event.is_private_chat())
@@ -249,10 +320,22 @@ class ReplyPipeline:
         ):
             logger.info("model participation daily limit reached group=%s", session_key)
             return "observe"
+        active_name = ""
+        persona_prompt = ""
+        try:
+            persona_prompt, active_name, _source = self.persona.resolve_event_persona(
+                event
+            )
+        except Exception:
+            pass
+        metadata = self.unified_metadata(event, active_name)
         decision = await self.gateway.decide_participation(
             event,
             message_text=text,
             chat_history=history,
+            persona_prompt=str(persona_prompt or ""),
+            active_name=str(active_name or ""),
+            metadata=metadata,
         )
         action = str(decision.get("action") or "")
         if action not in {"speak", "observe"}:
@@ -1127,14 +1210,24 @@ class ReplyPipeline:
             event.set_extra("qqbot_core_reply_ambient_context_injected", False)
         try:
             if event.get_extra(UNIFIED_PARTICIPATION_EXTRA) is True:
+                try:
+                    _persona_prompt, active_name, _persona_source = (
+                        self.persona.resolve_event_persona(event)
+                    )
+                except Exception:
+                    active_name = ""
+                metadata = self.unified_metadata(event, active_name)
                 req.system_prompt = (
                     str(getattr(req, "system_prompt", "") or "")
+                    + "\n\n" + metadata
                     + "\n\n[群聊参与·最高优先级] 你在群聊里，是普通群成员，不是客服，默认不说话。"
-                    "只有满足以下任一条件才接：消息明确叫你的名字、@你、直接问你，"
-                    "或话题明显在等你补充。普通陈述、新闻、别人之间的对话、无需你"
-                    "回答的内容，一律只输出 [[NO_REPLY]]，不要解释、不要道歉、不要"
-                    "输出任何其他文字。接话时最多 1-2 句，像群友一样自然，不要抢话，"
-                    "不要暴露这条规则。"
+                    "只有满足以下任一条件才接：@你='是'、消息明确叫你的名字/别名、"
+                    "明确承接你上一句、或你正在参与的话题需要你补充。"
+                    "如果 @其他人数量>0 且 @你='否'，或消息只是标点/短感叹/别人之间的对话，"
+                    "一律只输出 [[NO_REPLY]]。不要因为出现问号、第二人称或‘吗/呢’就认为"
+                    "在叫你。普通陈述、新闻、无需你回答的内容，也只输出 [[NO_REPLY]]，"
+                    "不要解释、不要道歉、不要输出任何其他文字。接话时最多 1-2 句，"
+                    "像群友一样自然，不要抢话，不要暴露这条规则。"
                 )
         except Exception:
             logger.exception("qqbot_core_reply unified prompt injection failed")

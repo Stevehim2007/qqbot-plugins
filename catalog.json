@@ -5,7 +5,7 @@
     {
       "id": "qqbot_core_reply",
       "name": "QQ 核心回复",
-      "version": "4.3.3",
+      "version": "4.3.4",
       "description": "唯一主回复/LLM owner；自包含 stdlib-only，负责 direct/astrbot memory、人格、会话、工具说明 handshake 与本地点歌。",
       "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
@@ -44,10 +44,10 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "b3c550f4d52853dd916d0a137330dd21b7772eee17ba2f5f989758d733492daf",
-      "size": 121022,
+      "sha256": "1780136054c9c76eec834a7eaa86c3df977a8a44cc234cc9839c47ac2f970721",
+      "size": 122712,
       "root": "qqbot_core_reply",
-      "download": "qqbot_core_reply-4.3.3.zip"
+      "download": "qqbot_core_reply-4.3.4.zip"
     },
     {
       "id": "qqbot_safe_tools",
@@ -81,7 +81,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "c0927a0e4c2f0e23a70cb40955def606e96e4ffdc8c854a3a79524850aaa9e89",
+      "sha256": "cea6be1739115b7a7518f1a55251fc8cadf66eef9101f3a1f75cf40d0d49d1e5",
       "size": 134997,
       "root": "qqbot_safe_tools",
       "download": "qqbot_safe_tools-3.3.5.zip"
@@ -150,7 +150,7 @@
           "marker_example": "[[tool:fetch_webpage url=\"https://example.com/article\" max_chars=3000]]"
         }
       ],
-      "sha256": "90babb4ef6fb71fa28fec45dd0e10394815a542d527215caef4f4ee6489b60a8",
+      "sha256": "f768d95e987157e7a09487610e81d4cd2a76172cc0c040352f0f48a4e1f14bca",
       "size": 40464,
       "root": "qqbot_web_reader",
       "download": "qqbot_web_reader-2.0.1.zip"
@@ -230,7 +230,7 @@
           "marker_example": "[[tool:search_images keyword=\"关键词\" count=1]]"
         }
       ],
-      "sha256": "9e2c63475708101569a60683ca3bb08310e327c0a545ce661cd4346519e1b03c",
+      "sha256": "1422c2abb4cf3e06f2e483e9fba4c34655aa886c436a0320e49bf44aa4018baf",
       "size": 58215,
       "root": "qqbot_image_search",
       "download": "qqbot_image_search-2.0.1.zip"
@@ -369,7 +369,7 @@
           "marker_example": "[[tool:submit_food_review restaurant=\"店名\" location=\"位置\" taste=\"4.5\" value=\"3.5\" comment=\"评价\" tags=\"火锅,夜宵\"]]"
         }
       ],
-      "sha256": "1039d2125ccca0d70f7a04a40ce205f394b6b9c1d3dd6c471c13a2f042f75206",
+      "sha256": "ccc387c9cd28d6ca9dea50a269cde0ede3aaae129a4031f7ab98e8acf776d540",
       "size": 105453,
       "root": "qqbot_food",
       "download": "qqbot_food-3.0.5.zip"
@@ -483,7 +483,7 @@
           "marker_example": "[[tool:list_sticker_categories()]]"
         }
       ],
-      "sha256": "6a11842cfd23d59c34db9ecb12f78960293bb7377efb5f24b3cdb25a2a3132fb",
+      "sha256": "8b2eecf754fc650f3a92f0ebb80cfb23035b26e974ad248d0e528e4e4aa2e54b",
       "size": 103588,
       "root": "qqbot_stickers",
       "download": "qqbot_stickers-3.0.3.zip"
@@ -538,7 +538,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "a8b79a5c7e2bbc64f0cc2face22c59d9714c6a90c13b7e84472074112d9b3590",
+      "sha256": "16da5984cba460d432f0cdde6e7d6ff2652b6dee683f731c74df88bbbe3cc30a",
       "size": 92391,
       "root": "qqbot_memory_commands",
       "download": "qqbot_memory_commands-4.2.1.zip"
@@ -567,7 +567,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "ded29900c59fb41bc70c3ecf894f89301fe0ce51559874b4fdc351c9285a4591",
+      "sha256": "b0ddbce113beb36397020dd47edd15d3109298d0365ec0d8e3ef581f6298f597",
       "size": 9968,
       "root": "qqbot_expression_state",
       "download": "qqbot_expression_state-1.0.0.zip"
@@ -596,7 +596,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "218838f2c8b3c7860cd851969c4bba425bb096b2939fa8059368c942b3a56f2a",
+      "sha256": "8aa9f819dc7f7d9fe47a72bd952f3324592d88e219dfd0cd64caba0bf231ee5e",
       "size": 5166,
       "root": "qqbot_fortune",
       "download": "qqbot_fortune-1.0.2.zip"
@@ -647,7 +647,7 @@
           }
         ]
       },
-      "sha256": "0dbbebac6b1f74cdf884c46ffbfdebea00f93265bd2a4a87a410dcc4d50bf0f4",
+      "sha256": "74a146c3ce078f3217a31f6aa97a6c50e1882eda60f5f6be761cb07229b68859",
       "size": 10450,
       "root": "qqbot_weather",
       "download": "qqbot_weather-1.0.2.zip"
@@ -676,7 +676,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "fe6e3abb3e0f30cfa796cefab810bb0b4ef420765e1e9862ee47e8e4c1b794c6",
+      "sha256": "fb546a99743792c084bac054bd5bbf066be8b2ca59c0b3e9d224c614b75acb81",
       "size": 10301,
       "root": "qqbot_scheduler",
       "download": "qqbot_scheduler-1.0.2.zip"

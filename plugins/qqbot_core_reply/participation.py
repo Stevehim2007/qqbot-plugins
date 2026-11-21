@@ -80,10 +80,6 @@ class ParticipationPolicy:
         statements that are not addressed to the bot at all.  The model still
         decides whether to speak for questions/mentions/name calls.
         """
-        if not self.config.effective_bool(
-            "participation.unified_addressed_only", default=True
-        ):
-            return True
         text = str(message_text or "").strip()
         if not text:
             return False
@@ -106,6 +102,10 @@ class ParticipationPolicy:
         ]
         if any(name.casefold() in folded for name in blocked):
             return False
+        if not self.config.effective_bool(
+            "participation.unified_addressed_only", default=True
+        ):
+            return True
         named = any(name.casefold() in folded for name in names)
         if not named and self.config.effective_bool(
             "participation.unified_require_name", default=False

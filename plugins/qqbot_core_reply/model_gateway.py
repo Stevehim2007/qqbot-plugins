@@ -83,6 +83,9 @@ class ModelGateway:
         *,
         message_text: str,
         chat_history: list[dict[str, Any]] | None = None,
+        persona_prompt: str = "",
+        active_name: str = "",
+        metadata: str = "",
     ) -> dict[str, Any]:
         """Ask the model whether the bot should speak. Failures never raise."""
         provider_id = await self.current_provider_id(event)
@@ -91,21 +94,35 @@ class ModelGateway:
         history_lines: list[str] = []
         for item in (chat_history or [])[-8:]:
             name = str(item.get("display_name") or item.get("nickname") or "群友")[:24]
+            actor = str(item.get("actor_hash") or "")[:4]
+            label = f"{name}#{actor}" if actor else name
             text = str(item.get("text") or "")[:160].replace("\n", " ")
             if text:
-                history_lines.append(f"- {name}: {text}")
-        system_prompt = self.config.string("participation.model_prompt").strip() or (
-            "你是QQ群聊参与判定器。只判断当前机器人是否应该主动回复最后一条消息。"
-            "输出严格JSON，不要解释，不要markdown。"
+                history_lines.append(f"- [{label}] {text}")
+        name = str(active_name or "").strip() or "当前人格"
+        configured = self.config.string("participation.model_prompt").strip()
+        system_prompt = (
+            f"你是「{name}」本人在QQ群里的接话判断器，不是在回复消息。"
+            "你只决定这一刻要不要接话，输出严格JSON，不要解释、不要markdown。"
+            "默认 observe；只有 @你、明确叫你的名字/别名、明确承接你上一句、"
+            "或你正在参与的话题需要你补充时才 speak。"
+            "如果本条 @ 了别人、是别人之间的对话、只是标点/短感叹/语气词、"
+            "没有明确指向你，一律 observe。不要因为出现问号、第二人称、"
+            "‘吗/呢/怎么/为什么’就认为在叫你。不要为了礼貌而接话。"
         )
+        if configured:
+            system_prompt += "\n额外要求：" + configured[:600]
+        if persona_prompt:
+            system_prompt += "\n当前人格摘要（只用于判断边界和语气，不要照抄）：" + str(persona_prompt)[:900]
         prompt = "\n".join(
             [
                 "判断标准：",
-                "1. 只有消息确实需要机器人回应、接话、补充信息或值得参与时才 speak。",
-                "2. 普通闲聊、别人之间的对话、纯感叹、无需回应时 observe。",
-                "3. 不要因为被提到就默认 speak；@ 消息不走本判定。",
-                "4. 不要输出群号、QQ号、昵称或任何隐私。",
-                "最近消息：",
+                "1. 优先看本条元数据：@你=否 且 @其他人>0 → observe；纯标点/短感叹 → observe。",
+                "2. 看最近群聊说话人标签；不要把别人的话当成对你说的。",
+                "3. 只有消息确实需要你回应、接话、补充信息或值得参与时才 speak。",
+                "4. 不要输出群号、QQ号、openid 或任何隐私。",
+                metadata or "[本条消息元数据] 无",
+                "最近群聊：",
                 *(history_lines or ["- 无"]),
                 "最后一条消息：",
                 str(message_text or "")[:500],
