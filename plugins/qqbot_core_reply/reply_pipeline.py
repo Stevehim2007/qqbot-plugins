@@ -668,11 +668,6 @@ class ReplyPipeline:
                 has_image=has_image,
                 has_face=has_face,
             )
-            self.record_member_language_preferences(
-                event,
-                text,
-                str(getattr(event, "unified_msg_origin", "") or ""),
-            )
             mode = ""
             if not explicit and not is_private and participation_mode == "unified":
                 try:
@@ -1341,34 +1336,6 @@ class ReplyPipeline:
         except Exception:
             event.set_extra("qqbot_core_reply_safe_tools_injected", False)
             logger.exception("qqbot_core_reply llm hook failed")
-        # Keep the language constraint last: tool instructions and the
-        # participation prompt are long and otherwise drown it out.
-        try:
-            if not self.is_private(event):
-                _session = str(getattr(event, "unified_msg_origin", "") or "")
-                _actor = self.persona.actor_hash(event)
-                try:
-                    _qq = str(event.get_sender_id() or "").strip()
-                except Exception:
-                    _qq = ""
-                _lang = self.state.member_language(_session, _actor, _qq)
-                if _lang:
-                    _labels = {"zh": "中文", "en": "英语", "ja": "日语"}
-                    _label = _labels.get(_lang, _lang)
-                    req.system_prompt = (
-                        str(getattr(req, "system_prompt", "") or "")
-                        + "\n\n[语言偏好·最终约束] 当前发送者的语言偏好是"
-                        + _label
-                        + "。本条回复必须主要使用"
-                        + _label
-                        + "，除非你在引用原文；不要因为群聊上下文或其他人使用其他语言而切换。"
-                    )
-                    logger.info(
-                        "member language preference injected: session=%s actor=%s qq=%s lang=%s",
-                        _session, _actor, _qq, _lang,
-                    )
-        except Exception:
-            logger.exception("qqbot_core_reply language preference injection failed")
 
     def release_memory_turn_after_send(self, event: Any) -> None:
         """Release a memory-mode turn after the response is actually sent.
