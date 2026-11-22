@@ -38,6 +38,14 @@ class KnowledgeStoreTests(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertIn("第3次", rows[0]["content"])
 
+    def test_digest_never_leaks_into_fact_search(self):
+        self.store.add_digest(scope="group:onebot:1", persona_id="p1", content="群里在聊新生赛")
+        self.store.add(scope="group:onebot:1", content="用户讨厌被叫奶龙", actor_hash="a", entry_kind="ai")
+        rows = self.store.search(scope="group:onebot:1", query="新生赛", persona_id="p1", actor_hash="a")
+        self.assertEqual(rows, [])
+        facts = self.store.search(scope="group:onebot:1", query="奶龙", persona_id="p1", actor_hash="a")
+        self.assertEqual(len(facts), 1)
+
     def test_digest_is_scoped_per_group_and_persona(self):
         self.store.add_digest(scope="group:onebot:1", persona_id="p1", content="一群在聊比赛")
         self.assertEqual(

@@ -350,7 +350,8 @@ class KnowledgeStore:
             return []
         rows = self._conn.execute(
             "SELECT * FROM knowledge_entry WHERE scope=? AND (persona_id=? OR persona_id='') "
-            "AND (actor_hash=? OR actor_hash='') ORDER BY updated_at DESC LIMIT 300",
+            "AND (actor_hash=? OR actor_hash='') AND entry_kind!='digest' "
+            "ORDER BY updated_at DESC LIMIT 300",
             (scope, str(persona_id or "")[:128], str(actor_hash or "")[:64]),
         ).fetchall()
         terms = _tokens(query)

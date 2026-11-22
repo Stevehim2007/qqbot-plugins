@@ -24,7 +24,7 @@ except ImportError:  # AstrBot loads plugin modules as top-level
     import store as bank_store  # type: ignore[no-redef]
 
 PLUGIN_NAME = "qqbot_memory_bank"
-PLUGIN_VERSION = "0.7.0"
+PLUGIN_VERSION = "0.7.1"
 DEFAULTS = {
     "enabled": True,
     "digest_enabled": True,
