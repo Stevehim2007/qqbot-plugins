@@ -17,6 +17,7 @@ _SPACE_RE = re.compile(r"\s+")
 _NOISE_RE = re.compile(r"\[\[NO_REPLY\]\]|mqqapi://|https?://|ComponentType\.")
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]+")
 _WORD_RE = re.compile(r"[A-Za-z0-9_\-]{2,}")
+MEMORY_LAYERS = ("persona", "group")
 
 
 def _normalise(text: str) -> str:
@@ -159,6 +160,27 @@ class KnowledgeStore:
               ON knowledge_doc(scope, persona_id, updated_at);
             """
         )
+        self._conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS memory_layer (
+              id TEXT PRIMARY KEY,
+              layer TEXT NOT NULL,
+              owner_id TEXT NOT NULL,
+              scope TEXT NOT NULL DEFAULT '',
+              title TEXT NOT NULL DEFAULT '',
+              content TEXT NOT NULL,
+              tags TEXT NOT NULL DEFAULT '',
+              priority INTEGER NOT NULL DEFAULT 0,
+              content_hash TEXT NOT NULL,
+              created_at REAL NOT NULL,
+              updated_at REAL NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS memory_layer_hash
+              ON memory_layer(layer, owner_id, content_hash);
+            CREATE INDEX IF NOT EXISTS memory_layer_owner
+              ON memory_layer(layer, owner_id, priority DESC, updated_at DESC);
+            """
+        )
         self._migrate_curated_docs()
         self._conn.commit()
 
@@ -298,6 +320,105 @@ class KnowledgeStore:
             (str(scope or ""), str(persona_id or ""), str(actor_hash or "")[:64]),
         ).fetchone()
         return {"scope": scope, "total": int(row["total"] if row else 0)}
+
+    # ------------------------------------------------------------------
+    # Core persona / group memory.  These are small, always-injected
+    # memories, distinct from retrieved documents and per-user AI facts.
+    # ------------------------------------------------------------------
+    def add_layer(
+        self,
+        *,
+        layer: str,
+        owner_id: str,
+        content: str,
+        title: str = "",
+        tags: str = "",
+        priority: int = 0,
+        max_entries: int = 200,
+    ) -> dict[str, Any]:
+        layer = str(layer or "").strip().lower()
+        owner_id = str(owner_id or "").strip()[:200]
+        if layer not in MEMORY_LAYERS:
+            return {"ok": False, "reason": "invalid_layer"}
+        if not owner_id:
+            return {"ok": False, "reason": "owner_required"}
+        text = _normalise(content)
+        if len(text) < 2:
+            return {"ok": False, "reason": "empty"}
+        if len(text) > 1200:
+            return {"ok": False, "reason": "too_long"}
+        title = _normalise(title)[:120]
+        tags = _normalise(tags)[:160]
+        digest = hashlib.sha256(
+            f"{layer}\n{owner_id}\n{text.casefold()}".encode("utf-8")
+        ).hexdigest()[:32]
+        now = time.time()
+        row = self._conn.execute(
+            "SELECT id FROM memory_layer WHERE layer=? AND owner_id=? AND content_hash=?",
+            (layer, owner_id, digest),
+        ).fetchone()
+        if row:
+            self._conn.execute(
+                "UPDATE memory_layer SET title=?, content=?, tags=?, priority=?, updated_at=? WHERE id=?",
+                (title, text, tags, int(priority), now, row["id"]),
+            )
+            self._conn.commit()
+            return {"ok": True, "id": row["id"], "duplicate": True}
+        count = self._conn.execute(
+            "SELECT COUNT(*) FROM memory_layer WHERE layer=? AND owner_id=?",
+            (layer, owner_id),
+        ).fetchone()[0]
+        if int(count) >= max(1, int(max_entries)):
+            return {"ok": False, "reason": "layer_full"}
+        layer_id = "ml-" + digest[:20]
+        self._conn.execute(
+            "INSERT INTO memory_layer(id, layer, owner_id, scope, title, content, tags, priority, content_hash, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (layer_id, layer, owner_id, owner_id if layer == "group" else "", title, text, tags, int(priority), digest, now, now),
+        )
+        self._conn.commit()
+        return {"ok": True, "id": layer_id, "duplicate": False}
+
+    def list_layers(self, *, layer: str, owner_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        layer = str(layer or "").strip().lower()
+        owner_id = str(owner_id or "").strip()[:200]
+        if layer not in MEMORY_LAYERS or not owner_id:
+            return []
+        rows = self._conn.execute(
+            "SELECT * FROM memory_layer WHERE layer=? AND owner_id=? "
+            "ORDER BY priority DESC, updated_at DESC LIMIT ?",
+            (layer, owner_id, max(1, min(500, int(limit)))),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def delete_layer(self, *, layer: str, owner_id: str, layer_id: str) -> bool:
+        layer = str(layer or "").strip().lower()
+        owner_id = str(owner_id or "").strip()[:200]
+        if layer not in MEMORY_LAYERS:
+            return False
+        cur = self._conn.execute(
+            "DELETE FROM memory_layer WHERE id=? AND layer=? AND owner_id=?",
+            (str(layer_id or ""), layer, owner_id),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def layers_for_prompt(
+        self,
+        *,
+        persona_id: str = "",
+        scope: str = "",
+        limit: int = 6,
+    ) -> list[dict[str, Any]]:
+        """Return persona memory followed by group memory, priority first."""
+        out: list[dict[str, Any]] = []
+        for layer, owner in (("persona", str(persona_id or "")), ("group", str(scope or ""))):
+            if not owner:
+                continue
+            out.extend(
+                self.list_layers(layer=layer, owner_id=owner, limit=limit)
+            )
+        return out
 
     # ------------------------------------------------------------------
     # User-imported knowledge documents.  These are deliberately a separate

@@ -77,6 +77,37 @@ class KnowledgeStoreTests(unittest.TestCase):
         self.assertEqual(store.normalise_fact_subject("讨厌下雨天"), "用户讨厌下雨天")
         self.assertEqual(store.normalise_fact_subject("用户喜欢猫"), "用户喜欢猫")
 
+    def test_memory_layer_crud_and_isolation(self):
+        first = self.store.add_layer(
+            layer="persona", owner_id="p1", title="身份", content="衣衣是电子羊的群人格", tags="设定"
+        )
+        duplicate = self.store.add_layer(
+            layer="persona", owner_id="p1", content="衣衣是电子羊的群人格", priority=5
+        )
+        self.assertTrue(first["ok"])
+        self.assertTrue(duplicate["duplicate"])
+        rows = self.store.list_layers(layer="persona", owner_id="p1")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["priority"], 5)
+        self.assertEqual(self.store.list_layers(layer="persona", owner_id="p2"), [])
+        self.assertTrue(
+            self.store.add_layer(
+                layer="group", owner_id="group:onebot:1", content="群规：禁止广告"
+            )["ok"]
+        )
+        self.assertEqual(len(self.store.list_layers(layer="group", owner_id="group:onebot:1")), 1)
+        self.assertTrue(
+            self.store.delete_layer(layer="persona", owner_id="p1", layer_id=first["id"])
+        )
+        self.assertEqual(self.store.list_layers(layer="persona", owner_id="p1"), [])
+
+    def test_memory_layers_for_prompt_order(self):
+        self.store.add_layer(layer="persona", owner_id="p1", content="人格记忆", priority=0)
+        self.store.add_layer(layer="group", owner_id="group:onebot:1", content="群记忆", priority=9)
+        rows = self.store.layers_for_prompt(persona_id="p1", scope="group:onebot:1")
+        self.assertEqual([r["layer"] for r in rows], ["persona", "group"])
+        self.assertEqual(rows[1]["content"], "群记忆")
+
     def test_heuristic_fallback(self):
         facts = store.heuristic_facts("今天天气不错。记住我喜欢吃火锅，不吃香菜。")
         self.assertIn("用户喜欢吃火锅，不吃香菜", facts)

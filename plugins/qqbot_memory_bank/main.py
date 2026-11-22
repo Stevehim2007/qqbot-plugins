@@ -30,6 +30,12 @@ DEFAULTS = {
     "search_limit": 5,
     "knowledge_search_limit": 3,
     "allow_forget": True,
+    "auto_recall_enabled": True,
+    "auto_recall_top_k": 3,
+    "auto_recall_max_chars": 1200,
+    "auto_recall_personal_enabled": True,
+    "memory_layer_max_items": 6,
+    "memory_layer_max_chars": 600,
 }
 
 
@@ -279,6 +285,90 @@ class MemoryBankPlugin(Star):
             entry_id=str(entry_id or ""),
         )
         return "已删除。" if ok else "没有找到可删除的记忆。"
+
+    # ------------------------------------------------------------------
+    # Automatic recall: small core memories + retrieved documents.
+    # ------------------------------------------------------------------
+    @filter.on_llm_request()
+    async def inject_memory_context(self, event: AstrMessageEvent, req: Any) -> None:
+        if not self._enabled() or not bool(self._cfg("auto_recall_enabled", True)):
+            return
+        try:
+            query = str(getattr(event, "message_str", "") or "").strip()
+            if len(query) < 4 or query.startswith(("/", "[[", "【")):
+                return
+            store = self._get_store()
+            scope = event_scope(event)
+            persona_id = event_persona(event) or "default"
+            max_items = max(1, min(20, int(self._cfg("memory_layer_max_items", 6))))
+            max_layer_chars = max(160, min(2400, int(self._cfg("memory_layer_max_chars", 600))))
+            max_total = max(400, min(6000, int(self._cfg("auto_recall_max_chars", 1200))))
+            sections: list[str] = []
+            used = 0
+
+            def add_section(label: str, lines: list[str]) -> bool:
+                nonlocal used
+                if not lines:
+                    return False
+                body = "\n".join(lines)
+                remaining = max_total - used
+                if remaining <= 0:
+                    return False
+                if len(body) > remaining:
+                    body = body[: max(0, remaining - 1)].rstrip() + "…"
+                block = f"[{label}]\n{body}"
+                sections.append(block)
+                used += len(block)
+                return True
+
+            rows = store.layers_for_prompt(persona_id=persona_id, scope=scope, limit=max_items)
+            for layer, label in (("persona", "人格记忆"), ("group", "群记忆")):
+                lines: list[str] = []
+                for row in [item for item in rows if item.get("layer") == layer]:
+                    text = str(row.get("content") or "").strip()
+                    if not text:
+                        continue
+                    if row.get("title"):
+                        text = f"{row['title']}：{text}"
+                    lines.append(f"- {text[:400]}")
+                    if len("\n".join(lines)) >= max_layer_chars:
+                        break
+                add_section(label, lines)
+
+            top_k = max(1, min(8, int(self._cfg("auto_recall_top_k", 3))))
+            docs = store.search_docs(scope=scope, persona_id=persona_id, query=query, limit=top_k)
+            doc_lines: list[str] = []
+            for row in docs:
+                title = f"{row.get('title')}：" if row.get("title") else ""
+                doc_lines.append(f"- {title}{str(row.get('content') or '')[:420]}")
+            add_section("共享知识库参考", doc_lines)
+
+            personal_facts = 0
+            if bool(self._cfg("auto_recall_personal_enabled", True)):
+                actor_hash, _actor_label = event_actor(event)
+                facts = store.search(
+                    scope=scope,
+                    persona_id=persona_id,
+                    actor_hash=actor_hash,
+                    query=query,
+                    limit=3,
+                )
+                add_section("个人记忆", [f"- {str(row.get('content') or '')[:300]}" for row in facts])
+                personal_facts = len(facts)
+
+            if sections:
+                prompt = str(getattr(req, "system_prompt", "") or "")
+                req.system_prompt = prompt + "\n\n" + "\n\n".join(sections)
+                event.set_extra("qqbot_memory_bank_auto_recall", True)
+                logger.info(
+                    "memory auto recall: layers=%d docs=%d facts=%d chars=%d",
+                    sum(1 for _ in rows),
+                    len(docs),
+                    personal_facts,
+                    len(req.system_prompt) - len(prompt),
+                )
+        except Exception:
+            logger.exception("qqbot_memory_bank auto recall failed")
 
     # ------------------------------------------------------------------
     # Optional automatic extraction.  Auxiliary LLM first, deterministic

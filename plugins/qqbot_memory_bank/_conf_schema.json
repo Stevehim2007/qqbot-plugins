@@ -1,11 +1,77 @@
 {
-  "enabled": {"type": "bool", "default": true, "description": "启用知识库与 AI 记忆"},
-  "auto_extract_enabled": {"type": "bool", "default": false, "description": "自动从对话中提取 AI 记忆（不会写入用户导入知识库）"},
-  "aux_enabled": {"type": "bool", "default": true, "description": "优先用辅助 AI 提取；失败/关闭时用规则兜底"},
-  "extract_every_turns": {"type": "int", "default": 4, "description": "每多少条用户消息提取一次"},
-  "max_facts_per_extract": {"type": "int", "default": 5, "description": "每次最多提取几条事实"},
-  "max_entries": {"type": "int", "default": 2000, "description": "每个 scope 最多保存多少条"},
-  "search_limit": {"type": "int", "default": 5, "description": "memory_search（AI 记忆）默认返回条数"},
-  "knowledge_search_limit": {"type": "int", "default": 3, "description": "knowledge_search（用户导入知识库）默认返回条数"},
-  "allow_forget": {"type": "bool", "default": true, "description": "允许模型调用 memory_forget"}
+  "enabled": {
+    "type": "bool",
+    "default": true,
+    "description": "启用知识库与 AI 记忆"
+  },
+  "auto_extract_enabled": {
+    "type": "bool",
+    "default": false,
+    "description": "自动从对话中提取 AI 记忆（不会写入用户导入知识库）"
+  },
+  "aux_enabled": {
+    "type": "bool",
+    "default": true,
+    "description": "优先用辅助 AI 提取；失败/关闭时用规则兜底"
+  },
+  "extract_every_turns": {
+    "type": "int",
+    "default": 4,
+    "description": "每多少条用户消息提取一次"
+  },
+  "max_facts_per_extract": {
+    "type": "int",
+    "default": 5,
+    "description": "每次最多提取几条事实"
+  },
+  "max_entries": {
+    "type": "int",
+    "default": 2000,
+    "description": "每个 scope 最多保存多少条"
+  },
+  "search_limit": {
+    "type": "int",
+    "default": 5,
+    "description": "memory_search（AI 记忆）默认返回条数"
+  },
+  "knowledge_search_limit": {
+    "type": "int",
+    "default": 3,
+    "description": "knowledge_search（用户导入知识库）默认返回条数"
+  },
+  "allow_forget": {
+    "type": "bool",
+    "default": true,
+    "description": "允许模型调用 memory_forget"
+  },
+  "auto_recall_enabled": {
+    "type": "bool",
+    "default": true,
+    "description": "每轮自动召回人格/群记忆、共享知识库和个人记忆（关闭后只能模型调用工具）"
+  },
+  "auto_recall_top_k": {
+    "type": "int",
+    "default": 3,
+    "description": "共享知识库每轮自动召回的条数"
+  },
+  "auto_recall_max_chars": {
+    "type": "int",
+    "default": 1200,
+    "description": "自动召回注入的总字符预算"
+  },
+  "auto_recall_personal_enabled": {
+    "type": "bool",
+    "default": true,
+    "description": "自动召回当前用户的个人 AI 记忆"
+  },
+  "memory_layer_max_items": {
+    "type": "int",
+    "default": 6,
+    "description": "人格/群核心记忆每层最多注入条数"
+  },
+  "memory_layer_max_chars": {
+    "type": "int",
+    "default": 600,
+    "description": "人格/群核心记忆每层最多字符数"
+  }
 }
