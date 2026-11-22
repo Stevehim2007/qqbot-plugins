@@ -23,6 +23,14 @@ except ImportError:  # test harness
     from songs import SONG_SUFFIXES, list_song_files
     from contracts import ContractResponse
 
+SONG_DISABLED_TEXT = "本地点歌功能当前未启用。"
+SONG_EMPTY_TEXT = "本地点歌目录还没有音频文件。请把授权的 mp3/wav 放进 plugins/qqbot_core_reply/songs/ 后再试。"
+SONG_TOO_LARGE_TEXT = "本地音频超过大小限制，管理员可调整 song_max_file_bytes。"
+SONG_NOT_FOUND_TEXT = "没有找到匹配的本地歌曲，换个关键词试试吧。"
+SONG_ERROR_TEXT = "本地音频构造失败，请检查文件格式或让管理员查看日志。"
+SONG_COOLDOWN_TEXT = "点歌冷却中，请约 {seconds} 秒后再试。"
+SONG_SUCCESS_PREFIX = "🎵 本地歌曲：{name}"
+
 
 @dataclass
 class CommandReply:
@@ -374,20 +382,18 @@ class CommandService:
     # ------------------------------------------------------------------
     async def song_reply(self, event: Any) -> CommandReply:
         if not self.config.bool("song_enabled", True):
-            return CommandReply(text=self.config.string("song_disabled_reply", "本地点歌功能当前未启用。"))
+            return CommandReply(text=SONG_DISABLED_TEXT)
         keyword = self._song_keyword(event)
         song_files, oversized = self._list_songs()
         if not song_files:
             return CommandReply(
-                text=self.config.string(
-                    "song_too_large_reply" if oversized else "song_empty_reply"
-                )
+                text=SONG_TOO_LARGE_TEXT if oversized else SONG_EMPTY_TEXT
             )
         if keyword:
             folded = keyword.casefold()
             matched = [path for path in song_files if folded in path.name.casefold()]
             if not matched:
-                return CommandReply(text=self.config.string("song_not_found_reply"))
+                return CommandReply(text=SONG_NOT_FOUND_TEXT)
             song_files = matched
         session_key = str(getattr(event, "unified_msg_origin", "") or "")
         try:
@@ -401,7 +407,7 @@ class CommandService:
             float(self.config.int("song_user_cooldown_seconds", 0)),
         )
         if remaining > 0:
-            template = self.config.string("song_cooldown_reply")
+            template = SONG_COOLDOWN_TEXT
             try:
                 text = template.format(seconds=remaining)
             except (KeyError, ValueError):
@@ -420,8 +426,8 @@ class CommandService:
             except Exception:
                 record = None
         if record is None:
-            return CommandReply(text=self.config.string("song_error_reply"))
-        prefix_template = self.config.string("song_success_prefix", "🎵 本地歌曲：{name}")
+            return CommandReply(text=SONG_ERROR_TEXT)
+        prefix_template = SONG_SUCCESS_PREFIX
         try:
             prefix = prefix_template.format(name=chosen.stem)
         except (KeyError, ValueError):

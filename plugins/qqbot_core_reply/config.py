@@ -152,16 +152,6 @@ DEFAULTS: dict[str, Any] = {
     "song_group_cooldown_seconds": 15,
     "song_user_cooldown_seconds": 10,
     "song_max_file_bytes": 20_000_000,
-    "song_success_prefix": "🎵 本地歌曲：{name}",
-    "song_disabled_reply": "本地点歌功能当前未启用。",
-    "song_empty_reply": (
-        "本地点歌目录还没有音频文件。请把授权的 mp3/wav 放进 "
-        "plugins/qqbot_core_reply/songs/ 后再试。"
-    ),
-    "song_not_found_reply": "没有找到匹配的本地歌曲，换个关键词试试吧。",
-    "song_too_large_reply": "本地音频超过大小限制，管理员可调整 song_max_file_bytes。",
-    "song_error_reply": "本地音频构造失败，请检查文件格式或让管理员查看日志。",
-    "song_cooldown_reply": "点歌冷却中，请约 {seconds} 秒后再试。",
 }
 
 
