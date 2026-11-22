@@ -71,6 +71,7 @@ class ParamSpec:
     legacy_key: str = ""
     system_managed: bool = False
     source: str = "manual"
+    description: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,55 +101,55 @@ def _p(kind: str, **kwargs: Any) -> ParamSpec:
 # make a parameter writable.
 PLUGIN_PARAM_SPECS: dict[str, dict[str, ParamSpec]] = {
     "qqbot_core_reply": {
-        "participation.reply_probability": _p("float", minimum=0.0, maximum=1.0, default=0.12, config_key="participation.group_probability", legacy_key="reply_probability"),
-        "participation.mode": _p("enum", enum=("probability", "model", "unified"), default="probability", config_key="participation.mode"),
-        "participation.model_confidence": _p("float", minimum=0.0, maximum=1.0, default=0.6, config_key="participation.model_confidence"),
-        "participation.unified_require_name": _p("bool", default=False, config_key="participation.unified_require_name"),
-        "participation.unified_names": _p("list_str", max_chars=32, default=(), config_key="participation.unified_names"),
-        "participation.group_mention_only": _p("bool", default=False, config_key="participation.group_mention_only"),
-        "participation.timezone": _p("str", max_chars=64, default="Asia/Shanghai", config_key="participation.timezone"),
-        "context.max_chars": _p("int", minimum=500, maximum=8000, default=2000, config_key="max_input_chars"),
-        "persona.profile_id": _p("str", max_chars=64, default=""),
-        "help_command_enabled": _p("bool", default=True, config_key="help_command_enabled"),
+        "participation.reply_probability": _p("float", minimum=0.0, maximum=1.0, default=0.12, config_key="participation.group_probability", legacy_key="reply_probability", description="非 @ 群消息参与回复的概率，越大越爱插话"),
+        "participation.mode": _p("enum", enum=("probability", "model", "unified"), default="probability", config_key="participation.mode", description="参与模式：probability 按概率插话；model 让模型判断；unified 按统一规则判断"),
+        "participation.model_confidence": _p("float", minimum=0.0, maximum=1.0, default=0.6, config_key="participation.model_confidence", description="model 模式下模型判断的置信度门槛，越高越保守"),
+        "participation.unified_require_name": _p("bool", default=False, config_key="participation.unified_require_name", description="unified 模式下是否必须叫出机器人名字"),
+        "participation.unified_names": _p("list_str", max_chars=32, default=(), config_key="participation.unified_names", description="unified 模式下视为在叫机器人的名字"),
+        "participation.group_mention_only": _p("bool", default=False, config_key="participation.group_mention_only", description="群消息进 AI 的开关：只处理真实 @ 机器人的群消息"),
+        "participation.timezone": _p("str", max_chars=64, default="Asia/Shanghai", config_key="participation.timezone", description="时间相关提示使用的时区"),
+        "context.max_chars": _p("int", minimum=500, maximum=8000, default=2000, config_key="max_input_chars", description="送入模型的历史上下文字符上限"),
+        "persona.profile_id": _p("str", max_chars=64, default="", description="该群使用的提示词人格 ID，留空用默认"),
+        "help_command_enabled": _p("bool", default=True, config_key="help_command_enabled", description="是否允许 AstrBot 内置 /help 命令"),
     },
     "qqbot_safe_tools": {
-        "tool_allowlist": _p("list_str", max_chars=64, group_overridable=False, sensitive=True),
-        "tool_cooldown_seconds": _p("int", minimum=0, maximum=3600, default=10),
-        "require_confirm": _p("bool", group_overridable=False, default=True),
+        "tool_allowlist": _p("list_str", max_chars=64, group_overridable=False, sensitive=True, description="允许模型调用的工具白名单（仅 Studio 可改）"),
+        "tool_cooldown_seconds": _p("int", minimum=0, maximum=3600, default=10, description="同一工具两次调用的最小间隔秒数"),
+        "require_confirm": _p("bool", group_overridable=False, default=True, description="危险操作是否需要管理员确认（仅 Studio 可改）"),
     },
     "qqbot_food": {
-        "default_city": _p("str", max_chars=32, default="", config_key="food_default_city"),
-        "max_results": _p("int", minimum=1, maximum=20, default=5, config_key="food_max_results"),
-        "sort": _p("enum", enum=("total", "taste", "service", "environment"), default="total", config_key="food_search_sort"),
-        "allow_submit_review": _p("bool", default=True, config_key="food_submit_enabled"),
+        "default_city": _p("str", max_chars=32, default="", config_key="food_default_city", description="没点名城市时默认搜索的城市"),
+        "max_results": _p("int", minimum=1, maximum=20, default=5, config_key="food_max_results", description="每次返回的结果条数上限"),
+        "sort": _p("enum", enum=("total", "taste", "service", "environment"), default="total", config_key="food_search_sort", description="结果排序方式：综合/口味/服务/环境"),
+        "allow_submit_review": _p("bool", default=True, config_key="food_submit_enabled", description="是否允许提交店铺评价"),
     },
     "qqbot_stickers": {
-        "decoration_probability": _p("float", minimum=0.0, maximum=1.0, default=1.0, config_key="sticker_decorate_probability"),
-        "ai_decoration_enabled": _p("bool", default=False, config_key="sticker_ai_decorate_enabled"),
-        "ai_decoration_probability": _p("float", minimum=0.0, maximum=1.0, default=0.3, config_key="sticker_ai_decorate_probability"),
-        "candidate_count": _p("int", minimum=1, maximum=20, default=20, config_key="sticker_ai_decorate_max_candidates"),
-        "collect_enabled": _p("bool", default=False, config_key="sticker_ai_collect_enabled"),
+        "decoration_probability": _p("float", minimum=0.0, maximum=1.0, default=1.0, config_key="sticker_decorate_probability", description="回复后追加本地表情的概率"),
+        "ai_decoration_enabled": _p("bool", default=False, config_key="sticker_ai_decorate_enabled", description="是否允许 AI 挑选表情装饰回复"),
+        "ai_decoration_probability": _p("float", minimum=0.0, maximum=1.0, default=0.3, config_key="sticker_ai_decorate_probability", description="AI 装饰的触发概率"),
+        "candidate_count": _p("int", minimum=1, maximum=20, default=20, config_key="sticker_ai_decorate_max_candidates", description="交给 AI 挑选的表情候选数量"),
+        "collect_enabled": _p("bool", default=False, config_key="sticker_ai_collect_enabled", description="该群是否允许收藏用户表情"),
     },
     "qqbot_memory_commands": {
-        "allow_write": _p("bool", default=False),
-        "max_results": _p("int", minimum=1, maximum=50, default=5, config_key="max_results"),
-        "visible_scopes": _p("list_str", max_chars=16, group_overridable=False, sensitive=True, default=("group", "user", "conversation", "persona", "global")),
+        "allow_write": _p("bool", default=False, description="该群是否允许写入长期记忆"),
+        "max_results": _p("int", minimum=1, maximum=50, default=5, config_key="max_results", description="每次返回的结果条数上限"),
+        "visible_scopes": _p("list_str", max_chars=16, group_overridable=False, sensitive=True, default=("group", "user", "conversation", "persona", "global"), description="可见 scope（仅 Studio 可改）"),
     },
     "qqbot_web_reader": {},
     "qqbot_image_search": {},
     "qqbot_social_state": {
-        "favorability.half_life_days": _p("int", minimum=0, maximum=365, default=30),
-        "relationship.enabled": _p("bool", default=True),
-        "relationship.min_evidence": _p("int", minimum=1, maximum=10, default=2),
+        "favorability.half_life_days": _p("int", minimum=0, maximum=365, default=30, description="好感度衰减到一半所需天数"),
+        "relationship.enabled": _p("bool", default=True, description="是否启用群成员关系网"),
+        "relationship.min_evidence": _p("int", minimum=1, maximum=10, default=2, description="建立关系边所需的最少证据数"),
     },
     "qqbot_expression_state": {
-        "emotion.half_life_minutes": _p("int", minimum=5, maximum=1440, default=30),
-        "style.enabled": _p("bool", default=True),
-        "style.refresh_hours": _p("int", minimum=1, maximum=168, default=24),
+        "emotion.half_life_minutes": _p("int", minimum=5, maximum=1440, default=30, description="情绪强度衰减到一半所需分钟数"),
+        "style.enabled": _p("bool", default=True, description="是否启用按用户/群的表达风格画像"),
+        "style.refresh_hours": _p("int", minimum=1, maximum=168, default=24, description="风格画像后台刷新的最小间隔（小时）"),
     },
     "qqbot_vocabulary": {
-        "inject.max_entries": _p("int", minimum=1, maximum=20, default=8),
-        "inject.max_chars": _p("int", minimum=0, maximum=1000, default=400),
+        "inject.max_entries": _p("int", minimum=1, maximum=20, default=8, description="每轮最多注入多少条词汇库条目"),
+        "inject.max_chars": _p("int", minimum=0, maximum=1000, default=400, description="每轮最多注入多少字符的词汇说明"),
     },
 }
 
@@ -167,6 +168,7 @@ def _generated_to_spec(spec: Any) -> ParamSpec:
         config_key=str(spec.config_key or spec.key),
         system_managed=bool(spec.system_managed),
         source="schema",
+        description=str(getattr(spec, "description", "") or ""),
     )
 
 
@@ -738,6 +740,7 @@ class CapabilityPolicy:
                     "legacy_key": spec.legacy_key,
                     "system_managed": bool(spec.system_managed),
                     "source": spec.source,
+                    "description": spec.description,
                 }
             try:
                 overlay_ready = spec_registry.overlay_supported(plugin)

@@ -190,6 +190,20 @@ class ParamSchemaTest(unittest.TestCase):
         with self.assertRaises(cp.PolicyError):
             cp._coerce_scalar(spec, "   ")
 
+    def test_param_schema_ships_a_short_description_for_every_field(self) -> None:
+        schema = self.policy.param_schema("qqbot_core_reply")
+        fields = schema["fields"]
+        self.assertTrue(fields["participation.reply_probability"]["description"])
+        self.assertIn("概率", fields["participation.reply_probability"]["description"])
+        # schema-derived fields carry the description out of _conf_schema.json
+        self.assertTrue(fields["participation.group_mention_only"]["description"])
+        # nothing is left blank: the console renders these under each control
+        blank = [name for name, spec in fields.items() if not spec["description"]]
+        self.assertEqual(blank, [])
+        food = self.policy.param_schema("qqbot_food")["fields"]
+        self.assertEqual(food["default_city"]["description"], "没点名城市时默认搜索的城市")
+        self.assertTrue(food["food_search_enabled"]["description"])
+
 
 if __name__ == "__main__":
     unittest.main()

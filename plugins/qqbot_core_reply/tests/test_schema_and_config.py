@@ -34,8 +34,6 @@ class SchemaTests(unittest.TestCase):
         schema = json.loads((ROOT / "_conf_schema.json").read_text(encoding="utf-8"))
         for key in (
             "memory_mode",
-            "reply_probability",
-            "group_cooldown_seconds",
             "user_cooldown_seconds",
             "min_message_chars",
             "max_input_chars",
@@ -45,7 +43,6 @@ class SchemaTests(unittest.TestCase):
             "inherit_astrbot_wake_prefix",
             "ambient_group_chat_enabled",
             "system_prompt",
-            "llm_timeout_seconds",
             "vision_provider_id",
             "image_caption_prompt",
             "group_personas",
@@ -55,6 +52,24 @@ class SchemaTests(unittest.TestCase):
             "song_enabled",
         ):
             self.assertIn(key, schema)
+
+    def test_retired_legacy_aliases_are_gone_but_still_honoured(self):
+        # reply_probability / group_cooldown_seconds / llm_timeout_seconds were
+        # duplicates of the canonical dotted keys. They no longer show up in the
+        # editor, but an instance that still stores them keeps working because
+        # the runtime reads the canonical key first and falls back to the alias.
+        schema = json.loads((ROOT / "_conf_schema.json").read_text(encoding="utf-8"))
+        for key in ("reply_probability", "group_cooldown_seconds", "llm_timeout_seconds"):
+            self.assertNotIn(key, schema)
+            self.assertNotIn(key, config_module.DEFAULTS)
+        reader = config_module.RuntimeConfig(
+            {"reply_probability": 0.3, "group_cooldown_seconds": 42, "llm_timeout_seconds": 17}
+        )
+        self.assertAlmostEqual(
+            reader.effective_float("participation.group_probability", "reply_probability", default=0.12), 0.3
+        )
+        self.assertAlmostEqual(reader.effective_float("cooldown.seconds", "group_cooldown_seconds", default=30, maximum=600), 42)
+        self.assertAlmostEqual(reader.effective_float("llm.timeout_seconds", "llm_timeout_seconds", default=45, maximum=300), 17)
 
     def test_safe_default_is_disabled(self):
         schema = json.loads((ROOT / "_conf_schema.json").read_text(encoding="utf-8"))
@@ -137,13 +152,13 @@ class SchemaTests(unittest.TestCase):
 
     def test_schema_probability_bounds(self):
         schema = json.loads((ROOT / "_conf_schema.json").read_text(encoding="utf-8"))
-        self.assertEqual(schema["reply_probability"]["slider"]["min"], 0)
-        self.assertEqual(schema["reply_probability"]["slider"]["max"], 1)
+        self.assertEqual(schema["participation.group_probability"]["slider"]["min"], 0)
+        self.assertEqual(schema["participation.group_probability"]["slider"]["max"], 1)
 
     def test_version_and_metadata_bumped(self):
-        self.assertEqual((ROOT / "VERSION").read_text().strip(), "4.3.14")
+        self.assertEqual((ROOT / "VERSION").read_text().strip(), "4.3.15")
         metadata = (ROOT / "metadata.yaml").read_text(encoding="utf-8")
-        self.assertIn("version: 4.3.14", metadata)
+        self.assertIn("version: 4.3.15", metadata)
         self.assertIn("name: qqbot_core_reply", metadata)
         self.assertIn("astrbot_version: \">=4.29,<5\"", metadata)
 

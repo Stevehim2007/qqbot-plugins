@@ -72,6 +72,7 @@ class GeneratedSpec:
     config_key: str = ""
     sensitive: bool = False
     system_managed: bool = False
+    description: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -86,6 +87,7 @@ class GeneratedSpec:
             "system_managed": bool(self.system_managed),
             "group_overridable": not (self.sensitive or self.system_managed),
             "source": "schema",
+            "description": self.description,
         }
 
 
@@ -183,6 +185,7 @@ def _spec_from_entry(key: str, raw: Mapping[str, Any]) -> GeneratedSpec | None:
         config_key=key,
         sensitive=is_credential(key),
         system_managed=is_system_managed(key),
+        description=str(raw.get("description") or "").strip(),
     )
 
 
