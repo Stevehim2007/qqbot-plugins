@@ -5,7 +5,15 @@ from __future__ import annotations
 import asyncio
 import inspect
 import time
+from pathlib import Path
 from typing import Any
+
+try:
+    from . import aux_ai
+except ImportError:  # AstrBot loads plugin modules as top-level
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import aux_ai  # type: ignore[no-redef]
 
 
 class AuxGuard:
@@ -48,10 +56,30 @@ async def phase_summary(
     *,
     timeout: float = 8.0,
     max_chars: int = 160,
+    plugin_data_dir: Path | None = None,
 ) -> str:
     """Return a short factual phase summary, or '' when unavailable/invalid."""
 
     try:
+        system = (
+            "你是记忆收尾助手。只从用户消息中提取以后仍有用的事实、偏好、约定、计划；"
+            "不要记录寒暄、问句、助手的话、猜测、图片或临时情绪。"
+            "输出一句不超过 100 字的中文摘要，不要使用 markdown、引号或列表。"
+            "没有可保留事实时只输出空字符串。"
+        )
+        if plugin_data_dir is not None:
+            dedicated = await aux_ai.generate(
+                plugin_data_dir=plugin_data_dir,
+                system_prompt=system,
+                prompt="用户消息：\n" + "\n".join(f"- {m}" for m in messages[-12:]),
+                max_tokens=160,
+                temperature=0.1,
+                timeout=timeout,
+            )
+            if dedicated:
+                text = " ".join(dedicated.split()).strip()
+                if text and not any(token in text for token in ("[[NO_REPLY]]", "mqqapi://", "```")):
+                    return text[: max(1, int(max_chars))].rstrip()
         getter = getattr(context, "get_using_provider", None)
         generator = getattr(context, "llm_generate", None)
         if not callable(getter) or not callable(generator):
@@ -98,10 +126,33 @@ async def episode_summary(
     *,
     timeout: float = 10.0,
     max_chars: int = 220,
+    plugin_data_dir: Path | None = None,
 ) -> str:
     """Return a short narrative episode, or '' when unavailable/invalid."""
 
     try:
+        system = (
+            "你是对话记忆助手，只写一段 120–200 字的中文叙事摘要。"
+            "写清楚发生了什么、用户表达的事实/偏好/情绪、以及结果或未完成事项；"
+            "不要逐句复述聊天记录，不要写助手内心戏，不要编造，不要 markdown、引号或列表。"
+            "只有确实发生了值得以后回忆的事件、决定、结果或未完成事项时才写；"
+            "寒暄、一次性闲聊、普通问答、没有后续价值的内容只输出 [[NONE]]。"
+        )
+        if plugin_data_dir is not None:
+            dedicated = await aux_ai.generate(
+                plugin_data_dir=plugin_data_dir,
+                system_prompt=system,
+                prompt="最近对话：\n" + "\n".join(f"- {m}" for m in messages[-12:]),
+                max_tokens=320,
+                temperature=0.3,
+                timeout=timeout,
+            )
+            if dedicated:
+                text = " ".join(dedicated.split()).strip()
+                if len(text) >= 20 and not any(
+                    token in text for token in ("[[NONE]]", "[[NO_REPLY]]", "mqqapi://", "ComponentType.")
+                ):
+                    return text[: max(1, int(max_chars))].rstrip()
         getter = getattr(context, "get_using_provider", None)
         generator = getattr(context, "llm_generate", None)
         if not callable(getter) or not callable(generator):

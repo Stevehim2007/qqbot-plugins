@@ -15,14 +15,16 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, StarTools, register
 
 try:
+    from . import aux_ai
     from . import memory_router as router
     from . import store as bank_store
 except ImportError:  # AstrBot loads plugin modules as top-level
+    import aux_ai  # type: ignore[no-redef]
     import memory_router as router  # type: ignore[no-redef]
     import store as bank_store  # type: ignore[no-redef]
 
 PLUGIN_NAME = "qqbot_memory_bank"
-PLUGIN_VERSION = "0.5.0"
+PLUGIN_VERSION = "0.6.0"
 DEFAULTS = {
     "enabled": True,
     "auto_extract_enabled": False,
@@ -542,6 +544,19 @@ class MemoryBankPlugin(Star):
 
     async def _aux_routes(self, umo: str, messages: list[str]) -> list[dict[str, Any]]:
         try:
+            prompt = "用户消息：\n" + "\n".join(f"- {m}" for m in messages[-12:])
+            dedicated = await aux_ai.generate(
+                plugin_data_dir=self._data_dir().parent,
+                system_prompt=router.route_prompt(),
+                prompt=prompt,
+                max_tokens=500,
+                temperature=0.1,
+                timeout=float(self._cfg("aux_timeout_seconds", 15) or 15),
+            )
+            if dedicated:
+                routed = router.parse_routes(dedicated, limit=int(self._cfg("max_facts_per_extract", 5)))
+                if routed:
+                    return routed
             getter = getattr(self.context, "get_using_provider", None)
             if not callable(getter):
                 return []

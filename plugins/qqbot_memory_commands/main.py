@@ -382,6 +382,7 @@ class MemoryCommandsPlugin(Star):
                         self.context,
                         [str(item.get("content") or "") for item in buffer],
                         timeout=float(self.config.get("cards_llm_timeout_seconds", 8) or 8),
+                        plugin_data_dir=Path(_cards_path()).parent.parent,
                     )
                     self._aux_guard.record(bool(phase_hint))
                 episode_hint = ""
@@ -394,6 +395,7 @@ class MemoryCommandsPlugin(Star):
                             for item in buffer
                         ],
                         timeout=float(self.config.get("cards_llm_timeout_seconds", 10) or 10),
+                        plugin_data_dir=Path(_cards_path()).parent.parent,
                     )
                     self._aux_guard.record(bool(episode_hint))
                 plan = wrapup.preview(

@@ -44,10 +44,10 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "3786f866f38e7c9e3d11ee57ccceae946dd0d18454da699fa43109b0f81cfb19",
+      "sha256": "81d65437dab92f6357682d838711c1664bca0a10f12f3df440300d25d7c266a9",
       "size": 125737,
       "root": "qqbot_core_reply",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.62/qqbot_core_reply-4.3.12.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.63/qqbot_core_reply-4.3.12.zip"
     },
     {
       "id": "qqbot_safe_tools",
@@ -81,10 +81,10 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "8093e1b6100c789fe097ebf2fda4d2204c20f0f0fc8602c409289030de557493",
+      "sha256": "a6bdf38d89ee258680150b011bf4b7681499b2f58f827058ce046f84b1a69b8d",
       "size": 135315,
       "root": "qqbot_safe_tools",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.62/qqbot_safe_tools-3.3.5.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.63/qqbot_safe_tools-3.3.5.zip"
     },
     {
       "id": "qqbot_web_reader",
@@ -150,10 +150,10 @@
           "marker_example": "[[tool:fetch_webpage url=\"https://example.com/article\" max_chars=3000]]"
         }
       ],
-      "sha256": "09e22d9e41eef3852515f83e0392eb7699088ec574e8d97bbb0beab7569497cb",
+      "sha256": "7466b5472ca07ebbb77edfc5a9b2e942f3c4bbe56855625e9df5ef1a4d6f13a7",
       "size": 40464,
       "root": "qqbot_web_reader",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.62/qqbot_web_reader-2.0.1.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.63/qqbot_web_reader-2.0.1.zip"
     },
     {
       "id": "qqbot_image_search",
@@ -230,10 +230,10 @@
           "marker_example": "[[tool:search_images keyword=\"关键词\" count=1]]"
         }
       ],
-      "sha256": "1ff8620196b0a428b7930757ec6681c6c9b18d3dc615fcb34b64941a5492fb04",
+      "sha256": "ab1744b5d88284901147ea43ffe1f25404de05718eca470a319dd960c33e324b",
       "size": 58215,
       "root": "qqbot_image_search",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.62/qqbot_image_search-2.0.1.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.63/qqbot_image_search-2.0.1.zip"
     },
     {
       "id": "qqbot_food",
@@ -369,10 +369,10 @@
           "marker_example": "[[tool:submit_food_review restaurant=\"店名\" location=\"位置\" taste=\"4.5\" value=\"3.5\" comment=\"评价\" tags=\"火锅,夜宵\"]]"
         }
       ],
-      "sha256": "a23efe59dd372fd21efa15bb6ce27ac1945c2373d3123317cca9ec6a3a298cd4",
+      "sha256": "9ea1fc6425db0b7122291cc61e52d6abb4ca9ba3a9e33b182a6f25e7c683250f",
       "size": 105453,
       "root": "qqbot_food",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.62/qqbot_food-3.0.5.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.63/qqbot_food-3.0.5.zip"
     },
     {
       "id": "qqbot_stickers",
@@ -483,15 +483,15 @@
           "marker_example": "[[tool:list_sticker_categories()]]"
         }
       ],
-      "sha256": "10728492097074a29ff733faa41192ba762d86f0b6d4b9b9b3a7907e42d446bc",
+      "sha256": "e5f26da365806b2fe0328f9fb867e6001feda13f8750a6d1524b895cf4b796d9",
       "size": 103588,
       "root": "qqbot_stickers",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.62/qqbot_stickers-3.0.3.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.63/qqbot_stickers-3.0.3.zip"
     },
     {
       "id": "qqbot_memory_commands",
       "name": "记忆管理",
-      "version": "4.3.2",
+      "version": "4.3.3",
       "description": "独立 /记忆（别名 /记忆管理）命令；复用 AstrBot 原生长期记忆服务，不调用聊天模型。",
       "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
@@ -538,10 +538,10 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "bd4d3490e413239e65c5dc2bd2b8df07035ef993f6593db68b68835809323489",
-      "size": 99275,
+      "sha256": "2b99d6bdc37ff2f7e62d2bc8bd2a9196e6015f3489af4f0d5a2506c4b5ba0714",
+      "size": 100886,
       "root": "qqbot_memory_commands",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.62/qqbot_memory_commands-4.3.2.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.63/qqbot_memory_commands-4.3.3.zip"
     },
     {
       "id": "qqbot_expression_state",
@@ -567,15 +567,15 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "ce6ba06302813ecf96972a9533a8500e1f769c16e9c1304cd6456f7c2d96b692",
+      "sha256": "8aa14bb87d79d1d9571ecae1b614b233c0c5f0304ebb582d64d02414a07a4be5",
       "size": 9968,
       "root": "qqbot_expression_state",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.62/qqbot_expression_state-1.0.0.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.63/qqbot_expression_state-1.0.0.zip"
     },
     {
       "id": "qqbot_memory_bank",
       "name": "知识库与 AI 记忆",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "description": "四层记忆：人格/群核心记忆常驻注入，用户导入知识库只读自动 RAG，AI 记忆按用户隔离。",
       "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
@@ -596,10 +596,10 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "992c9d5c74a3a4006ce16660ceb05138d930c57db4ecb9bcda421001c127c202",
-      "size": 20695,
+      "sha256": "c9af51f0cf70d0eff15257007c6ccf9611364dcb1ba790e5c8c39a8700b76860",
+      "size": 22062,
       "root": "qqbot_memory_bank",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.62/qqbot_memory_bank-0.5.0.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.63/qqbot_memory_bank-0.6.0.zip"
     },
     {
       "id": "qqbot_fortune",
@@ -625,10 +625,10 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "ae886a6c8e87ba4b0b5beff1b77e1821815a593acd32992f4ab4ca6e16d5087f",
+      "sha256": "5d61271bf835d5a5065756c21eff305931af731319609980d168d3434d973426",
       "size": 5166,
       "root": "qqbot_fortune",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.62/qqbot_fortune-1.0.2.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.63/qqbot_fortune-1.0.2.zip"
     },
     {
       "id": "qqbot_weather",
@@ -676,10 +676,10 @@
           }
         ]
       },
-      "sha256": "89936f866050c0ab775e486f8d85546d20d2ed6679f40746a24a339f31ce666f",
+      "sha256": "38a436b79f333c98a3a57f0c6047942b8b67cc6a0a78c67e9fd9e9261db1586f",
       "size": 10450,
       "root": "qqbot_weather",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.62/qqbot_weather-1.0.2.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.63/qqbot_weather-1.0.2.zip"
     },
     {
       "id": "qqbot_scheduler",
@@ -705,10 +705,10 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "bbaff9434fa91c42fb297648f186e3e8cdc340c44d0e416a1723fa040f53458b",
+      "sha256": "2edc03cf12f90b740b2db3e8d3cbfbafb16c73b931e6dee220edbbce5b45f4aa",
       "size": 10301,
       "root": "qqbot_scheduler",
-      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.62/qqbot_scheduler-1.0.2.zip"
+      "download": "https://github.com/Stevehim2007/qqbot-plugins/releases/download/v4.4.0-beta.63/qqbot_scheduler-1.0.2.zip"
     }
   ],
   "group_param_registry": {
