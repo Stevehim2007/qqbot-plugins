@@ -12,6 +12,11 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
+try:  # AstrBot loads plugin modules as top-level packages
+    from . import policy_overlay
+except ImportError:  # pragma: no cover - installed layout
+    import policy_overlay  # type: ignore[no-redef]
+
 _MISSING = object()
 
 DEFAULTS: dict[str, Any] = {
@@ -211,6 +216,11 @@ class ConfigReader:
         return values
 
     def _lookup(self, key: str) -> Any:
+        # A per-group override (config.overlay.v1) wins over the plugin's own
+        # settings but never over an explicit RuntimeConfig override.
+        overlay = policy_overlay.current_overlay()
+        if overlay is not None and overlay.has(key):
+            return overlay.get(key)
         if "." in key:
             parts = key.split(".")
             for container in self._containers():

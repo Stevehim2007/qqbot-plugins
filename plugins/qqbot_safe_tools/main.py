@@ -156,7 +156,7 @@ _ERROR_TO_REASON: dict[str, str] = {
 
 _CONTROL_RPC_ARGUMENTS: dict[str, frozenset[str]] = {
     "policy.snapshot": frozenset(),
-    "policy.scope": frozenset({"scope_type", "scope_id"}),
+    "policy.scope": frozenset({"scope_type", "scope_id", "include_schema"}),
     "policy.scope_reset": frozenset({"scope_type", "scope_id", "expected_revision"}),
     "policy.audit": frozenset({"scope_type", "scope_id", "limit", "offset"}),
     "policy.templates": frozenset(),
@@ -752,11 +752,18 @@ class SafeToolsPlugin(Star):
         result["degraded"] = bool(self._policy_degraded)
         return result
 
-    def policy_scope(self, scope_type: str, scope_id: str) -> dict[str, Any]:
+    def policy_scope(
+        self, scope_type: str, scope_id: str, include_schema: Any = True
+    ) -> dict[str, Any]:
         if self._policy_degraded:
             return {"ok": False, "error": "store_degraded"}
+        wanted = include_schema
+        if isinstance(wanted, str):
+            wanted = wanted.strip().lower() not in {"0", "false", "no", "off", ""}
         try:
-            result = self._policy().scope_snapshot(scope_type, scope_id)
+            result = self._policy().scope_snapshot(
+                scope_type, scope_id, include_schema=bool(wanted)
+            )
         except capability_policy.PolicyError as exc:
             return {"ok": False, "error": exc.code, "message": str(exc), "revision": self._policy().revision}
         result["degraded"] = bool(self._policy_degraded)

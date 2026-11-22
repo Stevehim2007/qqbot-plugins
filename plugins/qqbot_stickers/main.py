@@ -27,6 +27,11 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, StarTools
 
 try:  # Loaded as a package by AstrBot.
+    from . import policy_overlay
+except ImportError:  # pragma: no cover - installed layout
+    import policy_overlay  # type: ignore[no-redef]
+
+try:  # Loaded as a package by AstrBot.
     from . import sticker_intent as sticker_intent_engine
     from . import sticker_reclassify as sticker_reclassify_engine
     from .media import (
@@ -358,6 +363,9 @@ class StickerPlugin(Star):
     # Configuration and lifecycle
     # ------------------------------------------------------------------
     def _cfg(self, key: str, default: Any = None) -> Any:
+        overlay = policy_overlay.current_overlay()
+        if overlay is not None and overlay.has(key):
+            return overlay.get(key)
         if key in self._plugin_config:
             return self._plugin_config[key]
         return DEFAULTS.get(key, default)
@@ -868,6 +876,39 @@ class StickerPlugin(Star):
             return not isinstance(policy, dict) or bool(policy.get("enabled", True))
         except Exception:
             return True
+
+    def _policy_overlay_for(self, event: AstrMessageEvent):
+        """Per-group config overlay for this event (``None`` when unset)."""
+        try:
+            getter = getattr(self.context, "get_registered_star", None)
+            meta = getter("qqbot_safe_tools") if callable(getter) else None
+            if meta is None:
+                return None
+            star = getattr(meta, "star_cls", None) or meta
+            policy_fn = getattr(star, "policy_effective", None)
+            if not callable(policy_fn):
+                return None
+            try:
+                private = bool(event.is_private_chat())
+            except Exception:
+                private = False
+            group_id = "" if private else self._event_group_id(event)
+            policy = policy_fn(
+                "qqbot_stickers",
+                group_id=group_id or None,
+                user_id=self._event_actor_id(event) or None,
+                is_private=private,
+            )
+            if not isinstance(policy, dict):
+                return None
+            return policy_overlay.build(
+                "qqbot_stickers",
+                policy,
+                scope="private" if private else "group",
+                scope_id=group_id or self._event_actor_id(event),
+            )
+        except Exception:
+            return None
 
     def _event_group_id(self, event: AstrMessageEvent) -> str:
         try:
@@ -1531,6 +1572,7 @@ class StickerPlugin(Star):
     # Commands
     # ------------------------------------------------------------------
     @filter.command("收藏表情", priority=110)
+    @policy_overlay.overlay_handler
     async def collect_sticker_command(self, event: AstrMessageEvent):
         self._suppress_model(event)
         if not self._capability_enabled(event):
@@ -1577,6 +1619,7 @@ class StickerPlugin(Star):
             self._stop(event)
 
     @filter.command("表情状态", alias={"表情诊断", "表情库"}, priority=110)
+    @policy_overlay.overlay_handler
     async def sticker_status_command(self, event: AstrMessageEvent):
         self._suppress_model(event)
         if not self._capability_enabled(event):
@@ -1628,6 +1671,7 @@ class StickerPlugin(Star):
             self._stop(event)
 
     @filter.command("表情分类", priority=110)
+    @policy_overlay.overlay_handler
     async def sticker_categories_command(self, event: AstrMessageEvent):
         self._suppress_model(event)
         if not self._capability_enabled(event):
@@ -1672,6 +1716,7 @@ class StickerPlugin(Star):
             self._stop(event)
 
     @filter.command("表情列表", priority=110)
+    @policy_overlay.overlay_handler
     async def sticker_list_command(self, event: AstrMessageEvent):
         self._suppress_model(event)
         if not self._capability_enabled(event):
@@ -1757,6 +1802,7 @@ class StickerPlugin(Star):
         return "", value, ""
 
     @filter.command("发表情", priority=110)
+    @policy_overlay.overlay_handler
     async def send_sticker_command(self, event: AstrMessageEvent):
         self._suppress_model(event)
         if not self._capability_enabled(event):
@@ -1851,6 +1897,7 @@ class StickerPlugin(Star):
     # Natural-language handler and optional AI fallback
     # ------------------------------------------------------------------
     @filter.event_message_type(filter.EventMessageType.ALL, priority=120)
+    @policy_overlay.overlay_handler
     async def on_message(self, event: AstrMessageEvent):
         """Handle deterministic sticker intents and cache recent images.
 
@@ -2666,6 +2713,7 @@ class StickerPlugin(Star):
     # Core-reply decoration (priority 100)
     # ------------------------------------------------------------------
     @filter.on_decorating_result(priority=100)
+    @policy_overlay.overlay_handler
     async def decorate_core_result(self, event: AstrMessageEvent) -> None:
         """Append zero or one sticker to explicitly marked core replies only."""
 

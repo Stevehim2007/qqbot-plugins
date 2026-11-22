@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+try:  # AstrBot loads plugin modules as top-level packages
+    from . import policy_overlay
+except ImportError:  # pragma: no cover - installed layout
+    import policy_overlay  # type: ignore[no-redef]
+
 import asyncio
 import hashlib
 import inspect
@@ -583,6 +588,36 @@ class ReplyPipeline:
     # Message entry
     # ------------------------------------------------------------------
     async def handle_message(self, event: Any) -> HandleOutcome | None:
+        """Run the turn with this group's config overlay installed."""
+        with policy_overlay.policy_scope(self._policy_overlay_for(event)):
+            return await self._handle_message(event)
+
+    def _policy_overlay_for(self, event: Any) -> Any:
+        """Build the group/private overlay for ``event`` (``None`` when clean)."""
+        try:
+            group_id = self.persona._safe_group_id(event)
+            actor_id = str(event.get_sender_id() or "")
+            is_private = self.is_private(event)
+        except Exception:
+            return None
+        policy = self._capability_policy(
+            "qqbot_core_reply",
+            group_id=group_id,
+            user_id=actor_id,
+            is_private=is_private,
+        )
+        if not isinstance(policy, dict):
+            return None
+        if not isinstance(policy.get("params"), dict) or not policy.get("params"):
+            return None
+        return policy_overlay.build(
+            "qqbot_core_reply",
+            policy,
+            scope="private" if is_private else "group",
+            scope_id=group_id or actor_id,
+        )
+
+    async def _handle_message(self, event: Any) -> HandleOutcome | None:
         enabled = self.config.bool("enabled", False)
         if not enabled or self.state.terminated:
             self.block_default_llm(event)

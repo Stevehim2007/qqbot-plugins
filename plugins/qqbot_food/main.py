@@ -18,6 +18,11 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, StarTools
 
+try:  # AstrBot loads plugin modules as top-level packages
+    from . import policy_overlay
+except ImportError:  # pragma: no cover - installed layout
+    import policy_overlay  # type: ignore[no-redef]
+
 from . import contracts, food
 from .api import (
     FoodAPIClient,
@@ -308,6 +313,36 @@ class FoodPlugin(Star):
 
     def _cfg_bool(self, key: str) -> bool:
         return self.config.bool(key)
+
+    def _policy_overlay_for(self, event: AstrMessageEvent):
+        """Per-group config overlay for this event (``None`` when unset)."""
+        try:
+            getter = getattr(self.context, "get_registered_star", None)
+            meta = getter("qqbot_safe_tools") if callable(getter) else None
+            if meta is None:
+                return None
+            star = getattr(meta, "star_cls", None) or meta
+            policy_fn = getattr(star, "policy_effective", None)
+            if not callable(policy_fn):
+                return None
+            private = _event_is_private(event)
+            group_id = "" if private else _event_group_id(event)
+            policy = policy_fn(
+                "qqbot_food",
+                group_id=group_id or None,
+                user_id=_event_sender_id(event) or None,
+                is_private=private,
+            )
+            if not isinstance(policy, dict):
+                return None
+            return policy_overlay.build(
+                "qqbot_food",
+                policy,
+                scope="private" if private else "group",
+                scope_id=group_id or _event_sender_id(event),
+            )
+        except Exception:
+            return None
 
     def _capability_params(self, event: AstrMessageEvent) -> dict[str, Any]:
         try:
@@ -1464,6 +1499,7 @@ class FoodPlugin(Star):
     # AstrBot command handler
     # ------------------------------------------------------------------
     @filter.command("food", alias={"美食", "吃什么", "饭店"}, priority=110)
+    @policy_overlay.overlay_handler
     async def food_command(self, event: AstrMessageEvent):
         _call_shall_not_llm(event)
         if not self._capability_enabled(event):
@@ -2033,6 +2069,7 @@ class FoodPlugin(Star):
     # Bare confirmation handler (no LLM)
     # ------------------------------------------------------------------
     @filter.event_message_type(filter.EventMessageType.ALL, priority=120)
+    @policy_overlay.overlay_handler
     async def on_food_message(self, event: AstrMessageEvent):
         if not self._capability_enabled(event):
             return

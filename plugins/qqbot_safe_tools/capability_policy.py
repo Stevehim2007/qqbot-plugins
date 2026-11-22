@@ -19,6 +19,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
 
+try:  # AstrBot loads plugin modules as top-level packages
+    from . import spec_registry
+except ImportError:  # pragma: no cover - exercised in the installed layout
+    import spec_registry  # type: ignore[no-redef]
+
 SCHEMA_VERSION = 2
 MAX_AUDIT_ENTRIES = 500
 OFFICIAL_OPENID_RE = re.compile(r"^[A-Fa-f0-9]{32}$")
@@ -64,6 +69,8 @@ class ParamSpec:
     default: Any = None
     config_key: str = ""
     legacy_key: str = ""
+    system_managed: bool = False
+    source: str = "manual"
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +86,7 @@ class EffectivePolicy:
             "plugin_id": self.plugin_id,
             "enabled": bool(self.enabled),
             "params": dict(self.params),
+            "config_values": config_values(self.plugin_id, self.params),
             "sources": list(self.sources),
             "revision": int(self.revision),
         }
@@ -145,6 +153,66 @@ PLUGIN_PARAM_SPECS: dict[str, dict[str, ParamSpec]] = {
 }
 
 
+
+def _generated_to_spec(spec: Any) -> ParamSpec:
+    return ParamSpec(
+        kind=str(spec.kind),
+        minimum=spec.minimum,
+        maximum=spec.maximum,
+        max_chars=spec.max_chars,
+        enum=tuple(spec.enum or ()),
+        group_overridable=not (spec.sensitive or spec.system_managed),
+        sensitive=bool(spec.sensitive),
+        default=spec.default,
+        config_key=str(spec.config_key or spec.key),
+        system_managed=bool(spec.system_managed),
+        source="schema",
+    )
+
+
+def plugin_specs(plugin_id: str) -> dict[str, ParamSpec]:
+    """Hand-written specs first, then schema-declared scalars.
+
+    A generated key is skipped when a manual spec already owns that policy name
+    *or* that config key, so the hand-written semantics always win.
+    """
+    manual = dict(PLUGIN_PARAM_SPECS.get(plugin_id, {}))
+    reserved = set(manual)
+    reserved.update(spec.config_key for spec in manual.values() if spec.config_key)
+    try:
+        generated = spec_registry.generate_specs(plugin_id)
+    except Exception:  # pragma: no cover - a broken schema must not break policy
+        generated = {}
+    merged = dict(manual)
+    for key, spec in generated.items():
+        if key in reserved:
+            continue
+        merged[key] = _generated_to_spec(spec)
+    return merged
+
+
+def config_values(plugin_id: str, params: Mapping[str, Any]) -> dict[str, Any]:
+    """Map policy parameter names onto the plugin's own config keys.
+
+    ``params`` is keyed by policy name (``participation.reply_probability``);
+    plugins read their config by config key (``participation.group_probability``).
+    Without this translation a group override looks correct in the policy store
+    and does nothing at runtime.
+    """
+    try:
+        specs = plugin_specs(plugin_id)
+    except Exception:  # pragma: no cover - defensive
+        return dict(params)
+    out: dict[str, Any] = {}
+    for key, value in dict(params).items():
+        spec = specs.get(str(key))
+        target = str(spec.config_key) if spec is not None and spec.config_key else str(key)
+        out[target] = value
+        if spec is not None and spec.legacy_key and spec.legacy_key not in out:
+            out[str(spec.legacy_key)] = value
+    return out
+
+
 def _new_store() -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
@@ -168,9 +236,15 @@ def _target_id(value: Any, field_name: str) -> str:
 
 def _plugin_name(value: Any) -> str:
     text = str(value or "").strip()
-    if text not in PLUGIN_PARAM_SPECS:
-        raise PolicyError("unknown_plugin", "plugin is not in the policy schema")
-    return text
+    if text in PLUGIN_PARAM_SPECS:
+        return text
+    try:
+        installed = spec_registry.known_plugin_ids()
+    except Exception:  # pragma: no cover - defensive
+        installed = ()
+    if text in installed:
+        return text
+    raise PolicyError("unknown_plugin", "plugin is not in the policy schema")
 
 
 def _coerce_scalar(spec: ParamSpec, value: Any) -> Any:
@@ -238,6 +312,17 @@ def _coerce_scalar(spec: ParamSpec, value: Any) -> Any:
             if text not in result:
                 result.append(text)
         return result
+    if spec.kind == "text":
+        if not isinstance(value, str):
+            raise PolicyError("invalid_param", "expected text")
+        text = value.strip()
+        if not text:
+            raise PolicyError("invalid_param", "text must not be empty")
+        if any(ord(ch) < 32 and ch not in "\n\t" for ch in text) or "\x7f" in text:
+            raise PolicyError("invalid_param", "text contains control characters")
+        if spec.max_chars is not None:
+            text = text[: spec.max_chars]
+        return text
     raise PolicyError("invalid_schema", "unsupported parameter kind")
 
 
@@ -248,7 +333,8 @@ def _validate_params(
         return {}
     if not isinstance(params, Mapping):
         raise PolicyError("invalid_param", "params must be an object")
-    specs = PLUGIN_PARAM_SPECS[plugin_id]
+    specs = plugin_specs(plugin_id)
+    overlay_ready: bool | None = None
     result: dict[str, Any] = {}
     for raw_key, raw_value in params.items():
         key = str(raw_key)
@@ -257,6 +343,17 @@ def _validate_params(
             raise PolicyError("unknown_param", f"unknown parameter: {key}")
         if spec.sensitive or (not spec.group_overridable and not global_scope):
             raise PolicyError("sensitive_param", f"parameter is not group-overridable: {key}")
+        if spec.source == "schema":
+            if overlay_ready is None:
+                try:
+                    overlay_ready = spec_registry.overlay_supported(plugin_id)
+                except Exception:  # pragma: no cover - defensive
+                    overlay_ready = False
+            if not overlay_ready:
+                raise PolicyError(
+                    "overlay_unsupported",
+                    f"plugin does not declare policy_overlay.py: {plugin_id}",
+                )
         result[key] = _coerce_scalar(spec, raw_value)
     return result
 
@@ -627,7 +724,7 @@ class CapabilityPolicy:
         with self._lock:
             plugin = _plugin_name(plugin_id)
             fields: dict[str, Any] = {}
-            for name, spec in PLUGIN_PARAM_SPECS.get(plugin, {}).items():
+            for name, spec in plugin_specs(plugin).items():
                 fields[name] = {
                     "kind": spec.kind,
                     "minimum": spec.minimum,
@@ -639,11 +736,28 @@ class CapabilityPolicy:
                     "default": _json_default(spec.default),
                     "config_key": spec.config_key,
                     "legacy_key": spec.legacy_key,
+                    "system_managed": bool(spec.system_managed),
+                    "source": spec.source,
                 }
-            return {"plugin_id": plugin, "fields": fields}
+            try:
+                overlay_ready = spec_registry.overlay_supported(plugin)
+                unsupported = spec_registry.unsupported_keys(plugin)
+                digest = spec_registry.digest(plugin)
+                registry_digest = spec_registry.registry_digest()
+            except Exception:  # pragma: no cover - defensive
+                overlay_ready, unsupported, digest, registry_digest = False, {}, "", ""
+            return {
+                "plugin_id": plugin,
+                "fields": fields,
+                "overlay_supported": bool(overlay_ready),
+                "unsupported": unsupported,
+                "digest": digest,
+                "registry_digest": registry_digest,
+                "scalar_count": sum(1 for s in fields.values() if s["source"] == "schema"),
+            }
 
     def scope_snapshot(
-        self, scope_type: str, scope_id: str
+        self, scope_type: str, scope_id: str, *, include_schema: bool = True
     ) -> dict[str, Any]:
         with self._lock:
             self._require_loaded()
@@ -663,8 +777,11 @@ class CapabilityPolicy:
                 target = _target_id(scope_id, "group_id")
                 entry = deepcopy(self._store["groups"].get(target, {"plugins": {}}))
             plugins = deepcopy(entry.get("plugins", {}))
+            plugin_ids = tuple(
+                dict.fromkeys([*PLUGIN_PARAM_SPECS, *spec_registry.known_plugin_ids()])
+            )
             effective: dict[str, Any] = {}
-            for plugin in PLUGIN_PARAM_SPECS:
+            for plugin in plugin_ids:
                 if kind == "global":
                     value = self.effective(plugin)
                 elif kind == "template":
@@ -680,14 +797,21 @@ class CapabilityPolicy:
                 else:
                     value = self.effective(plugin, group_id=target)
                 effective[plugin] = value.as_dict()
-            schemas = {plugin: self.param_schema(plugin)["fields"] for plugin in PLUGIN_PARAM_SPECS}
+            # ``schemas`` is the expensive part (hundreds of fields); Studio
+            # asks for it lazily per plugin once a scope is open.
+            schemas = (
+                {plugin: self.param_schema(plugin)["fields"] for plugin in plugin_ids}
+                if include_schema
+                else {}
+            )
+            schema_digests = {plugin: spec_registry.digest(plugin) for plugin in plugin_ids}
             defaults = {
                 plugin: {
                     name: _json_default(spec.default)
-                    for name, spec in specs.items()
+                    for name, spec in plugin_specs(plugin).items()
                     if not spec.sensitive
                 }
-                for plugin, specs in PLUGIN_PARAM_SPECS.items()
+                for plugin in plugin_ids
             }
             return {
                 "ok": True,
@@ -698,8 +822,9 @@ class CapabilityPolicy:
                 "plugins": plugins,
                 "effective": effective,
                 "schemas": schemas,
+                "schema_digests": schema_digests,
                 "defaults": defaults,
-                "available_plugins": sorted(PLUGIN_PARAM_SPECS),
+                "available_plugins": sorted(plugin_ids),
                 "templates": sorted(self._store["templates"]),
                 "groups": sorted(self._store["groups"]),
                 "private": sorted(self._store["private"]),

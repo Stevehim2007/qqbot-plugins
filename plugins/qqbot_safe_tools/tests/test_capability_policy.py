@@ -218,6 +218,20 @@ class CapabilityPolicyTests(unittest.TestCase):
         self.assertEqual(schema["sort"]["default"], "total")
         self.assertEqual(schema["sort"]["config_key"], "food_search_sort")
 
+    def test_scope_snapshot_can_skip_embedded_schemas(self):
+        full = self.policy.scope_snapshot("group", "g1")
+        lean = self.policy.scope_snapshot("group", "g1", include_schema=False)
+        self.assertTrue(full["schemas"])
+        self.assertEqual(lean["schemas"], {})
+        self.assertTrue(lean["schema_digests"]["qqbot_food"])
+        # The plugin list is the union of hand-written specs and installed
+        # schemas, so lazily fetching a schema per plugin always hits.
+        for plugin_id in lean["available_plugins"]:
+            self.assertIn(plugin_id, lean["schema_digests"])
+        self.assertEqual(set(full["available_plugins"]), set(lean["available_plugins"]))
+        self.assertIn("qqbot_stickers", lean["available_plugins"])
+        self.assertTrue(lean["defaults"]["qqbot_stickers"])
+
     def test_corrupt_store_is_rejected(self):
         self.path.write_text("{not json", encoding="utf-8")
         with self.assertRaises(PolicyError) as ctx:

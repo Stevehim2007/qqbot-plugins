@@ -340,7 +340,18 @@ def _group_param_registry() -> dict[str, Any]:
         raise BuildError("无法加载 capability_policy 参数规范")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    # capability_policy imports its sibling ``spec_registry`` as a top-level
+    # module when AstrBot installs the plugin flat (same fallback the plugin
+    # itself uses at runtime), so the plugin directory must be importable.
+    plugin_dir = str(module_path.parent)
+    added = plugin_dir not in sys.path
+    if added:
+        sys.path.insert(0, plugin_dir)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        if added:
+            sys.path.remove(plugin_dir)
     plugins: dict[str, dict[str, Any]] = {}
     for plugin_id in FINAL_PLUGINS:
         params: dict[str, Any] = {}

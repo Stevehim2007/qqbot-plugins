@@ -11,6 +11,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+try:  # AstrBot loads plugin modules as top-level packages
+    from . import policy_overlay
+except ImportError:  # pragma: no cover - installed layout
+    import policy_overlay  # type: ignore[no-redef]
+
 DEFAULTS: dict[str, Any] = {
     # ---- read-only /food command ---------------------------------------
     "food_enabled": True,
@@ -142,6 +147,9 @@ class PluginConfig:
         self.values: dict[str, Any] = dict(mapped) if isinstance(mapped, Mapping) else {}
 
     def raw(self, key: str) -> Any:
+        overlay = policy_overlay.current_overlay()
+        if overlay is not None and overlay.has(key):
+            return overlay.get(key)
         if key in self.values:
             return self.values[key]
         return DEFAULTS.get(key)

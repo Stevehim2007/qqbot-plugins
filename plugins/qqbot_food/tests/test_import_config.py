@@ -33,6 +33,7 @@ class ImportContractTests(unittest.TestCase):
 
     def test_production_imports_are_stdlib_or_astrbot_only(self):
         allowed_third_party = {"astrbot"}
+        local_modules = {path.stem for path in PLUGIN_DIR.glob("*.py")}
         stdlib = set(getattr(sys, "stdlib_module_names", set()))
         for path in PLUGIN_DIR.glob("*.py"):
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -47,7 +48,9 @@ class ImportContractTests(unittest.TestCase):
                     if not module:
                         continue
                     self.assertTrue(
-                        module in stdlib or module in allowed_third_party,
+                        module in stdlib
+                        or module in allowed_third_party
+                        or module in local_modules,
                         f"{path.name} imports non-stdlib module {module}",
                     )
 
@@ -79,9 +82,9 @@ class ImportContractTests(unittest.TestCase):
 
 class MetadataAndSchemaTests(unittest.TestCase):
     def test_version_files_are_3_0_0(self):
-        self.assertEqual((PLUGIN_DIR / "VERSION").read_text().strip(), "3.0.5")
+        self.assertEqual((PLUGIN_DIR / "VERSION").read_text().strip(), "3.0.6")
         metadata = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
-        self.assertIn("version: 3.0.5", metadata)
+        self.assertIn("version: 3.0.6", metadata)
         self.assertIn("astrbot_version:", metadata)
         self.assertIn(">=4.29", metadata)
 
