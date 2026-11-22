@@ -73,5 +73,39 @@
     "type": "int",
     "default": 600,
     "description": "人格/群核心记忆每层最多字符数"
+  },
+  "routing_mode": {
+    "type": "string",
+    "default": "ai",
+    "description": "记忆路由模式：ai=辅助模型判断，rules=规则兜底",
+    "options": [
+      "ai",
+      "rules"
+    ]
+  },
+  "routing_min_confidence": {
+    "type": "float",
+    "default": 0.6,
+    "description": "AI 建议写入人格/群记忆的最低置信度"
+  },
+  "auto_write_core_memory": {
+    "type": "bool",
+    "default": false,
+    "description": "允许 AI 自动写入人格/群核心记忆；关闭时只进入待审核收件箱"
+  },
+  "auto_recall_cards_enabled": {
+    "type": "bool",
+    "default": true,
+    "description": "自动召回记忆卡片中的 episode/open_topic/fact/preference"
+  },
+  "auto_recall_cards_limit": {
+    "type": "int",
+    "default": 3,
+    "description": "每次注入最多几张记忆卡片"
+  },
+  "auto_recall_cards_max_chars": {
+    "type": "int",
+    "default": 420,
+    "description": "记忆卡片注入最大字符数"
   }
 }

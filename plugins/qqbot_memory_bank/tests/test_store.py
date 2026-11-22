@@ -114,5 +114,26 @@ class KnowledgeStoreTests(unittest.TestCase):
         self.assertNotIn("今天天气不错", facts)
 
 
+    def test_routing_inbox_is_isolated_and_deduped(self):
+        store = self.store
+        first = store.add_inbox(
+            scope="group:onebot:1", persona_id="p1", actor_hash="a1",
+            actor_label="Alice", route="group_memory", content="群里禁止广告",
+            confidence=0.8, reason="test",
+        )
+        self.assertTrue(first["ok"])
+        self.assertFalse(first["duplicate"])
+        again = store.add_inbox(
+            scope="group:onebot:1", persona_id="p1", actor_hash="a1",
+            actor_label="Alice", route="group_memory", content="群里禁止广告",
+            confidence=0.9, reason="test",
+        )
+        self.assertTrue(again["duplicate"])
+        self.assertEqual(len(store.list_inbox(scope="group:onebot:1")), 1)
+        self.assertEqual(store.list_inbox(scope="group:onebot:2"), [])
+        self.assertTrue(store.resolve_inbox(item_id=first["id"], status="dismissed"))
+        self.assertEqual(store.list_inbox(scope="group:onebot:1"), [])
+
+
 if __name__ == "__main__":
     unittest.main()

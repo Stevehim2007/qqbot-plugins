@@ -177,6 +177,26 @@ class KnowledgeStore:
             );
             CREATE UNIQUE INDEX IF NOT EXISTS memory_layer_hash
               ON memory_layer(layer, owner_id, content_hash);
+            CREATE TABLE IF NOT EXISTS memory_inbox (
+              id TEXT PRIMARY KEY,
+              scope TEXT NOT NULL,
+              persona_id TEXT NOT NULL DEFAULT '',
+              actor_hash TEXT NOT NULL DEFAULT '',
+              actor_label TEXT NOT NULL DEFAULT '',
+              route TEXT NOT NULL,
+              content TEXT NOT NULL,
+              confidence REAL NOT NULL DEFAULT 0.0,
+              reason TEXT NOT NULL DEFAULT '',
+              source TEXT NOT NULL DEFAULT 'aux',
+              status TEXT NOT NULL DEFAULT 'pending',
+              content_hash TEXT NOT NULL,
+              created_at REAL NOT NULL,
+              resolved_at REAL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS memory_inbox_hash
+              ON memory_inbox(scope, persona_id, actor_hash, route, content_hash);
+            CREATE INDEX IF NOT EXISTS memory_inbox_pending
+              ON memory_inbox(scope, status, created_at DESC);
             CREATE INDEX IF NOT EXISTS memory_layer_owner
               ON memory_layer(layer, owner_id, priority DESC, updated_at DESC);
             """
@@ -545,6 +565,71 @@ class KnowledgeStore:
             sql += " AND persona_id=?"
             args.append(str(persona_id))
         cur = self._conn.execute(sql, tuple(args))
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    # ------------------------------------------------------------------
+    # Routing inbox: AI suggestions that are not safe to auto-write.
+    # ------------------------------------------------------------------
+    def add_inbox(
+        self,
+        *,
+        scope: str,
+        persona_id: str,
+        actor_hash: str,
+        actor_label: str,
+        route: str,
+        content: str,
+        confidence: float = 0.0,
+        reason: str = "",
+        source: str = "aux",
+    ) -> dict[str, Any]:
+        route = str(route or "").strip().lower()
+        if route not in {"persona_memory", "group_memory", "episode", "open_topic", "knowledge_doc"}:
+            return {"ok": False, "reason": "invalid_route"}
+        text = _normalise(content)[:240]
+        if len(text) < 2:
+            return {"ok": False, "reason": "empty"}
+        digest = hashlib.sha256(
+            f"{scope}\n{persona_id}\n{actor_hash}\n{route}\n{text.casefold()}".encode("utf-8")
+        ).hexdigest()[:32]
+        now = time.time()
+        row = self._conn.execute(
+            "SELECT id FROM memory_inbox WHERE scope=? AND persona_id=? AND actor_hash=? AND route=? AND content_hash=?",
+            (scope, persona_id, actor_hash, route, digest),
+        ).fetchone()
+        if row:
+            return {"ok": True, "id": row["id"], "duplicate": True}
+        item_id = "in-" + digest[:20]
+        self._conn.execute(
+            "INSERT INTO memory_inbox(id, scope, persona_id, actor_hash, actor_label, route, content, confidence, reason, source, status, content_hash, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (item_id, scope, persona_id, actor_hash, actor_label, route, text, float(confidence), reason[:160], source, "pending", digest, now),
+        )
+        self._conn.commit()
+        return {"ok": True, "id": item_id, "duplicate": False}
+
+    def list_inbox(self, *, scope: str = "", status: str = "pending", limit: int = 100) -> list[dict[str, Any]]:
+        where = "WHERE status=?"
+        args: list[Any] = [str(status or "pending")]
+        if scope:
+            where += " AND scope=?"
+            args.append(str(scope))
+        args.append(max(1, min(500, int(limit))))
+        rows = self._conn.execute(
+            f"SELECT * FROM memory_inbox {where} ORDER BY created_at DESC LIMIT ?",
+            args,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def resolve_inbox(self, *, item_id: str, status: str = "dismissed") -> bool:
+        status = str(status or "").strip().lower()
+        if status not in {"accepted", "dismissed"}:
+            return False
+        cur = self._conn.execute(
+            "UPDATE memory_inbox SET status=?, resolved_at=? WHERE id=? AND status='pending'",
+            (status, time.time(), str(item_id or "")),
+        )
         self._conn.commit()
         return cur.rowcount > 0
 

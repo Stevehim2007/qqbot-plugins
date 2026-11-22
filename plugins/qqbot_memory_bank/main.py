@@ -6,6 +6,7 @@ import hashlib
 import inspect
 import json
 import re
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -14,12 +15,14 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, StarTools, register
 
 try:
+    from . import memory_router as router
     from . import store as bank_store
 except ImportError:  # AstrBot loads plugin modules as top-level
+    import memory_router as router  # type: ignore[no-redef]
     import store as bank_store  # type: ignore[no-redef]
 
 PLUGIN_NAME = "qqbot_memory_bank"
-PLUGIN_VERSION = "0.3.0"
+PLUGIN_VERSION = "0.5.0"
 DEFAULTS = {
     "enabled": True,
     "auto_extract_enabled": False,
@@ -36,6 +39,12 @@ DEFAULTS = {
     "auto_recall_personal_enabled": True,
     "memory_layer_max_items": 6,
     "memory_layer_max_chars": 600,
+    "routing_mode": "ai",
+    "routing_min_confidence": 0.6,
+    "auto_write_core_memory": False,
+    "auto_recall_cards_enabled": True,
+    "auto_recall_cards_limit": 3,
+    "auto_recall_cards_max_chars": 420,
 }
 
 
@@ -286,6 +295,28 @@ class MemoryBankPlugin(Star):
         )
         return "已删除。" if ok else "没有找到可删除的记忆。"
 
+    def _cards_db_path(self) -> Path:
+        return self._data_dir().parent / "qqbot_memory_commands" / "memory_cards.db"
+
+    def _read_cards(self, *, scope: str, persona_id: str, limit: int) -> list[str]:
+        path = self._cards_db_path()
+        if not path.exists():
+            return []
+        try:
+            connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=2)
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                "SELECT content, kind, importance FROM card "
+                "WHERE status='active' AND scope=? AND (persona_id=? OR persona_id='') "
+                "AND kind IN ('episode','open_topic','fact','preference') "
+                "ORDER BY importance DESC, updated_at DESC LIMIT ?",
+                (scope, persona_id, max(1, min(8, int(limit)))),
+            ).fetchall()
+            connection.close()
+            return [str(row["content"] or "").strip() for row in rows if str(row["content"] or "").strip()]
+        except Exception:
+            return []
+
     # ------------------------------------------------------------------
     # Automatic recall: small core memories + retrieved documents.
     # ------------------------------------------------------------------
@@ -305,6 +336,11 @@ class MemoryBankPlugin(Star):
             max_total = max(400, min(6000, int(self._cfg("auto_recall_max_chars", 1200))))
             sections: list[str] = []
             used = 0
+
+            def key(text: str) -> str:
+                return re.sub(r"\W+", "", str(text or "").casefold())[:80]
+
+            seen: set[str] = set()
 
             def add_section(label: str, lines: list[str]) -> bool:
                 nonlocal used
@@ -330,6 +366,10 @@ class MemoryBankPlugin(Star):
                         continue
                     if row.get("title"):
                         text = f"{row['title']}：{text}"
+                    marker = key(text)
+                    if not marker or marker in seen:
+                        continue
+                    seen.add(marker)
                     lines.append(f"- {text[:400]}")
                     if len("\n".join(lines)) >= max_layer_chars:
                         break
@@ -340,8 +380,28 @@ class MemoryBankPlugin(Star):
             doc_lines: list[str] = []
             for row in docs:
                 title = f"{row.get('title')}：" if row.get("title") else ""
-                doc_lines.append(f"- {title}{str(row.get('content') or '')[:420]}")
+                text = f"{title}{str(row.get('content') or '')[:420]}"
+                marker = key(text)
+                if not marker or marker in seen:
+                    continue
+                seen.add(marker)
+                doc_lines.append(f"- {text}")
             add_section("共享知识库参考", doc_lines)
+
+            card_count = 0
+            if bool(self._cfg("auto_recall_cards_enabled", True)):
+                card_limit = max(1, min(8, int(self._cfg("auto_recall_cards_limit", 3))))
+                card_lines: list[str] = []
+                for text in self._read_cards(scope=scope, persona_id=persona_id, limit=card_limit):
+                    marker = key(text)
+                    if not marker or marker in seen:
+                        continue
+                    if any(marker in old or old in marker for old in seen if len(old) >= 8):
+                        continue
+                    seen.add(marker)
+                    card_lines.append(f"- {text[:360]}")
+                card_count = len(card_lines)
+                add_section("记忆卡片", card_lines)
 
             personal_facts = 0
             if bool(self._cfg("auto_recall_personal_enabled", True)):
@@ -361,9 +421,10 @@ class MemoryBankPlugin(Star):
                 req.system_prompt = prompt + "\n\n" + "\n\n".join(sections)
                 event.set_extra("qqbot_memory_bank_auto_recall", True)
                 logger.info(
-                    "memory auto recall: layers=%d docs=%d facts=%d chars=%d",
+                    "memory auto recall: layers=%d docs=%d cards=%d facts=%d chars=%d",
                     sum(1 for _ in rows),
                     len(docs),
+                    card_count,
                     personal_facts,
                     len(req.system_prompt) - len(prompt),
                 )
@@ -420,28 +481,99 @@ class MemoryBankPlugin(Star):
         actor_label: str = "",
     ) -> None:
         try:
-            facts: list[str] = []
-            used_aux = bool(self._cfg("aux_enabled", True))
-            if used_aux:
-                facts = await self._aux_facts(umo, messages)
-            if not facts:
-                facts = bank_store.heuristic_facts("\n".join(messages))
-                used_aux = False
+            mode = str(self._cfg("routing_mode", "ai") or "ai").strip().lower()
+            routes: list[dict[str, Any]] = []
+            source = "aux"
+            if mode == "ai":
+                routes = await self._aux_routes(umo, messages)
+            if not routes:
+                routes = router.heuristic_routes(messages)
+                source = "rule"
             limit = max(1, min(10, int(self._cfg("max_facts_per_extract", 5))))
-            for fact in facts[:limit]:
-                self._get_store().add(
+            min_conf = max(0.0, min(1.0, float(self._cfg("routing_min_confidence", 0.6))))
+            auto_core = bool(self._cfg("auto_write_core_memory", False))
+            for item in routes[:limit]:
+                route = str(item.get("route") or "ignore").strip().lower()
+                content = str(item.get("content") or "").strip()
+                confidence = float(item.get("confidence") or 0.0)
+                reason = str(item.get("reason") or "")[:160]
+                if not content or route == "ignore":
+                    continue
+                if route == "user_fact":
+                    self._get_store().add(
+                        scope=scope,
+                        persona_id=persona_id,
+                        actor_hash=actor_hash,
+                        actor_label=actor_label,
+                        entry_kind="ai",
+                        content=content,
+                        source=source,
+                        confidence=max(0.0, min(1.0, confidence)),
+                        max_entries=int(self._cfg("max_entries", 2000)),
+                    )
+                    continue
+                if route in {"persona_memory", "group_memory"} and auto_core and confidence >= min_conf:
+                    layer = "persona" if route == "persona_memory" else "group"
+                    owner = persona_id if layer == "persona" else scope
+                    if owner:
+                        self._get_store().add_layer(
+                            layer=layer,
+                            owner_id=owner,
+                            title="AI 路由",
+                            content=content,
+                            tags="ai-routed",
+                        )
+                    continue
+                # Cards/docs remain human-owned; AI can only leave a reviewable
+                # suggestion, never silently rewrite them.
+                self._get_store().add_inbox(
                     scope=scope,
                     persona_id=persona_id,
                     actor_hash=actor_hash,
                     actor_label=actor_label,
-                    entry_kind="ai",
-                    content=fact,
-                    source="aux" if used_aux else "rule",
-                    confidence=0.8,
-                    max_entries=int(self._cfg("max_entries", 2000)),
+                    route=route,
+                    content=content,
+                    confidence=confidence,
+                    reason=reason,
+                    source=source,
                 )
         except Exception:
             logger.debug("qqbot_memory_bank extraction failed", exc_info=True)
+
+    async def _aux_routes(self, umo: str, messages: list[str]) -> list[dict[str, Any]]:
+        try:
+            getter = getattr(self.context, "get_using_provider", None)
+            if not callable(getter):
+                return []
+            try:
+                provider = getter(umo=str(umo or ""))
+            except TypeError:
+                provider = getter()
+            if inspect.isawaitable(provider):
+                provider = await provider
+            provider_id = _provider_id(provider)
+            generator = getattr(self.context, "llm_generate", None)
+            if not provider_id or not callable(generator):
+                return []
+            prompt = "用户消息：\n" + "\n".join(f"- {m}" for m in messages[-12:])
+            pending = generator(
+                chat_provider_id=provider_id,
+                prompt=prompt,
+                system_prompt=router.route_prompt(),
+                max_tokens=500,
+                temperature=0.1,
+            )
+            response = await asyncio.wait_for(pending, timeout=12) if inspect.isawaitable(pending) else pending
+            raw = (
+                getattr(response, "completion_text", None)
+                or getattr(response, "text", None)
+                or getattr(response, "_completion_text", None)
+                or response
+            )
+            return router.parse_routes(str(raw or ""), limit=int(self._cfg("max_facts_per_extract", 5)))
+        except Exception:
+            logger.debug("qqbot_memory_bank auxiliary routing failed", exc_info=True)
+            return []
 
     async def _aux_facts(self, umo: str, messages: list[str]) -> list[str]:
         try:
