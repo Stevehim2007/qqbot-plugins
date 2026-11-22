@@ -1,7 +1,7 @@
 name: qqbot_memory_bank
 display_name: 知识库与 AI 记忆
 desc: 四层记忆：人格/群核心记忆常驻注入，用户导入知识库只读自动 RAG，AI 记忆按用户隔离。
-version: 0.6.0
+version: 0.7.0
 author: QQ Bot Studio
 repo: https://github.com/Stevehim2007/qqbot-plugins
 support_platforms:

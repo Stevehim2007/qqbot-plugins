@@ -14,6 +14,45 @@
     "default": true,
     "description": "优先用辅助 AI 提取；失败/关闭时用规则兜底"
   },
+  "digest_enabled": {
+    "type": "bool",
+    "default": true,
+    "ui_group": "群聊近况摘要",
+    "description": "用辅助 AI 定期把群里没被回复的消息压成摘要，机器人真正被 @ 时作为上下文参考"
+  },
+  "digest_every_turns": {
+    "type": "int",
+    "default": 20,
+    "slider": {
+      "min": 5,
+      "max": 200,
+      "step": 5
+    },
+    "ui_group": "群聊近况摘要",
+    "description": "每累计多少条群消息总结一次（只调用辅助 AI）"
+  },
+  "digest_keep": {
+    "type": "int",
+    "default": 2,
+    "slider": {
+      "min": 1,
+      "max": 5,
+      "step": 1
+    },
+    "ui_group": "群聊近况摘要",
+    "description": "保留并注入最近几条摘要"
+  },
+  "digest_max_chars": {
+    "type": "int",
+    "default": 400,
+    "slider": {
+      "min": 160,
+      "max": 1200,
+      "step": 40
+    },
+    "ui_group": "群聊近况摘要",
+    "description": "单条摘要最多多少字"
+  },
   "extract_every_turns": {
     "type": "int",
     "default": 4,

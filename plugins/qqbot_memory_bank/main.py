@@ -24,9 +24,13 @@ except ImportError:  # AstrBot loads plugin modules as top-level
     import store as bank_store  # type: ignore[no-redef]
 
 PLUGIN_NAME = "qqbot_memory_bank"
-PLUGIN_VERSION = "0.6.0"
+PLUGIN_VERSION = "0.7.0"
 DEFAULTS = {
     "enabled": True,
+    "digest_enabled": True,
+    "digest_every_turns": 20,
+    "digest_keep": 2,
+    "digest_max_chars": 400,
     "auto_extract_enabled": False,
     "aux_enabled": True,
     "extract_every_turns": 4,
@@ -155,6 +159,7 @@ class MemoryBankPlugin(Star):
         self._store: bank_store.KnowledgeStore | None = None
         self._store_path: Path | None = None
         self._turns: dict[str, list[str]] = {}
+        self._digest_turns: dict[str, list[str]] = {}
 
     def _cfg(self, key: str, default: Any = None) -> Any:
         value = self.config_obj.get(key, DEFAULTS.get(key, default))
@@ -324,12 +329,12 @@ class MemoryBankPlugin(Star):
     # ------------------------------------------------------------------
     @filter.on_llm_request()
     async def inject_memory_context(self, event: AstrMessageEvent, req: Any) -> None:
-        if not self._enabled() or not bool(self._cfg("auto_recall_enabled", True)):
+        if not self._enabled():
             return
+        recall_enabled = bool(self._cfg("auto_recall_enabled", True))
         try:
             query = str(getattr(event, "message_str", "") or "").strip()
-            if len(query) < 4 or query.startswith(("/", "[[", "【")):
-                return
+            retrieval_ok = len(query) >= 4 and not query.startswith(("/", "[[", "【"))
             store = self._get_store()
             scope = event_scope(event)
             persona_id = event_persona(event) or "default"
@@ -359,7 +364,23 @@ class MemoryBankPlugin(Star):
                 used += len(block)
                 return True
 
-            rows = store.layers_for_prompt(persona_id=persona_id, scope=scope, limit=max_items)
+            if bool(self._cfg("digest_enabled", True)):
+                digest_cap = max(160, min(2400, int(self._cfg("digest_max_chars", 400) or 400)))
+                digest_rows = store.latest_digests(
+                    scope=scope,
+                    persona_id=persona_id,
+                    limit=max(1, min(5, int(self._cfg("digest_keep", 2) or 2))),
+                )
+                add_section(
+                    "群聊近况（辅助模型摘要）",
+                    [f"- {str(row.get('content') or '')[:digest_cap]}" for row in digest_rows],
+                )
+
+            rows = (
+                store.layers_for_prompt(persona_id=persona_id, scope=scope, limit=max_items)
+                if recall_enabled and retrieval_ok
+                else []
+            )
             for layer, label in (("persona", "人格记忆"), ("group", "群记忆")):
                 lines: list[str] = []
                 for row in [item for item in rows if item.get("layer") == layer]:
@@ -378,7 +399,11 @@ class MemoryBankPlugin(Star):
                 add_section(label, lines)
 
             top_k = max(1, min(8, int(self._cfg("auto_recall_top_k", 3))))
-            docs = store.search_docs(scope=scope, persona_id=persona_id, query=query, limit=top_k)
+            docs = (
+                store.search_docs(scope=scope, persona_id=persona_id, query=query, limit=top_k)
+                if recall_enabled and retrieval_ok
+                else []
+            )
             doc_lines: list[str] = []
             for row in docs:
                 title = f"{row.get('title')}：" if row.get("title") else ""
@@ -391,7 +416,7 @@ class MemoryBankPlugin(Star):
             add_section("共享知识库参考", doc_lines)
 
             card_count = 0
-            if bool(self._cfg("auto_recall_cards_enabled", True)):
+            if recall_enabled and retrieval_ok and bool(self._cfg("auto_recall_cards_enabled", True)):
                 card_limit = max(1, min(8, int(self._cfg("auto_recall_cards_limit", 3))))
                 card_lines: list[str] = []
                 for text in self._read_cards(scope=scope, persona_id=persona_id, limit=card_limit):
@@ -406,7 +431,7 @@ class MemoryBankPlugin(Star):
                 add_section("记忆卡片", card_lines)
 
             personal_facts = 0
-            if bool(self._cfg("auto_recall_personal_enabled", True)):
+            if recall_enabled and retrieval_ok and bool(self._cfg("auto_recall_personal_enabled", True)):
                 actor_hash, _actor_label = event_actor(event)
                 facts = store.search(
                     scope=scope,
@@ -441,7 +466,10 @@ class MemoryBankPlugin(Star):
     async def observe_message(self, event: AstrMessageEvent):
         """Buffer incoming user messages; extraction is independent of whether
         the main bot chose to reply."""
-        if not self._enabled() or not bool(self._cfg("auto_extract_enabled", False)):
+        if not self._enabled():
+            return
+        self._observe_digest(event)
+        if not bool(self._cfg("auto_extract_enabled", False)):
             return
         text = str(getattr(event, "message_str", "") or "").strip()
         if not text or text.startswith(("/", "[[", "【")):
@@ -472,6 +500,108 @@ class MemoryBankPlugin(Star):
                 actor_label,
             )
         )
+
+    def _observe_digest(self, event: AstrMessageEvent) -> None:
+        """Collect every message into a per-group rolling digest buffer.
+
+        Runs before the reply gate's ``stop_event()`` and never waits for a
+        reply, so a quiet bot still knows what the group has been talking about.
+        Summarising is handed to the auxiliary model, not the chat provider.
+        """
+        if not bool(self._cfg("digest_enabled", True)):
+            return
+        try:
+            text = str(getattr(event, "message_str", "") or "").strip()
+            if not text or text.startswith(("/", "[[", "【")):
+                return
+            try:
+                if str(event.get_sender_id() or "") == str(event.get_self_id() or ""):
+                    return
+            except Exception:
+                pass
+            umo = str(getattr(event, "unified_msg_origin", "") or "")
+            if not umo:
+                return
+            sender = str(getattr(event, "sender_name", "") or "").strip()[:24]
+            line = f"{sender}：{text[:200]}" if sender else text[:200]
+            buffer = self._digest_turns.setdefault(umo, [])
+            buffer.append(line)
+            every = max(5, min(200, int(self._cfg("digest_every_turns", 20) or 20)))
+            del buffer[:-every]
+            if len(buffer) < every:
+                return
+            messages = list(buffer)
+            self._digest_turns[umo] = []
+            asyncio.create_task(
+                self._summarize_context(
+                    umo,
+                    event_scope(event),
+                    event_persona(event) or "default",
+                    messages,
+                )
+            )
+        except Exception:
+            logger.exception("qqbot memory bank digest buffer failed")
+
+    async def _summarize_context(
+        self,
+        umo: str,
+        scope: str,
+        persona_id: str,
+        messages: list[str],
+    ) -> None:
+        if not messages:
+            return
+        try:
+            limit = max(120, min(1200, int(self._cfg("digest_max_chars", 400) or 400)))
+            previous = ""
+            try:
+                rows = self._get_store().latest_digests(
+                    scope=scope, persona_id=persona_id, limit=1
+                )
+                if rows:
+                    previous = str(rows[0].get("content") or "").strip()
+            except Exception:
+                previous = ""
+            system_prompt = (
+                "你在替一个QQ群机器人维护「群聊近况」笔记。"
+                f"把下面这段群聊压缩成不超过 {limit} 个汉字的中文摘要，"
+                "只写仍在进行中的话题、人物与称呼、结论或待办；"
+                "不要逐条复述、不要编造、不要输出 JSON 或 markdown。"
+                "如果和上一条摘要没有新内容，就输出 UPDATE 加一句变化。"
+            )
+            prompt_lines = []
+            if previous:
+                prompt_lines.append("上一条摘要：\n" + previous[:limit])
+            prompt_lines.append("这段群聊：\n" + "\n".join(f"- {line}" for line in messages[-30:]))
+            summary = await aux_ai.generate(
+                plugin_data_dir=self._data_dir().parent,
+                system_prompt=system_prompt,
+                prompt="\n\n".join(prompt_lines),
+                max_tokens=max(160, limit),
+                temperature=0.2,
+                timeout=float(self._cfg("aux_timeout_seconds", 15) or 15),
+            )
+            summary = str(summary or "").strip()
+            if len(summary) < 4:
+                return
+            if summary.startswith("UPDATE"):
+                summary = summary[6:].strip() or previous
+            self._get_store().add_digest(
+                scope=scope,
+                persona_id=persona_id,
+                content=summary[: limit * 2],
+                keep=int(self._cfg("digest_keep", 2) or 2),
+                max_entries=int(self._cfg("max_entries", 2000)),
+            )
+            logger.info(
+                "memory digest updated scope=%s chars=%d messages=%d",
+                scope,
+                len(summary),
+                len(messages),
+            )
+        except Exception:
+            logger.exception("qqbot memory bank digest summarise failed")
 
     async def _extract_and_store(
         self,

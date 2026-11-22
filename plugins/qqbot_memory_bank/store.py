@@ -295,6 +295,47 @@ class KnowledgeStore:
         self._conn.commit()
         return {"ok": True, "id": entry_id, "duplicate": False, "content": fact}
 
+    def add_digest(
+        self,
+        *,
+        scope: str,
+        persona_id: str,
+        content: str,
+        keep: int = 2,
+        max_entries: int = 2000,
+    ) -> dict[str, Any]:
+        """Store a rolling group-chat digest and keep only the newest few."""
+        result = self.add(
+            scope=scope,
+            persona_id=persona_id,
+            content=content,
+            tags="digest",
+            source="aux",
+            confidence=0.9,
+            entry_kind="digest",
+            max_entries=max_entries,
+        )
+        if not result.get("ok"):
+            return result
+        self._conn.execute(
+            "DELETE FROM knowledge_entry WHERE entry_kind='digest' AND scope=? AND persona_id=? "
+            "AND id NOT IN (SELECT id FROM knowledge_entry WHERE entry_kind='digest' "
+            "AND scope=? AND persona_id=? ORDER BY updated_at DESC LIMIT ?)",
+            (scope, persona_id, scope, persona_id, max(1, int(keep))),
+        )
+        self._conn.commit()
+        return result
+
+    def latest_digests(
+        self, *, scope: str, persona_id: str, limit: int = 2
+    ) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT content, updated_at FROM knowledge_entry WHERE entry_kind='digest' "
+            "AND scope=? AND persona_id=? ORDER BY updated_at DESC LIMIT ?",
+            (scope, persona_id, max(1, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def search(
         self,
         *,

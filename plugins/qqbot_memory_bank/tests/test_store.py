@@ -25,6 +25,29 @@ class KnowledgeStoreTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertIn("可乐", rows[0]["content"])
 
+    def test_digest_keeps_only_the_newest_entries(self):
+        for index in range(4):
+            result = self.store.add_digest(
+                scope="group:onebot:1",
+                persona_id="p1",
+                content=f"第{index}次群聊摘要",
+                keep=2,
+            )
+            self.assertTrue(result["ok"], result)
+        rows = self.store.latest_digests(scope="group:onebot:1", persona_id="p1", limit=5)
+        self.assertEqual(len(rows), 2)
+        self.assertIn("第3次", rows[0]["content"])
+
+    def test_digest_is_scoped_per_group_and_persona(self):
+        self.store.add_digest(scope="group:onebot:1", persona_id="p1", content="一群在聊比赛")
+        self.assertEqual(
+            self.store.latest_digests(scope="group:onebot:2", persona_id="p1"), []
+        )
+        self.assertEqual(
+            self.store.latest_digests(scope="group:onebot:1", persona_id="p2"), []
+        )
+        self.assertEqual(len(self.store.latest_digests(scope="group:onebot:1", persona_id="p1")), 1)
+
     def test_noise_is_rejected(self):
         result = self.store.add(scope="group:onebot:1", content="[[NO_REPLY]] https://x.test/a.png")
         self.assertFalse(result["ok"])
