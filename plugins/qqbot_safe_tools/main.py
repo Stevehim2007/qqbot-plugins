@@ -2735,7 +2735,14 @@ class SafeToolsPlugin(Star):
                 scope_id = body.get("scope_id", "")
                 if not isinstance(scope_type, str) or not isinstance(scope_id, str):
                     raise control_server.ControlError("invalid_args", http_status=400)
-                return self.policy_scope(scope_type=scope_type, scope_id=scope_id)
+                include_schema = body.get("include_schema", True)
+                if not isinstance(include_schema, (bool, str)):
+                    raise control_server.ControlError("invalid_args", http_status=400)
+                return self.policy_scope(
+                    scope_type=scope_type,
+                    scope_id=scope_id,
+                    include_schema=include_schema,
+                )
             if request.method == "policy.scope_reset":
                 scope_type = body.get("scope_type")
                 scope_id = body.get("scope_id")

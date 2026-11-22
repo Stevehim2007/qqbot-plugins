@@ -44,7 +44,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "f64132382d98f667d6b9ac085dee511124026edad14be10a2e3188272b3f7f1a",
+      "sha256": "a08c4e9bfa43a4d6a1b09dd4cfa0704f056d8701a02bb45a4576b12e702a8f8f",
       "size": 129745,
       "root": "qqbot_core_reply",
       "download": "https://raw.githubusercontent.com/Stevehim2007/qqbot-plugins/main/artifacts/qqbot_core_reply-4.3.13.zip"
@@ -52,7 +52,7 @@
     {
       "id": "qqbot_safe_tools",
       "name": "Safe Tools 协议",
-      "version": "3.4.0",
+      "version": "3.4.1",
       "description": "唯一负责 [[tool:...]] marker 解析、校验、权限、冷却与跨插件安全调度的插件；不调用 LLM。",
       "author": "QQ Bot Studio",
       "astrbot": ">=4.29,<5",
@@ -81,10 +81,10 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "0330933823bfe0ca4bc403330e807233215bc4974f4a0bb371a3c8a5ad981bc2",
-      "size": 144997,
+      "sha256": "3a1699fd4b40bf09729a6ca066ff6f7efa64bc1604f16ab2be7f53addc663bbb",
+      "size": 145249,
       "root": "qqbot_safe_tools",
-      "download": "https://raw.githubusercontent.com/Stevehim2007/qqbot-plugins/main/artifacts/qqbot_safe_tools-3.4.0.zip"
+      "download": "https://raw.githubusercontent.com/Stevehim2007/qqbot-plugins/main/artifacts/qqbot_safe_tools-3.4.1.zip"
     },
     {
       "id": "qqbot_web_reader",
@@ -150,7 +150,7 @@
           "marker_example": "[[tool:fetch_webpage url=\"https://example.com/article\" max_chars=3000]]"
         }
       ],
-      "sha256": "f3a44a83e80a6c9d0ad685ff803258173e7c2dba034ff0dab2846b27d0120b8b",
+      "sha256": "78e8635443e0a6c51b4c679d40740f605dda6a7ee3deba47977be918ceaed7ef",
       "size": 40464,
       "root": "qqbot_web_reader",
       "download": "https://raw.githubusercontent.com/Stevehim2007/qqbot-plugins/main/artifacts/qqbot_web_reader-2.0.1.zip"
@@ -230,7 +230,7 @@
           "marker_example": "[[tool:search_images keyword=\"关键词\" count=1]]"
         }
       ],
-      "sha256": "74fa94d06854d5bcddadfbbeee5f7eac1ab18a386a1b100397d85cadef9c1a59",
+      "sha256": "fa2eca297e68b76a05d0ecac837d679ee01f6db2fd6603b90c0fc3cf547100e5",
       "size": 58215,
       "root": "qqbot_image_search",
       "download": "https://raw.githubusercontent.com/Stevehim2007/qqbot-plugins/main/artifacts/qqbot_image_search-2.0.1.zip"
@@ -369,7 +369,7 @@
           "marker_example": "[[tool:submit_food_review restaurant=\"店名\" location=\"位置\" taste=\"4.5\" value=\"3.5\" comment=\"评价\" tags=\"火锅,夜宵\"]]"
         }
       ],
-      "sha256": "97d82c692a78a78527146fde4a0507f2cb8831d0758f0cd7532d43e19067ebd1",
+      "sha256": "eab847e22dedead68888e774a141563fdb9e0f6fd74afffd1411034fcc0a1c6b",
       "size": 109135,
       "root": "qqbot_food",
       "download": "https://raw.githubusercontent.com/Stevehim2007/qqbot-plugins/main/artifacts/qqbot_food-3.0.6.zip"
@@ -483,7 +483,7 @@
           "marker_example": "[[tool:list_sticker_categories()]]"
         }
       ],
-      "sha256": "7acc4a934630582a344248c0cc2838f60b11332bdd7960f9f20f282a350e867c",
+      "sha256": "e0f7889e1e1f50f92905d002a307daf695cd43703d49f140b9a53cf55629cdba",
       "size": 107095,
       "root": "qqbot_stickers",
       "download": "https://raw.githubusercontent.com/Stevehim2007/qqbot-plugins/main/artifacts/qqbot_stickers-3.0.4.zip"
@@ -538,7 +538,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "30fbe5cc20f093a1795355ac2dff2f06daeaf8cb277bca5e4eb66cbb398c1126",
+      "sha256": "756194341d84ed3a6f433f3ad18e667274f48da42ab6b219b3f9c8783cc0f59f",
       "size": 100886,
       "root": "qqbot_memory_commands",
       "download": "https://raw.githubusercontent.com/Stevehim2007/qqbot-plugins/main/artifacts/qqbot_memory_commands-4.3.3.zip"
@@ -567,7 +567,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "22ea88278cdbcedf166827397f3d4ab778f17ab0383e90373c6e42dd358fd8d0",
+      "sha256": "1f2b0e9b4766884b01cb5dcaf30bfc84e8c6db3ce021a449278762f7d791bbb5",
       "size": 9968,
       "root": "qqbot_expression_state",
       "download": "https://raw.githubusercontent.com/Stevehim2007/qqbot-plugins/main/artifacts/qqbot_expression_state-1.0.0.zip"
@@ -596,7 +596,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "a326595b67de2816d9f9b0d2f044a497d760fb3bd505f6bc71aeb030d5170b0d",
+      "sha256": "beb135175f2e65eaf2578df876fbda842d56336fe2df299f9e1106ab70770432",
       "size": 22062,
       "root": "qqbot_memory_bank",
       "download": "https://raw.githubusercontent.com/Stevehim2007/qqbot-plugins/main/artifacts/qqbot_memory_bank-0.6.0.zip"
@@ -625,7 +625,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "b6e0e78a7c06fa82311174c5c85d7694b2da0e261320cf5c94540ead1d219aaf",
+      "sha256": "b5f368888f26646447a6460727a0a5536132ce5133674fc965394983353defcf",
       "size": 5166,
       "root": "qqbot_fortune",
       "download": "https://raw.githubusercontent.com/Stevehim2007/qqbot-plugins/main/artifacts/qqbot_fortune-1.0.2.zip"
@@ -676,7 +676,7 @@
           }
         ]
       },
-      "sha256": "14c747fc0fc81640f0dd69c2b96c4d3b521a832c07162596424bf9db55fb15a0",
+      "sha256": "53877255b6786b18130f676261a9603575589fb3de63d0c22c8403b9919f877e",
       "size": 10450,
       "root": "qqbot_weather",
       "download": "https://raw.githubusercontent.com/Stevehim2007/qqbot-plugins/main/artifacts/qqbot_weather-1.0.2.zip"
@@ -705,7 +705,7 @@
       "recommended_groups": [
         "QQ Bot"
       ],
-      "sha256": "c6fd6fb3c92a84bc19406829b07852b1b68bafc46a382fa1ddbc65bb34d7dafa",
+      "sha256": "38343c260704a4a6f25ada5b1f867ecdd6423ba904b3c681f3e350698f5a6d01",
       "size": 10301,
       "root": "qqbot_scheduler",
       "download": "https://raw.githubusercontent.com/Stevehim2007/qqbot-plugins/main/artifacts/qqbot_scheduler-1.0.2.zip"

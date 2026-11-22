@@ -127,6 +127,23 @@ class PolicyApiTests(unittest.TestCase):
         ):
             self.assertIn(method, CONTROL_METHODS)
 
+    def test_scope_can_skip_embedded_schemas_for_the_console(self):
+        full = self.plugin.policy_scope("group", "20002")
+        lean = self.plugin.policy_scope("group", "20002", include_schema=False)
+        self.assertTrue(full["schemas"])
+        self.assertEqual(lean["schemas"], {})
+        self.assertTrue(lean["schema_digests"]["qqbot_safe_tools"])
+        # Studio sends the flag as a query string, so both spellings work.
+        for value in (False, "0", "false"):
+            self.assertEqual(
+                self.plugin.policy_scope("group", "20002", include_schema=value)["schemas"],
+                {},
+            )
+        for value in (True, "1", "true"):
+            self.assertTrue(
+                self.plugin.policy_scope("group", "20002", include_schema=value)["schemas"]
+            )
+
     def test_stale_revision_is_reported(self):
         first = self.plugin.policy_set(
             plugin_id="qqbot_food", group_id="20002", enabled=False
