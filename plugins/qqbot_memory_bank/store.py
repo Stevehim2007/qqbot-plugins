@@ -359,8 +359,12 @@ class KnowledgeStore:
         ).fetchone()
         if row:
             self._conn.execute(
-                "UPDATE memory_layer SET title=?, content=?, tags=?, priority=?, updated_at=? WHERE id=?",
-                (title, text, tags, int(priority), now, row["id"]),
+                "UPDATE memory_layer SET "
+                "title=CASE WHEN ?='' THEN title ELSE ? END, "
+                "tags=CASE WHEN ?='' THEN tags ELSE ? END, "
+                "priority=CASE WHEN ?<=0 THEN priority ELSE ? END, "
+                "updated_at=? WHERE id=?",
+                (title, title, tags, tags, int(priority), int(priority), now, row["id"]),
             )
             self._conn.commit()
             return {"ok": True, "id": row["id"], "duplicate": True}
