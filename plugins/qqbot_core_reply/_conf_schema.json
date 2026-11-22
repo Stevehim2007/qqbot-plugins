@@ -112,11 +112,6 @@
     "type": "bool",
     "default": true
   },
-  "block_default_llm_for_group_non_at": {
-    "description": "阻断未命中的非 @ 群消息的 AstrBot 默认 LLM",
-    "type": "bool",
-    "default": true
-  },
   "ambient_group_chat_enabled": {
     "description": "启用群聊低频 ambient 参与",
     "type": "bool",
@@ -778,7 +773,7 @@
     ]
   },
   "participation.group_mention_only": {
-    "description": "群聊硬门：开启后，未真实 @ 机器人的群消息在进入任何业务逻辑前被直接丢弃（私聊不受影响）",
+    "description": "群消息进 AI 的开关：开启后只有真实 @ 机器人的群消息会进入 AI 处理，其余群消息在事件层直接丢弃、不消耗模型；私聊不受影响",
     "type": "bool",
     "default": false
   },

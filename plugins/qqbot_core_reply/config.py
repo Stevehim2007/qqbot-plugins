@@ -79,7 +79,6 @@ DEFAULTS: dict[str, Any] = {
     "ignore_pure_face": True,
     "ignore_command_prefixes": ["/"],
     "inherit_astrbot_wake_prefix": True,
-    "block_default_llm_for_group_non_at": True,
     # Ambient group participation.
     "ambient_group_chat_enabled": False,
     "ambient_group_keywords": ["机器人", "小助手"],
