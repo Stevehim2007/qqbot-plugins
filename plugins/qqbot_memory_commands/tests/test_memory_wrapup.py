@@ -33,6 +33,20 @@ class MemoryWrapupTests(unittest.TestCase):
         self.assertEqual(plan["phase_summary"], "")
         self.assertEqual(plan["open_topic"], "那家店怎么走？")
 
+    def test_preview_prefers_ai_episode_hint(self):
+        plan = wrapup.preview(
+            conversation_id="c-ai",
+            session_revision=1,
+            scope="group:g-ai",
+            messages=[{"role": "user", "content": "记住我喜欢吃火锅。"}],
+            episode_hint="用户提到自己喜欢吃火锅，聊到下次一起去吃，尚未约定时间。",
+            episode_enabled=True,
+        )
+        episodes = [item for item in plan["cards"] if item["kind"] == "episode"]
+        self.assertEqual(len(episodes), 1)
+        self.assertIn("喜欢吃火锅", episodes[0]["content"])
+        self.assertNotEqual(episodes[0]["content"], "记住我喜欢吃火锅。")
+
     def test_preview_keeps_only_durable_user_facts(self):
         plan = wrapup.preview(
             conversation_id="qq_official:GroupMessage:g2",

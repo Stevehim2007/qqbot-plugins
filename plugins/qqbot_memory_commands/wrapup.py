@@ -158,15 +158,21 @@ def preview(
     actor_id: str = "",
     purpose_enabled: bool = False,
     phase_hint: str = "",
+    episode_hint: str = "",
+    episode_enabled: bool = True,
 ) -> dict[str, Any]:
     """Return a deterministic wrap-up plan; no persistence."""
 
     visible = list(messages)
-    summary = durable_episode(visible)
+    summary = _clean_fragment(str(episode_hint or "")) if str(episode_hint or "").strip() else ""
+    if not summary:
+        summary = durable_episode(visible)
+    if summary:
+        summary = _compact(summary, MAX_SUMMARY_CHARS)
     phase = _user_phase(visible)
     open_topic = last_open_topic(visible)
     planned: list[dict[str, Any]] = []
-    if summary:
+    if summary and episode_enabled:
         planned.append(
             {
                 "kind": "episode",

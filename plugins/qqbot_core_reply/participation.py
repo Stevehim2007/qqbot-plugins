@@ -72,7 +72,11 @@ class ParticipationPolicy:
         return bool((mention_enabled and mentioned) or wake)
 
     def unified_worth_considering(
-        self, message_text: str, *, active_name: str = ""
+        self,
+        message_text: str,
+        *,
+        active_name: str = "",
+        policy_params: dict[str, Any] | None = None,
     ) -> bool:
         """Cheap social gate before the full unified generation.
 
@@ -84,9 +88,13 @@ class ParticipationPolicy:
         if not text:
             return False
         folded = text.casefold()
+        params = policy_params or {}
+        configured_names = params.get("participation.unified_names")
+        if configured_names is None:
+            configured_names = self.config.effective_list("participation.unified_names")
         names = [
             str(name).strip()
-            for name in self.config.effective_list("participation.unified_names")
+            for name in configured_names
             if str(name).strip()
         ]
         active_name = str(active_name or "").strip()
@@ -107,9 +115,12 @@ class ParticipationPolicy:
         ):
             return True
         named = any(name.casefold() in folded for name in names)
-        if not named and self.config.effective_bool(
-            "participation.unified_require_name", default=False
-        ):
+        require_name = params.get("participation.unified_require_name")
+        if require_name is None:
+            require_name = self.config.effective_bool(
+                "participation.unified_require_name", default=False
+            )
+        if not named and bool(require_name):
             return False
         if named:
             # A bare name call ("电子羊") still deserves a short "在".

@@ -336,6 +336,7 @@ class MemoryCommandsPlugin(Star):
             scope=scope,
             messages=buffer,
             purpose_enabled=bool(self.config.get("cards_purpose_enabled", False)),
+            episode_enabled=bool(self.config.get("cards_episode_enabled", True)),
         )
         result = wrapup.apply_plan(self.card_store, plan)
         return f"记忆收尾完成：生成 {len(result.get('cards', []))} 张卡片，revision={revision}。"
@@ -383,6 +384,18 @@ class MemoryCommandsPlugin(Star):
                         timeout=float(self.config.get("cards_llm_timeout_seconds", 8) or 8),
                     )
                     self._aux_guard.record(bool(phase_hint))
+                episode_hint = ""
+                ai_episode = bool(self.config.get("cards_episode_ai_enabled", False))
+                if ai_episode and self._aux_guard.allow():
+                    episode_hint = await aux.episode_summary(
+                        self.context,
+                        [
+                            f"{'用户' if item.get('role') == 'user' else '助手'}：{item.get('content') or ''}"
+                            for item in buffer
+                        ],
+                        timeout=float(self.config.get("cards_llm_timeout_seconds", 10) or 10),
+                    )
+                    self._aux_guard.record(bool(episode_hint))
                 plan = wrapup.preview(
                     conversation_id=scope,
                     session_revision=revision,
@@ -390,6 +403,8 @@ class MemoryCommandsPlugin(Star):
                     messages=buffer,
                     purpose_enabled=bool(self.config.get("cards_purpose_enabled", False)),
                     phase_hint=phase_hint,
+                    episode_hint=episode_hint,
+                    episode_enabled=bool(self.config.get("cards_episode_enabled", True)) or ai_episode,
                 )
                 wrapup.apply_plan(self.card_store, plan)
                 self.card_store.archive_decayed(scope=scope)

@@ -244,6 +244,22 @@ class PersonaService:
                     return prompt, str(getattr(persona, "name", "") or ""), "persona_id"
         return legacy_prompt, "", "legacy"
 
+    def persona_id_for_event(self, event: Any) -> str:
+        """Stable persona partition id for memory/corpus sidecars."""
+        try:
+            _prompt, _name, source = self.resolve_event_persona(event)
+            if source == "profile":
+                active = self.config.string("prompt_profile_active_id").strip()
+                return active or "profile"
+            if source == "group":
+                group_id = self._safe_group_id(event)
+                return f"group:{group_id}" if group_id else "group"
+            if source == "persona_id":
+                return self.config.string("persona.default_id").strip() or "persona"
+        except Exception:
+            pass
+        return "default"
+
     def agent_group_persona_target(
         self,
         event: Any,
@@ -387,6 +403,11 @@ class PersonaService:
                 expression_hint = self.expression_context(event, message_text)
                 if expression_hint:
                     lines.append(str(expression_hint)[:100])
+                    if self.logger:
+                        self.logger.info(
+                            "expression context injected mode=direct chars=%d",
+                            len(expression_hint),
+                        )
             except Exception:
                 pass
             try:
@@ -629,6 +650,11 @@ class PersonaService:
                     + "\n\n"
                     + expression_hint[:100]
                 )
+                if self.logger:
+                    self.logger.info(
+                        "expression context injected mode=astrbot chars=%d",
+                        len(expression_hint),
+                    )
         except Exception:
             pass
 

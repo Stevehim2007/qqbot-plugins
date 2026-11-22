@@ -474,7 +474,32 @@ class CoreReplyPlugin(Star):
         try:
             if not self.config.bool("enabled", False):
                 return
-            if not self.config.bool("participation.group_mention_only", False):
+            # Stamp the active persona at the earliest hook so sibling memory
+            # plugins (priority 118) can partition their data correctly.
+            try:
+                persona_id = self.persona.persona_id_for_event(event)
+                _prompt, persona_name, _source = self.persona.resolve_event_persona(event)
+                event.set_extra("qqbot_core_reply_persona_id", persona_id)
+                event.set_extra("qqbot_core_reply_persona_name", persona_name)
+            except Exception:
+                logger.warning("qqbot personality stamp failed", exc_info=True)
+            group_only = self.config.bool(
+                "participation.group_mention_only", False
+            )
+            try:
+                group_id = str(event.get_group_id() or "")
+                policy = self.pipeline._capability_policy(
+                    "qqbot_core_reply", group_id=group_id
+                )
+                if isinstance(policy, dict):
+                    override = (policy.get("params") or {}).get(
+                        "participation.group_mention_only"
+                    )
+                    if override is not None:
+                        group_only = bool(override)
+            except Exception:
+                logger.warning("group mention policy lookup failed", exc_info=True)
+            if not group_only:
                 return
             if self.pipeline.is_private(event):
                 return

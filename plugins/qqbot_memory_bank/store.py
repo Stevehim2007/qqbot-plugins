@@ -23,8 +23,8 @@ def _normalise(text: str) -> str:
     return _SPACE_RE.sub(" ", str(text or "")).strip()
 
 
-def _hash(scope: str, persona_id: str, content: str) -> str:
-    raw = f"{scope}\n{persona_id}\n{_normalise(content).casefold()}"
+def _hash(scope: str, persona_id: str, actor_hash: str, content: str) -> str:
+    raw = f"{scope}\n{persona_id}\n{actor_hash}\n{_normalise(content).casefold()}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
 
 
@@ -110,13 +110,34 @@ class KnowledgeStore:
               confidence REAL NOT NULL DEFAULT 1.0,
               content_hash TEXT NOT NULL,
               created_at REAL NOT NULL,
-              updated_at REAL NOT NULL
+              updated_at REAL NOT NULL,
+              actor_hash TEXT NOT NULL DEFAULT '',
+              actor_label TEXT NOT NULL DEFAULT '',
+              entry_kind TEXT NOT NULL DEFAULT 'curated'
             );
-            CREATE UNIQUE INDEX IF NOT EXISTS knowledge_hash
-              ON knowledge_entry(scope, persona_id, content_hash);
             CREATE INDEX IF NOT EXISTS knowledge_scope
-              ON knowledge_entry(scope, persona_id, updated_at);
+              ON knowledge_entry(scope, persona_id, actor_hash, updated_at);
             """
+        )
+        columns = {
+            str(row["name"])
+            for row in self._conn.execute("PRAGMA table_info(knowledge_entry)").fetchall()
+        }
+        for name, ddl in (
+            ("actor_hash", "TEXT NOT NULL DEFAULT ''"),
+            ("actor_label", "TEXT NOT NULL DEFAULT ''"),
+            ("entry_kind", "TEXT NOT NULL DEFAULT 'legacy'"),
+        ):
+            if name not in columns:
+                self._conn.execute(f"ALTER TABLE knowledge_entry ADD COLUMN {name} {ddl}")
+        self._conn.execute("DROP INDEX IF EXISTS knowledge_hash")
+        self._conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS knowledge_hash "
+            "ON knowledge_entry(scope, persona_id, actor_hash, content_hash)"
+        )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS knowledge_kind "
+            "ON knowledge_entry(scope, persona_id, entry_kind, updated_at)"
         )
         self._conn.commit()
 
@@ -139,6 +160,9 @@ class KnowledgeStore:
         source: str = "manual",
         confidence: float = 1.0,
         persona_id: str = "",
+        actor_hash: str = "",
+        actor_label: str = "",
+        entry_kind: str = "curated",
         max_entries: int = 2000,
     ) -> dict[str, Any]:
         fact = clean_fact(content)
@@ -146,43 +170,58 @@ class KnowledgeStore:
             return {"ok": False, "reason": "empty_or_noisy"}
         scope = str(scope or "")[:200]
         persona_id = str(persona_id or "")[:128]
+        actor_hash = str(actor_hash or "")[:64]
+        actor_label = str(actor_label or "")[:80]
+        entry_kind = str(entry_kind or "curated")[:24]
         if not scope:
             return {"ok": False, "reason": "no_scope"}
         now = time.time()
-        digest = _hash(scope, persona_id, fact)
+        digest = _hash(scope, persona_id, actor_hash, fact)
         row = self._conn.execute(
-            "SELECT id FROM knowledge_entry WHERE scope=? AND persona_id=? AND content_hash=?",
-            (scope, persona_id, digest),
+            "SELECT id FROM knowledge_entry WHERE scope=? AND persona_id=? AND actor_hash=? AND content_hash=?",
+            (scope, persona_id, actor_hash, digest),
         ).fetchone()
         if row:
             self._conn.execute(
-                "UPDATE knowledge_entry SET updated_at=?, confidence=MAX(confidence, ?), tags=? WHERE id=?",
-                (now, float(confidence), str(tags or "")[:160], row["id"]),
+                "UPDATE knowledge_entry SET updated_at=?, confidence=MAX(confidence, ?), tags=?, actor_label=?, entry_kind=? WHERE id=?",
+                (now, float(confidence), str(tags or "")[:160], actor_label, entry_kind, row["id"]),
             )
             self._conn.commit()
             return {"ok": True, "id": row["id"], "duplicate": True, "content": fact}
         count = self._conn.execute(
-            "SELECT COUNT(*) FROM knowledge_entry WHERE scope=? AND persona_id=?",
-            (scope, persona_id),
+            "SELECT COUNT(*) FROM knowledge_entry WHERE scope=? AND persona_id=? AND actor_hash=?",
+            (scope, persona_id, actor_hash),
         ).fetchone()[0]
         if int(count) >= max(1, int(max_entries)):
             return {"ok": False, "reason": "bank_full"}
         entry_id = "kb-" + digest[:20]
         self._conn.execute(
-            "INSERT INTO knowledge_entry(id, scope, persona_id, content, tags, source, confidence, content_hash, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (entry_id, scope, persona_id, fact, str(tags or "")[:160], str(source or "manual")[:24], float(confidence), digest, now, now),
+            "INSERT INTO knowledge_entry(id, scope, persona_id, content, tags, source, confidence, content_hash, created_at, updated_at, actor_hash, actor_label, entry_kind) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                entry_id, scope, persona_id, fact, str(tags or "")[:160], str(source or "manual")[:24],
+                float(confidence), digest, now, now, actor_hash, actor_label, entry_kind,
+            ),
         )
         self._conn.commit()
         return {"ok": True, "id": entry_id, "duplicate": False, "content": fact}
 
-    def search(self, *, scope: str, query: str, persona_id: str = "", limit: int = 5) -> list[dict[str, Any]]:
+    def search(
+        self,
+        *,
+        scope: str,
+        query: str,
+        persona_id: str = "",
+        actor_hash: str = "",
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
         scope = str(scope or "")[:200]
         if not scope:
             return []
         rows = self._conn.execute(
-            "SELECT * FROM knowledge_entry WHERE scope=? AND (persona_id=? OR persona_id='') ORDER BY updated_at DESC LIMIT 300",
-            (scope, str(persona_id or "")[:128]),
+            "SELECT * FROM knowledge_entry WHERE scope=? AND (persona_id=? OR persona_id='') "
+            "AND (actor_hash=? OR actor_hash='') ORDER BY updated_at DESC LIMIT 300",
+            (scope, str(persona_id or "")[:128], str(actor_hash or "")[:64]),
         ).fetchall()
         terms = _tokens(query)
         if not terms:
@@ -197,18 +236,19 @@ class KnowledgeStore:
         scored.sort(key=lambda pair: (-pair[0], -float(pair[1].get("updated_at") or 0)))
         return [item for _, item in scored[: max(1, min(20, int(limit)))]]
 
-    def forget(self, *, scope: str, entry_id: str, persona_id: str = "") -> bool:
+    def forget(self, *, scope: str, entry_id: str, persona_id: str = "", actor_hash: str = "") -> bool:
         cur = self._conn.execute(
-            "DELETE FROM knowledge_entry WHERE id=? AND scope=? AND persona_id=?",
-            (str(entry_id or ""), str(scope or ""), str(persona_id or "")),
+            "DELETE FROM knowledge_entry WHERE id=? AND scope=? AND persona_id=? AND actor_hash=? AND entry_kind!='curated'",
+            (str(entry_id or ""), str(scope or ""), str(persona_id or ""), str(actor_hash or "")[:64]),
         )
         self._conn.commit()
         return cur.rowcount > 0
 
-    def stats(self, *, scope: str, persona_id: str = "") -> dict[str, Any]:
+    def stats(self, *, scope: str, persona_id: str = "", actor_hash: str = "") -> dict[str, Any]:
         row = self._conn.execute(
-            "SELECT COUNT(*) AS total FROM knowledge_entry WHERE scope=? AND (persona_id=? OR persona_id='')",
-            (str(scope or ""), str(persona_id or "")),
+            "SELECT COUNT(*) AS total FROM knowledge_entry WHERE scope=? AND (persona_id=? OR persona_id='') "
+            "AND (actor_hash=? OR actor_hash='')",
+            (str(scope or ""), str(persona_id or ""), str(actor_hash or "")[:64]),
         ).fetchone()
         return {"scope": scope, "total": int(row["total"] if row else 0)}
 

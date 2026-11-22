@@ -717,14 +717,14 @@ class TestConfigContract(unittest.TestCase):
 
     def test_plugin_version_and_metadata_match(self):
         version = (PLUGIN_DIR / "VERSION").read_text(encoding="utf-8").strip()
-        self.assertEqual(version, "4.3.0")
+        self.assertEqual(version, "4.3.1")
         metadata = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
         metadata_version = next(
             line.split(":", 1)[1].strip()
             for line in metadata.splitlines()
             if line.startswith("version:")
         )
-        self.assertEqual(metadata_version, "4.3.0")
+        self.assertEqual(metadata_version, "4.3.1")
         self.assertIn('astrbot_version: ">=4.29,<5"', metadata)
         self.assertIn("qqbot_memory_commands", metadata)
         init_source = (PLUGIN_DIR / "__init__.py").read_text(encoding="utf-8")

@@ -57,6 +57,7 @@ class SocialStore:
             CREATE TABLE IF NOT EXISTS favorability (
                 scope_key TEXT NOT NULL,
                 actor_hash TEXT NOT NULL,
+                actor_label TEXT NOT NULL DEFAULT '',
                 score REAL NOT NULL DEFAULT 0,
                 last_event_at REAL NOT NULL DEFAULT 0,
                 updated_at REAL NOT NULL DEFAULT 0,
@@ -79,6 +80,12 @@ class SocialStore:
             )
             """
         )
+        try:
+            self._conn.execute(
+                "ALTER TABLE favorability ADD COLUMN actor_label TEXT NOT NULL DEFAULT ''"
+            )
+        except sqlite3.OperationalError:
+            pass
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_fav_event_day ON favorability_event(scope_key, actor_hash, created_at)"
         )
@@ -95,7 +102,7 @@ class SocialStore:
 
     def get(self, scope: str, actor: str) -> dict[str, Any]:
         row = self._conn.execute(
-            "SELECT score, updated_at FROM favorability WHERE scope_key=? AND actor_hash=?",
+            "SELECT score, updated_at, actor_label FROM favorability WHERE scope_key=? AND actor_hash=?",
             (scope, actor),
         ).fetchone()
         score = float(row["score"]) if row else 0.0
@@ -103,6 +110,7 @@ class SocialStore:
             "tier": tier_for(score),
             "score": round(score, 2),
             "updated_at": float(row["updated_at"]) if row else 0.0,
+            "actor_label": str(row["actor_label"] or "") if row else "",
         }
 
     def _daily_net(self, scope: str, actor: str, now: float) -> float:
@@ -128,6 +136,7 @@ class SocialStore:
         cooldown_seconds: float = 300.0,
         min_confidence: float = 0.6,
         enabled: bool = True,
+        actor_label: str = "",
     ) -> dict[str, Any]:
         if not enabled:
             return {"accepted": False, "applied": 0.0, "reason": "disabled"}
@@ -154,6 +163,7 @@ class SocialStore:
             applied = remaining if applied > 0 else -remaining
         reason_text = "".join(ch for ch in str(reason or "") if ord(ch) >= 32)[:80]
         label = "".join(ch for ch in str(event_label or "") if ord(ch) >= 32)[:32]
+        display_name = "".join(ch for ch in str(actor_label or "") if ord(ch) >= 32)[:64]
         digest = evidence_hash(scope, actor, reason_text, label, applied)
         duplicate = self._conn.execute(
             "SELECT 1 FROM favorability_event WHERE scope_key=? AND actor_hash=? AND evidence_hash=? AND created_at>=? LIMIT 1",
@@ -174,10 +184,11 @@ class SocialStore:
         if applied == 0:
             return {"accepted": False, "applied": 0.0, "reason": "capped"}
         self._conn.execute(
-            "INSERT INTO favorability(scope_key, actor_hash, score, last_event_at, updated_at) "
-            "VALUES(?,?,?,?,?) ON CONFLICT(scope_key, actor_hash) DO UPDATE SET "
+            "INSERT INTO favorability(scope_key, actor_hash, actor_label, score, last_event_at, updated_at) "
+            "VALUES(?,?,?,?,?,?) ON CONFLICT(scope_key, actor_hash) DO UPDATE SET "
+            "actor_label=CASE WHEN excluded.actor_label<>'' THEN excluded.actor_label ELSE favorability.actor_label END, "
             "score=excluded.score, last_event_at=excluded.last_event_at, updated_at=excluded.updated_at",
-            (scope, actor, new_score, now, now),
+            (scope, actor, display_name, new_score, now, now),
         )
         self._conn.execute(
             "INSERT INTO favorability_event(scope_key, actor_hash, delta, reason_code, event_label, evidence_hash, source, created_at) "

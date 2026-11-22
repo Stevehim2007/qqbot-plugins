@@ -93,6 +93,11 @@ def _p(kind: str, **kwargs: Any) -> ParamSpec:
 PLUGIN_PARAM_SPECS: dict[str, dict[str, ParamSpec]] = {
     "qqbot_core_reply": {
         "participation.reply_probability": _p("float", minimum=0.0, maximum=1.0, default=0.12, config_key="participation.group_probability", legacy_key="reply_probability"),
+        "participation.mode": _p("enum", enum=("probability", "model", "unified"), default="probability", config_key="participation.mode"),
+        "participation.model_confidence": _p("float", minimum=0.0, maximum=1.0, default=0.6, config_key="participation.model_confidence"),
+        "participation.unified_require_name": _p("bool", default=False, config_key="participation.unified_require_name"),
+        "participation.unified_names": _p("list_str", max_chars=32, default=(), config_key="participation.unified_names"),
+        "participation.group_mention_only": _p("bool", default=False, config_key="participation.group_mention_only"),
         "participation.timezone": _p("str", max_chars=64, default="Asia/Shanghai", config_key="participation.timezone"),
         "context.max_chars": _p("int", minimum=500, maximum=8000, default=2000, config_key="max_input_chars"),
         "persona.profile_id": _p("str", max_chars=64, default=""),

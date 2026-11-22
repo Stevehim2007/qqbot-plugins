@@ -387,9 +387,15 @@ class ReplyPipeline:
         event: Any,
         text: str,
         history: list[dict[str, Any]],
+        policy_params: dict[str, Any] | None = None,
     ) -> str:
         """Return speak/observe/fallback for model-driven group participation."""
-        if self.config.string("participation.mode", "probability").lower() != "model":
+        params = policy_params or {}
+        selected_mode = str(
+            params.get("participation.mode")
+            or self.config.string("participation.mode", "probability")
+        ).lower()
+        if selected_mode != "model":
             return "fallback"
         session_key = str(getattr(event, "unified_msg_origin", "") or "")
         if not self.state.claim_model_participation(
@@ -428,8 +434,11 @@ class ReplyPipeline:
                 decision.get("reason_code", ""),
             )
             return "observe"
-        threshold = self.config.float(
-            "participation.model_confidence", 0.0, 1.0
+        threshold = float(
+            params.get(
+                "participation.model_confidence",
+                self.config.float("participation.model_confidence", 0.0, 1.0),
+            )
         )
         if float(decision.get("confidence", 0) or 0) < threshold:
             logger.info(
@@ -527,6 +536,9 @@ class ReplyPipeline:
             requested_scope={
                 "kind": "private" if self.is_private(event) else "group",
                 "group_id": group_id,
+                "actor_name": str(
+                    getattr(event, "get_sender_name", lambda: "")() or ""
+                )[:64],
             },
             owner_epoch=int(self.state.owner_epoch),
             deadline=deadline,
@@ -633,19 +645,23 @@ class ReplyPipeline:
                 private_enabled=self.participation.private_enabled(),
                 mention_enabled=self.participation.mention_enabled(),
             )
+            policy_params = (
+                dict(policy.get("params") or {}) if isinstance(policy, dict) else {}
+            )
             group_probability = self.participation.group_probability()
-            if policy is not None:
+            if policy_params:
                 try:
                     group_probability = float(
-                        policy.get("params", {}).get(
+                        policy_params.get(
                             "participation.reply_probability",
                             group_probability,
                         )
                     )
                 except (TypeError, ValueError):
                     pass
-            participation_mode = self.config.string(
-                "participation.mode", "probability"
+            participation_mode = str(
+                policy_params.get("participation.mode")
+                or self.config.string("participation.mode", "probability")
             ).lower()
             if (
                 not is_private
@@ -677,7 +693,9 @@ class ReplyPipeline:
                 except Exception:
                     active_persona_name = ""
                 if not self.participation.unified_worth_considering(
-                    text, active_name=str(active_persona_name or "")
+                    text,
+                    active_name=str(active_persona_name or ""),
+                    policy_params=policy_params,
                 ):
                     logger.info(
                         "unified participation skipped: not addressed group=%s text=%r",
@@ -698,7 +716,9 @@ class ReplyPipeline:
                 event.set_extra(UNIFIED_PARTICIPATION_EXTRA, True)
                 mode = "unified"
             elif not explicit and not is_private and participation_mode == "model":
-                decision = await self.model_participation(event, text, history)
+                decision = await self.model_participation(
+                    event, text, history, policy_params=policy_params
+                )
                 if decision == "observe":
                     self.block_default_llm(event)
                     return None

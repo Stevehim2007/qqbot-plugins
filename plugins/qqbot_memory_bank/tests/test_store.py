@@ -35,10 +35,24 @@ class KnowledgeStoreTests(unittest.TestCase):
         self.assertEqual(len(self.store.search(scope="group:onebot:1", query="猫", persona_id="p1")), 1)
 
     def test_forget_and_stats(self):
-        self.store.add(scope="group:onebot:1", content="用户住在长春")
-        rows = self.store.search(scope="group:onebot:1", query="长春")
-        self.assertTrue(self.store.forget(scope="group:onebot:1", entry_id=rows[0]["id"]))
-        self.assertEqual(self.store.stats(scope="group:onebot:1")["total"], 0)
+        self.store.add(scope="group:onebot:1", content="用户住在长春", actor_hash="a", entry_kind="ai")
+        rows = self.store.search(scope="group:onebot:1", query="长春", actor_hash="a")
+        self.assertTrue(self.store.forget(scope="group:onebot:1", entry_id=rows[0]["id"], actor_hash="a"))
+        self.assertEqual(self.store.stats(scope="group:onebot:1", actor_hash="a")["total"], 0)
+
+    def test_actor_isolation_and_shared_curated(self):
+        self.store.add(scope="group:onebot:1", content="用户喜欢猫", actor_hash="a", entry_kind="ai")
+        self.store.add(scope="group:onebot:1", content="用户喜欢猫", actor_hash="b", entry_kind="ai")
+        self.store.add(scope="group:onebot:1", content="群规：禁止广告", entry_kind="curated")
+        a_rows = self.store.search(scope="group:onebot:1", query="猫", actor_hash="a")
+        b_rows = self.store.search(scope="group:onebot:1", query="猫", actor_hash="b")
+        self.assertEqual(len(a_rows), 1)
+        self.assertEqual(len(b_rows), 1)
+        self.assertNotEqual(a_rows[0]["id"], b_rows[0]["id"])
+        shared = self.store.search(scope="group:onebot:1", query="广告", actor_hash="a")
+        self.assertEqual(len(shared), 1)
+        self.assertEqual(shared[0]["entry_kind"], "curated")
+        self.assertFalse(self.store.forget(scope="group:onebot:1", entry_id=shared[0]["id"], actor_hash="a"))
 
     def test_subject_normalisation(self):
         self.assertEqual(store.normalise_fact_subject("讨厌下雨天"), "用户讨厌下雨天")

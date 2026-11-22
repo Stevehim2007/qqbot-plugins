@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import inspect
 import json
 import re
@@ -18,7 +19,7 @@ except ImportError:  # AstrBot loads plugin modules as top-level
     import store as bank_store  # type: ignore[no-redef]
 
 PLUGIN_NAME = "qqbot_memory_bank"
-PLUGIN_VERSION = "0.1.0"
+PLUGIN_VERSION = "0.2.0"
 DEFAULTS = {
     "enabled": True,
     "auto_extract_enabled": False,
@@ -53,6 +54,22 @@ def event_scope(event: Any) -> str:
     if group:
         return f"group:{platform}:{group}"[:200]
     return f"user:{platform}:{user or 'unknown'}"[:200]
+
+
+def event_actor(event: Any) -> tuple[str, str]:
+    scope = event_scope(event)
+    try:
+        sender = str(event.get_sender_id() or "").strip()
+    except Exception:
+        sender = ""
+    try:
+        label = str(event.get_sender_name() or "").strip()
+    except Exception:
+        label = ""
+    if not sender:
+        return "", label[:80]
+    digest = hashlib.sha256(f"{scope}\n{sender}".encode("utf-8")).hexdigest()[:16]
+    return digest, label[:80]
 
 
 def event_persona(event: Any) -> str:
@@ -167,9 +184,13 @@ class MemoryBankPlugin(Star):
         """
         if not self._enabled():
             return "知识记忆库未启用。"
+        actor_hash, actor_label = event_actor(event)
         result = self._get_store().add(
             scope=event_scope(event),
             persona_id=event_persona(event),
+            actor_hash=actor_hash,
+            actor_label=actor_label,
+            entry_kind="ai",
             content=str(content or ""),
             tags=str(tags or ""),
             source="model",
@@ -194,9 +215,11 @@ class MemoryBankPlugin(Star):
         except (TypeError, ValueError):
             requested = 5
         requested = max(1, min(10, requested))
+        actor_hash, _actor_label = event_actor(event)
         rows = self._get_store().search(
             scope=event_scope(event),
             persona_id=event_persona(event),
+            actor_hash=actor_hash,
             query=str(query or ""),
             limit=requested,
         )
@@ -217,9 +240,11 @@ class MemoryBankPlugin(Star):
         """
         if not self._enabled() or not bool(self._cfg("allow_forget", True)):
             return "不允许删除记忆。"
+        actor_hash, _actor_label = event_actor(event)
         ok = self._get_store().forget(
             scope=event_scope(event),
             persona_id=event_persona(event),
+            actor_hash=actor_hash,
             entry_id=str(entry_id or ""),
         )
         return "已删除。" if ok else "没有找到可删除的记忆。"
@@ -243,20 +268,24 @@ class MemoryBankPlugin(Star):
         except Exception:
             pass
         scope = event_scope(event)
-        buffer = self._turns.setdefault(scope, [])
+        actor_hash, actor_label = event_actor(event)
+        buffer_key = f"{scope}|{actor_hash}"
+        buffer = self._turns.setdefault(buffer_key, [])
         buffer.append(text[:500])
         del buffer[:-10]
         every = max(2, min(20, int(self._cfg("extract_every_turns", 4))))
         if len(buffer) < every:
             return
         messages = list(buffer)
-        self._turns[scope] = []
+        self._turns[buffer_key] = []
         asyncio.create_task(
             self._extract_and_store(
                 scope,
                 event_persona(event),
                 str(getattr(event, "unified_msg_origin", "") or ""),
                 messages,
+                actor_hash,
+                actor_label,
             )
         )
 
@@ -266,6 +295,8 @@ class MemoryBankPlugin(Star):
         persona_id: str,
         umo: str,
         messages: list[str],
+        actor_hash: str = "",
+        actor_label: str = "",
     ) -> None:
         try:
             facts: list[str] = []
@@ -280,6 +311,9 @@ class MemoryBankPlugin(Star):
                 self._get_store().add(
                     scope=scope,
                     persona_id=persona_id,
+                    actor_hash=actor_hash,
+                    actor_label=actor_label,
+                    entry_kind="ai",
                     content=fact,
                     source="aux" if used_aux else "rule",
                     confidence=0.8,

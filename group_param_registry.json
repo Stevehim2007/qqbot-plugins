@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "registry_revision": "43a4cf9be227008ba8999146453dddef1277212f3ed3e75c32373af7e152d39f",
+  "registry_revision": "7cd73f4e9359c2df220f1efc04eb260bb04c74b5150766a5e04fb0389a20f45e",
   "plugins": {
     "qqbot_core_reply": {
       "participation.reply_probability": {
@@ -9,6 +9,55 @@
         "sensitive": false,
         "minimum": 0.0,
         "maximum": 1.0,
+        "max_chars": null,
+        "enum": []
+      },
+      "participation.mode": {
+        "kind": "enum",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": null,
+        "maximum": null,
+        "max_chars": null,
+        "enum": [
+          "probability",
+          "model",
+          "unified"
+        ]
+      },
+      "participation.model_confidence": {
+        "kind": "float",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": 0.0,
+        "maximum": 1.0,
+        "max_chars": null,
+        "enum": []
+      },
+      "participation.unified_require_name": {
+        "kind": "bool",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": null,
+        "maximum": null,
+        "max_chars": null,
+        "enum": []
+      },
+      "participation.unified_names": {
+        "kind": "list_str",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": null,
+        "maximum": null,
+        "max_chars": 32,
+        "enum": []
+      },
+      "participation.group_mention_only": {
+        "kind": "bool",
+        "group_overridable": true,
+        "sensitive": false,
+        "minimum": null,
+        "maximum": null,
         "max_chars": null,
         "enum": []
       },

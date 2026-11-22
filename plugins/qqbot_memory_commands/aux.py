@@ -90,3 +90,53 @@ async def phase_summary(
         return text[: max(1, int(max_chars))].rstrip()
     except Exception:  # noqa: BLE001 - optional assist must never break chat
         return ""
+
+
+async def episode_summary(
+    context: Any,
+    messages: list[str],
+    *,
+    timeout: float = 10.0,
+    max_chars: int = 220,
+) -> str:
+    """Return a short narrative episode, or '' when unavailable/invalid."""
+
+    try:
+        getter = getattr(context, "get_using_provider", None)
+        generator = getattr(context, "llm_generate", None)
+        if not callable(getter) or not callable(generator):
+            return ""
+        provider = getter()
+        if inspect.isawaitable(provider):
+            provider = await provider
+        provider_id = str(
+            getattr(provider, "provider_id", "") or getattr(provider, "id", "") or ""
+        ).strip()
+        if not provider_id:
+            return ""
+        system = (
+            "你是对话记忆助手，只写一段 120–200 字的中文叙事摘要。"
+            "写清楚发生了什么、用户表达的事实/偏好/情绪、以及结果或未完成事项；"
+            "不要逐句复述聊天记录，不要写助手内心戏，不要编造，不要 markdown、引号或列表。"
+            "没有可记的实质内容时只输出空字符串。"
+        )
+        pending = generator(
+            chat_provider_id=provider_id,
+            prompt="最近对话：\n" + "\n".join(f"- {m}" for m in messages[-12:]),
+            system_prompt=system,
+            max_tokens=320,
+            temperature=0.3,
+        )
+        response = await asyncio.wait_for(pending, timeout=timeout) if inspect.isawaitable(pending) else pending
+        raw = (
+            getattr(response, "completion_text", None)
+            or getattr(response, "text", None)
+            or getattr(response, "_completion_text", None)
+            or response
+        )
+        text = " ".join(str(raw or "").replace("```", " ").split()).strip().strip('"“”')
+        if len(text) < 20 or any(token in text for token in ("[[NO_REPLY]]", "mqqapi://", "ComponentType.")):
+            return ""
+        return text[: max(1, int(max_chars))].rstrip()
+    except Exception:  # noqa: BLE001 - optional assist must never break chat
+        return ""

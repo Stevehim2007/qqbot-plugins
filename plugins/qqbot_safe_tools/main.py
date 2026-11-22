@@ -543,6 +543,19 @@ class SafeToolsPlugin(Star):
             actor = str(getattr(context, "actor_id", "") or "")
         return scope, social_state.actor_hash(scope, actor) if scope and actor else ""
 
+    @staticmethod
+    def _social_actor_label(context: Any) -> str:
+        try:
+            getter = getattr(context, "get_sender_name", None)
+            if callable(getter):
+                return str(getter() or "")[:64]
+            requested = getattr(context, "requested_scope", {}) or {}
+            if isinstance(requested, dict):
+                return str(requested.get("actor_name", "") or "")[:64]
+        except Exception:
+            pass
+        return ""
+
     def social_context(self, event: Any) -> str:
         """Short qualitative block for core_reply's system prompt."""
         try:
@@ -607,6 +620,7 @@ class SafeToolsPlugin(Star):
                     else float(self._config_lookup("favorability_min_confidence", 60))
                 ),
                 enabled=self._cfg_bool("favorability_enabled", False),
+                actor_label=self._social_actor_label(request_context),
             )
             result["ok"] = bool(result.get("accepted"))
             result["_silent"] = True
