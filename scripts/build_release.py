@@ -100,7 +100,7 @@ DISPLAY_NAMES = {
     "qqbot_stickers": "表情收藏与发送",
     "qqbot_memory_commands": "记忆管理",
     "qqbot_expression_state": "表达状态",
-    "qqbot_memory_bank": "知识记忆库",
+    "qqbot_memory_bank": "知识库与 AI 记忆",
     "qqbot_fortune": "每日运势",
     "qqbot_weather": "天气",
     "qqbot_scheduler": "定时消息",

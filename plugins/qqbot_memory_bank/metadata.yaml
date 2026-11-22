@@ -1,7 +1,7 @@
 name: qqbot_memory_bank
-display_name: 知识记忆库
-desc: 可检索的知识记忆库；模型通过 memory_add / memory_search 工具使用，不默认注入提示词。
-version: 0.2.0
+display_name: 知识库与 AI 记忆
+desc: 用户导入知识库（knowledge_search，只读）与 AI 记忆（memory_add/search，按用户隔离）；不默认注入提示词。
+version: 0.3.0
 author: QQ Bot Studio
 repo: https://github.com/Stevehim2007/qqbot-plugins
 support_platforms:

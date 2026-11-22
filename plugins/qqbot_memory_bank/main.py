@@ -19,7 +19,7 @@ except ImportError:  # AstrBot loads plugin modules as top-level
     import store as bank_store  # type: ignore[no-redef]
 
 PLUGIN_NAME = "qqbot_memory_bank"
-PLUGIN_VERSION = "0.2.0"
+PLUGIN_VERSION = "0.3.0"
 DEFAULTS = {
     "enabled": True,
     "auto_extract_enabled": False,
@@ -28,6 +28,7 @@ DEFAULTS = {
     "max_facts_per_extract": 5,
     "max_entries": 2000,
     "search_limit": 5,
+    "knowledge_search_limit": 3,
     "allow_forget": True,
 }
 
@@ -129,7 +130,7 @@ def parse_facts(raw: str, *, limit: int = 5) -> list[str]:
     return out
 
 
-@register(PLUGIN_NAME, "QQ Bot Studio", "可检索的知识记忆库；模型按需 search/add", PLUGIN_VERSION)
+@register(PLUGIN_NAME, "QQ Bot Studio", "用户导入知识库（只读检索）+ AI 记忆（按用户隔离）；模型按需调用工具", PLUGIN_VERSION)
 class MemoryBankPlugin(Star):
     def __init__(self, context: Context, config: Any = None) -> None:
         super().__init__(context)
@@ -174,6 +175,36 @@ class MemoryBankPlugin(Star):
     # Model-callable tools: the knowledge stays out of system prompt until
     # the model explicitly asks for it.
     # ------------------------------------------------------------------
+    @filter.llm_tool(name="knowledge_search")
+    async def knowledge_search(self, event: AstrMessageEvent, query: str, limit: str = "3") -> str:
+        """检索用户导入的知识库资料；资料只读，模型不能修改。
+
+        Args:
+            query(string): 要查的知识关键词或问题，例如“宿舍门禁时间”。
+            limit(string): 最多返回几条，默认 "3"。
+        """
+        if not self._enabled():
+            return "知识库未启用。"
+        try:
+            requested = int(str(limit or "3"))
+        except (TypeError, ValueError):
+            requested = int(self._cfg("knowledge_search_limit", 3))
+        requested = max(1, min(8, requested))
+        rows = self._get_store().search_docs(
+            scope=event_scope(event),
+            persona_id=event_persona(event),
+            query=str(query or ""),
+            limit=requested,
+        )
+        if not rows:
+            return "知识库里没有找到相关资料。"
+        lines = ["[用户导入知识库]"]
+        for index, row in enumerate(rows, 1):
+            title = f"{row['title']}：" if row.get("title") else ""
+            tag_text = f"（{row['tags']}）" if row.get("tags") else ""
+            lines.append(f"{index}. [{row['id']}] {title}{row['content']}{tag_text}")
+        return "\n".join(lines)
+
     @filter.llm_tool(name="memory_add")
     async def memory_add(self, event: AstrMessageEvent, content: str, tags: str = "") -> str:
         """记住一条用户明确说出的长期知识或偏好。

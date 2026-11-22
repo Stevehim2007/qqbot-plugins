@@ -54,6 +54,25 @@ class KnowledgeStoreTests(unittest.TestCase):
         self.assertEqual(shared[0]["entry_kind"], "curated")
         self.assertFalse(self.store.forget(scope="group:onebot:1", entry_id=shared[0]["id"], actor_hash="a"))
 
+    def test_imported_docs_are_separate_from_ai_memory(self):
+        self.store.add(scope="group:onebot:1", content="用户喜欢猫", actor_hash="a", entry_kind="ai")
+        doc = self.store.add_doc(scope="group:onebot:1", title="宿舍", content="宿舍门禁 23:00", tags="规则")
+        self.assertTrue(doc["ok"])
+        self.assertEqual(self.store.search(scope="group:onebot:1", query="猫", actor_hash="a")[0]["content"], "用户喜欢猫")
+        self.assertEqual(self.store.search(scope="group:onebot:1", query="门禁", actor_hash="a"), [])
+        docs = self.store.search_docs(scope="group:onebot:1", query="门禁")
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0]["title"], "宿舍")
+
+    def test_doc_dedupe_list_and_delete(self):
+        first = self.store.add_doc(scope="global", content="群规：禁止广告")
+        second = self.store.add_doc(scope="global", content="群规：禁止广告")
+        self.assertTrue(first["ok"])
+        self.assertTrue(second["duplicate"])
+        self.assertEqual(len(self.store.list_docs(scope="global")), 1)
+        self.assertTrue(self.store.delete_doc(entry_id=first["id"]))
+        self.assertEqual(self.store.list_docs(scope="global"), [])
+
     def test_subject_normalisation(self):
         self.assertEqual(store.normalise_fact_subject("讨厌下雨天"), "用户讨厌下雨天")
         self.assertEqual(store.normalise_fact_subject("用户喜欢猫"), "用户喜欢猫")

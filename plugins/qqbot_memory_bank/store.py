@@ -139,7 +139,54 @@ class KnowledgeStore:
             "CREATE INDEX IF NOT EXISTS knowledge_kind "
             "ON knowledge_entry(scope, persona_id, entry_kind, updated_at)"
         )
+        self._conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS knowledge_doc (
+              id TEXT PRIMARY KEY,
+              scope TEXT NOT NULL,
+              persona_id TEXT NOT NULL DEFAULT '',
+              title TEXT NOT NULL DEFAULT '',
+              content TEXT NOT NULL,
+              tags TEXT NOT NULL DEFAULT '',
+              source TEXT NOT NULL DEFAULT 'import',
+              content_hash TEXT NOT NULL,
+              created_at REAL NOT NULL,
+              updated_at REAL NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS knowledge_doc_hash
+              ON knowledge_doc(scope, persona_id, content_hash);
+            CREATE INDEX IF NOT EXISTS knowledge_doc_scope
+              ON knowledge_doc(scope, persona_id, updated_at);
+            """
+        )
+        self._migrate_curated_docs()
         self._conn.commit()
+
+    def _migrate_curated_docs(self) -> None:
+        """Move legacy operator-curated entries out of the AI fact table."""
+        try:
+            rows = self._conn.execute(
+                "SELECT id, scope, persona_id, content, tags, source, content_hash, created_at, updated_at "
+                "FROM knowledge_entry WHERE entry_kind='curated'"
+            ).fetchall()
+        except sqlite3.DatabaseError:
+            return
+        for row in rows:
+            digest = str(row["content_hash"] or "")
+            if not digest:
+                digest = hashlib.sha256(
+                    f"{row['scope']}\n{row['persona_id']}\n{str(row['content']).casefold()}".encode("utf-8")
+                ).hexdigest()[:32]
+            self._conn.execute(
+                "INSERT OR IGNORE INTO knowledge_doc(id, scope, persona_id, title, content, tags, source, content_hash, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (
+                    "doc-" + digest[:20], str(row["scope"]), str(row["persona_id"] or ""), "",
+                    str(row["content"]), str(row["tags"] or ""), "import", digest,
+                    float(row["created_at"] or time.time()), float(row["updated_at"] or time.time()),
+                ),
+            )
+            self._conn.execute("DELETE FROM knowledge_entry WHERE id=?", (row["id"],))
 
     def _relax_permissions(self) -> None:
         try:
@@ -251,6 +298,130 @@ class KnowledgeStore:
             (str(scope or ""), str(persona_id or ""), str(actor_hash or "")[:64]),
         ).fetchone()
         return {"scope": scope, "total": int(row["total"] if row else 0)}
+
+    # ------------------------------------------------------------------
+    # User-imported knowledge documents.  These are deliberately a separate
+    # table from AI-extracted facts: the model can only read them through
+    # knowledge_search, never auto-write them.
+    # ------------------------------------------------------------------
+    def add_doc(
+        self,
+        *,
+        scope: str,
+        content: str,
+        title: str = "",
+        tags: str = "",
+        persona_id: str = "",
+        source: str = "import",
+        max_entries: int = 2000,
+    ) -> dict[str, Any]:
+        scope = str(scope or "").strip()[:200]
+        persona_id = str(persona_id or "").strip()[:128]
+        title = _normalise(title)[:120]
+        content = _normalise(content)
+        tags = _normalise(tags)[:160]
+        if not scope:
+            return {"ok": False, "reason": "no_scope"}
+        if len(content) < 2:
+            return {"ok": False, "reason": "empty"}
+        if len(content) > 4000:
+            return {"ok": False, "reason": "too_long"}
+        digest = hashlib.sha256(
+            f"{scope}\n{persona_id}\n{content.casefold()}".encode("utf-8")
+        ).hexdigest()[:32]
+        row = self._conn.execute(
+            "SELECT id FROM knowledge_doc WHERE scope=? AND persona_id=? AND content_hash=?",
+            (scope, persona_id, digest),
+        ).fetchone()
+        now = time.time()
+        if row:
+            self._conn.execute(
+                "UPDATE knowledge_doc SET title=?, tags=?, source=?, updated_at=? WHERE id=?",
+                (title, tags, str(source or "import")[:24], now, row["id"]),
+            )
+            self._conn.commit()
+            return {"ok": True, "id": row["id"], "duplicate": True, "content": content}
+        count = self._conn.execute(
+            "SELECT COUNT(*) FROM knowledge_doc WHERE scope=? AND persona_id=?",
+            (scope, persona_id),
+        ).fetchone()[0]
+        if int(count) >= max(1, int(max_entries)):
+            return {"ok": False, "reason": "bank_full"}
+        doc_id = "doc-" + digest[:20]
+        self._conn.execute(
+            "INSERT INTO knowledge_doc(id, scope, persona_id, title, content, tags, source, content_hash, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (doc_id, scope, persona_id, title, content, tags, str(source or "import")[:24], digest, now, now),
+        )
+        self._conn.commit()
+        return {"ok": True, "id": doc_id, "duplicate": False, "content": content}
+
+    def search_docs(
+        self,
+        *,
+        scope: str,
+        query: str,
+        persona_id: str = "",
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        scope = str(scope or "")[:200]
+        if not scope:
+            return []
+        rows = self._conn.execute(
+            "SELECT * FROM knowledge_doc WHERE (scope=? OR scope='global') "
+            "AND (persona_id=? OR persona_id='') ORDER BY updated_at DESC LIMIT 500",
+            (scope, str(persona_id or "")[:128]),
+        ).fetchall()
+        terms = _tokens(query)
+        if not terms:
+            return [dict(r) for r in rows[: max(1, min(20, int(limit)))]]
+        scored: list[tuple[int, dict[str, Any]]] = []
+        for row in rows:
+            item = dict(row)
+            hay = (item["title"] + " " + item["content"] + " " + item["tags"]).casefold()
+            score = sum(1 for term in terms if term in hay)
+            if score:
+                scored.append((score, item))
+        scored.sort(key=lambda pair: (-pair[0], -float(pair[1].get("updated_at") or 0)))
+        return [item for _, item in scored[: max(1, min(20, int(limit)))]]
+
+    def list_docs(self, *, scope: str = "", persona_id: str = "", limit: int = 100) -> list[dict[str, Any]]:
+        scope = str(scope or "")[:200]
+        persona_id = str(persona_id or "")[:128]
+        where: list[str] = []
+        args: list[Any] = []
+        if scope:
+            where.append("scope=?")
+            args.append(scope)
+        if persona_id:
+            where.append("persona_id=?")
+            args.append(persona_id)
+        clause = (" WHERE " + " AND ".join(where)) if where else ""
+        rows = self._conn.execute(
+            "SELECT * FROM knowledge_doc" + clause + " ORDER BY updated_at DESC LIMIT ?",
+            (*args, max(1, min(500, int(limit)))),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def doc_scopes(self) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT scope, persona_id, COUNT(*) AS total FROM knowledge_doc "
+            "GROUP BY scope, persona_id ORDER BY MAX(updated_at) DESC LIMIT 100"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_doc(self, *, entry_id: str, scope: str = "", persona_id: str = "") -> bool:
+        args: list[Any] = [str(entry_id or "")]
+        sql = "DELETE FROM knowledge_doc WHERE id=?"
+        if scope:
+            sql += " AND scope=?"
+            args.append(str(scope))
+        if persona_id:
+            sql += " AND persona_id=?"
+            args.append(str(persona_id))
+        cur = self._conn.execute(sql, tuple(args))
+        self._conn.commit()
+        return cur.rowcount > 0
 
     def close(self) -> None:
         self._conn.close()
