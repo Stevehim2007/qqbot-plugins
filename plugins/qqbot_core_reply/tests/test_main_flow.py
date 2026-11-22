@@ -798,6 +798,26 @@ class HardGroupMentionGateTests(unittest.TestCase):
         run(plugin.hard_group_mention_gate(event))
         self.assertFalse(event.stopped)
 
+    def test_gated_message_is_remembered_without_calling_any_model(self):
+        # Context must keep flowing even when the bot will not answer: the gate
+        # records the message into chat history and spends zero tokens.
+        plugin, ctx, _ = make_plugin(
+            overrides={
+                "enabled": True,
+                "participation.group_mention_only": True,
+            }
+        )
+        event = group_event("今天谁在实验室")
+        run(plugin.hard_group_mention_gate(event))
+        self.assertTrue(event.stopped)
+        self.assertEqual(ctx.llm_calls, [])
+        umo = str(event.unified_msg_origin)
+        history = plugin.pipeline.state.history_for(umo)
+        self.assertTrue(
+            any("实验室" in str(item.get("text", "")) for item in history),
+            history,
+        )
+
     def test_private_message_passes_gate(self):
         plugin, _, _ = make_plugin(
             overrides={

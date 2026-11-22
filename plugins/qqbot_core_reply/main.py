@@ -505,15 +505,54 @@ class CoreReplyPlugin(Star):
                 return
             if self._has_bot_mention(event):
                 return
+            # Still observe the message: context and relationship memory must
+            # keep flowing even when this message will not be answered.
+            self._observe_without_reply(event)
             event.is_at_or_wake_command = False
             event.should_call_llm(False)
             event.stop_event()
             logger.info(
-                "group mention hard gate: dropped unmentioned group message umo=%r",
+                "group mention hard gate: observed without reply umo=%r",
                 str(getattr(event, "unified_msg_origin", "") or ""),
             )
         except Exception:
             logger.exception("group mention hard gate failed")
+
+    def _observe_without_reply(self, event: AstrMessageEvent) -> None:
+        """Record a gated group message into chat history without any model call.
+
+        The hard gate stops the event, so the reply pipeline never reaches its
+        own ``remember_history``.  Recording here keeps the group's context and
+        the identity/relationship view continuous while spending zero tokens.
+        """
+        try:
+            text = str(getattr(event, "message_str", "") or "").strip()
+            if text.startswith(("/", "[[", "【")):
+                return
+            try:
+                if str(event.get_sender_id() or "") == str(event.get_self_id() or ""):
+                    return
+            except Exception:
+                pass
+            components = self.pipeline.components(event)
+            has_image = any(
+                self.pipeline.is_component(component, "Image")
+                for component in components
+            )
+            has_face = any(
+                self.pipeline.is_component(component, "Face")
+                for component in components
+            )
+            if not text and not has_image and not has_face:
+                return
+            self.pipeline.remember_history(
+                event,
+                text,
+                has_image=has_image,
+                has_face=has_face,
+            )
+        except Exception:
+            logger.warning("observe-without-reply failed", exc_info=True)
 
     @filter.event_message_type(filter.EventMessageType.ALL, priority=120)
     async def require_mention_for_utility_commands(self, event: AstrMessageEvent):
