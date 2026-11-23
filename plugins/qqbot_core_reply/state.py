@@ -82,6 +82,7 @@ class RuntimeState:
         self.recent_history: dict[str, list[dict[str, Any]]] = {}
         self.ambient_last_at: dict[str, float] = {}
         self.ambient_message_count: dict[str, int] = {}
+        self.ignored_group_messages: dict[str, int] = {}
         self.model_participation_counts: dict[str, int] = {}
         self.member_language_prefs: dict[str, dict[str, str]] = {}
         self._language_prefs_path: Any = None
@@ -373,6 +374,20 @@ class RuntimeState:
             )[: len(self.ambient_message_count) - 256]:
                 self.ambient_message_count.pop(key, None)
         return count
+
+    def bump_ignored_group_message(self, session_key: str) -> int:
+        count = self.ignored_group_messages.get(session_key, 0) + 1
+        self.ignored_group_messages[session_key] = count
+        if len(self.ignored_group_messages) > 256:
+            for stale in list(self.ignored_group_messages)[:-256]:
+                self.ignored_group_messages.pop(stale, None)
+        return count
+
+    def reset_ignored_group_message(self, session_key: str) -> None:
+        self.ignored_group_messages.pop(session_key, None)
+
+    def ignored_group_count(self, session_key: str) -> int:
+        return int(self.ignored_group_messages.get(session_key, 0))
 
     # ------------------------------------------------------------------
     # Single turn controller / reply lease

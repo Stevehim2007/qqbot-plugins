@@ -773,6 +773,47 @@ class ModelParticipationTests(unittest.TestCase):
         self.assertEqual(event._result.chain, [])
 
 
+class SilenceNudgeTests(unittest.TestCase):
+    def _skipping_pipeline(self, overrides):
+        plugin, ctx, _ = make_plugin(
+            overrides={
+                "enabled": True,
+                "participation.mode": "probability",
+                "participation.group_probability": 0.12,
+                **overrides,
+            }
+        )
+        probabilities = []
+
+        def fake_claim(**kwargs):
+            probabilities.append(kwargs["probability"])
+            return False
+
+        plugin.pipeline.cooldown.try_claim_random = fake_claim
+        return plugin, ctx, probabilities
+
+    def test_silent_skips_are_counted_and_logged(self):
+        plugin, _ctx, probabilities = self._skipping_pipeline(
+            {"participation.silence_nudge_after": 0}
+        )
+        event = group_event("今天食堂开门吗")
+        run(collect_event(plugin, event))
+        self.assertFalse(event.llm_requested)
+        self.assertEqual(probabilities, [0.12])
+        umo = str(event.unified_msg_origin)
+        self.assertEqual(plugin.pipeline.state.ignored_group_count(umo), 1)
+
+    def test_forced_participation_after_configured_silent_skips(self):
+        plugin, _ctx, probabilities = self._skipping_pipeline(
+            {"participation.silence_nudge_after": 2}
+        )
+        for _ in range(2):
+            run(collect_event(plugin, group_event("随便聊聊")))
+        self.assertEqual(probabilities, [0.12, 0.12])
+        run(collect_event(plugin, group_event("有人吗")))
+        # Third attempt is forced: it asks the cooldown gate with 100%.
+        self.assertEqual(probabilities[-1], 1.0)
+
 class HardGroupMentionGateTests(unittest.TestCase):
     def test_non_at_group_message_is_dropped_before_pipeline(self):
         plugin, ctx, _ = make_plugin(

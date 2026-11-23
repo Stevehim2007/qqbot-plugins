@@ -804,15 +804,38 @@ class ReplyPipeline:
                             )
                         except (TypeError, ValueError):
                             pass
-                    if not self.cooldown.try_claim_random(
+                    # Never look dead: after a run of silent skips, answer once
+                    # so the group sees the bot is alive.
+                    nudge_after = self.config.int(
+                        "participation.silence_nudge_after", 0, 50
+                    )
+                    ignored = self.state.ignored_group_count(session_key)
+                    forced = bool(nudge_after) and ignored >= nudge_after
+                    claimed = self.cooldown.try_claim_random(
                         session_key=session_key,
                         user_key=self.participation.cooldown_keys(event)[1],
                         group_cooldown=group_cooldown,
                         user_cooldown=user_cooldown,
-                        probability=probability,
-                    ):
+                        probability=1.0 if forced else probability,
+                    )
+                    if not claimed:
+                        skipped = self.state.bump_ignored_group_message(session_key)
+                        logger.info(
+                            "group participation skipped: probability=%.3f ignored=%d group=%s text=%r",
+                            probability,
+                            skipped,
+                            group_id,
+                            str(text or "")[:60],
+                        )
                         self.block_default_llm(event)
                         return None
+                    if forced:
+                        logger.info(
+                            "group participation nudged after %d silent skips group=%s",
+                            ignored,
+                            group_id,
+                        )
+                    self.state.reset_ignored_group_message(session_key)
                     mode = "random"
             else:
                 if (

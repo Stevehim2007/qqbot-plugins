@@ -564,6 +564,17 @@
     },
     "ui_group": "群内参与"
   },
+  "participation.silence_nudge_after": {
+    "type": "int",
+    "default": 4,
+    "slider": {
+      "min": 0,
+      "max": 20,
+      "step": 1
+    },
+    "ui_group": "群内参与",
+    "description": "连续多少条群消息没被回复后，强制参与一次（0=关闭）；避免机器人看起来像掉线"
+  },
   "participation.group_allow": {
     "description": "群允许列表（稳定ID；空=不限制）",
     "type": "list",

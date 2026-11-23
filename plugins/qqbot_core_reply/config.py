@@ -46,6 +46,7 @@ DEFAULTS: dict[str, Any] = {
     "participation.private_enabled": True,
     "participation.mention_enabled": True,
     "participation.group_probability": 0.12,
+    "participation.silence_nudge_after": 4,
     "participation.group_allow": [],
     "participation.group_deny": [],
     "participation.ignore_self": True,
