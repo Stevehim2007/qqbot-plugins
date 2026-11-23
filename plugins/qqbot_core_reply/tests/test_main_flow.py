@@ -773,6 +773,26 @@ class ModelParticipationTests(unittest.TestCase):
         self.assertEqual(event._result.chain, [])
 
 
+class InboundDeduplicationTests(unittest.TestCase):
+    def test_same_platform_message_id_is_processed_once(self):
+        plugin, ctx, _ = make_plugin(overrides={"enabled": True})
+        first = FakeEvent("你好", private=True, message_id="mid-1")
+        second = FakeEvent("你好", private=True, message_id="mid-1")
+        run(collect_event(plugin, first))
+        calls_after_first = len(ctx.llm_calls)
+        self.assertGreater(calls_after_first, 0)
+        results = run(collect_event(plugin, second))
+        self.assertEqual(results, [])
+        self.assertEqual(len(ctx.llm_calls), calls_after_first)
+        self.assertFalse(second.llm_requested)
+
+    def test_different_message_ids_both_run(self):
+        plugin, ctx, _ = make_plugin(overrides={"enabled": True})
+        run(collect_event(plugin, FakeEvent("你好", private=True, message_id="mid-2")))
+        run(collect_event(plugin, FakeEvent("再问一句", private=True, message_id="mid-3")))
+        self.assertEqual(len(ctx.llm_calls), 2)
+
+
 class SilenceNudgeTests(unittest.TestCase):
     def _skipping_pipeline(self, overrides):
         plugin, ctx, _ = make_plugin(

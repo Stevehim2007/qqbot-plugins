@@ -83,6 +83,7 @@ class RuntimeState:
         self.ambient_last_at: dict[str, float] = {}
         self.ambient_message_count: dict[str, int] = {}
         self.ignored_group_messages: dict[str, int] = {}
+        self.recent_inbound: dict[str, float] = {}
         self.model_participation_counts: dict[str, int] = {}
         self.member_language_prefs: dict[str, dict[str, str]] = {}
         self._language_prefs_path: Any = None
@@ -374,6 +375,21 @@ class RuntimeState:
             )[: len(self.ambient_message_count) - 256]:
                 self.ambient_message_count.pop(key, None)
         return count
+
+    def mark_inbound(self, key: str, ttl: float = 15.0) -> bool:
+        """Return True for the first delivery of a message, False for repeats."""
+
+        if not key:
+            return True
+        now = self.clock()
+        seen = self.recent_inbound.get(key)
+        if seen is not None and (now - seen) < ttl:
+            return False
+        self.recent_inbound[key] = now
+        for stale, stamp in list(self.recent_inbound.items()):
+            if now - stamp >= ttl:
+                self.recent_inbound.pop(stale, None)
+        return True
 
     def bump_ignored_group_message(self, session_key: str) -> int:
         count = self.ignored_group_messages.get(session_key, 0) + 1

@@ -195,6 +195,7 @@ class FakeEvent:
         at_bot: bool = False,
         wake: bool = False,
         platform_id: str = "aiocqhttp",
+        message_id: str | None = None,
     ) -> None:
         from astrbot.api import message_components as Comp
 
@@ -216,11 +217,15 @@ class FakeEvent:
         suffix = "FriendMessage" if private else "GroupMessage"
         origin_id = self._sender_id if private else self._group_id
         self.unified_msg_origin = f"aiocqhttp:{suffix}:{origin_id}"
+        self.message_id = message_id
         self.extras: dict[str, Any] = {}
         self.stopped = False
         self.llm_blocked = False
         self.llm_requested = False
         self._result: Any = None
+
+    def get_message_id(self) -> str:
+        return str(self.message_id or "")
 
     def get_messages(self) -> list[Any]:
         return list(self._components)

@@ -672,6 +672,15 @@ class CoreReplyPlugin(Star):
     @filter.platform_adapter_type(_PLATFORM_TYPES, priority=100)
     @filter.event_message_type(filter.EventMessageType.ALL, priority=100)
     async def on_message(self, event: AstrMessageEvent):
+        logger.info(
+            "event received: umo=%r private=%s text=%r",
+            getattr(event, "unified_msg_origin", ""),
+            bool(getattr(event, "is_private_chat", lambda: False)()),
+            str(getattr(event, "message_str", "") or "")[:60],
+        )
+        if await self.pipeline.is_duplicate_event(event):
+            logger.info("duplicate inbound event ignored: %s", self.pipeline.inbound_key(event))
+            return
         outcome = await self.pipeline.handle_message(event)
         if outcome is None:
             return

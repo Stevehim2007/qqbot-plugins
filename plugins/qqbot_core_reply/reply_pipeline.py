@@ -1235,6 +1235,27 @@ class ReplyPipeline:
     # ------------------------------------------------------------------
     # Memory-mode complete-output adapter
     # ------------------------------------------------------------------
+    @staticmethod
+    def inbound_key(event: Any) -> str:
+        """Stable (session, platform message id) key for duplicate deliveries."""
+
+        message_id = ""
+        getter = getattr(event, "get_message_id", None)
+        if callable(getter):
+            try:
+                message_id = str(getter() or "")
+            except Exception:
+                message_id = ""
+        if not message_id:
+            obj = getattr(event, "message_obj", None)
+            message_id = str(getattr(obj, "message_id", "") or "")
+        if not message_id:
+            return ""
+        return f"{getattr(event, 'unified_msg_origin', '') or ''}|{message_id}"
+
+    async def is_duplicate_event(self, event: Any) -> bool:
+        return not self.state.mark_inbound(self.inbound_key(event))
+
     async def handle_decorating_result(self, event: Any) -> None:
         if self.persona.memory_mode() != "astrbot":
             return
