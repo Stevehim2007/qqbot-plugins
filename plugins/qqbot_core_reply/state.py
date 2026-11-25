@@ -184,18 +184,23 @@ class RuntimeState:
         )
         if self.config.bool("ambient_group_chat_enabled"):
             limit = max(limit, self.config.int("ambient_group_cache_limit", 0, 100))
+        if self.config.bool("group_context_enabled", True):
+            limit = max(limit, self.config.int("group_context_limit", 1, 100))
         return limit
 
     def history_ttl(self) -> int:
         ttl = self.config.int("group_identity_history_ttl_seconds", 30, 3600)
         if self.config.bool("ambient_group_chat_enabled"):
             ttl = self.config.int("ambient_group_cache_ttl_seconds", 30, 3600)
+        if self.config.bool("group_context_enabled", True):
+            ttl = max(ttl, self.config.int("group_context_ttl_seconds", 30, 86400))
         return ttl
 
     def history_enabled(self) -> bool:
         return bool(
             self.config.bool("group_identity_context_enabled")
             or self.config.bool("ambient_group_chat_enabled")
+            or self.config.bool("group_context_enabled", True)
         )
 
     def prune_history(self, now: float | None = None) -> None:

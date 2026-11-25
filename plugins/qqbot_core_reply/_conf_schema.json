@@ -965,5 +965,44 @@
       "step": 20
     },
     "ui_group": "人格"
+  },
+  "group_context_enabled": {
+    "description": "把最近的群消息作为上下文交给模型（不只是被 @ 的那几句）；关掉后模型只能看到自己参与的对话。",
+    "type": "bool",
+    "default": true,
+    "ui_group": "群内参与"
+  },
+  "group_context_limit": {
+    "description": "上下文里最多带多少条最近群消息（越大越记得住，也越费 token）。",
+    "type": "int",
+    "default": 30,
+    "slider": {
+      "min": 1,
+      "max": 100,
+      "step": 1
+    },
+    "ui_group": "群内参与"
+  },
+  "group_context_ttl_seconds": {
+    "description": "群消息保留多久仍可进上下文（秒）；默认 1 小时。",
+    "type": "int",
+    "default": 3600,
+    "slider": {
+      "min": 60,
+      "max": 86400,
+      "step": 60
+    },
+    "ui_group": "群内参与"
+  },
+  "group_context_max_chars": {
+    "description": "群聊上下文最多占用多少字符，超出就只带最近的。",
+    "type": "int",
+    "default": 3000,
+    "slider": {
+      "min": 200,
+      "max": 8000,
+      "step": 100
+    },
+    "ui_group": "群内参与"
   }
 }

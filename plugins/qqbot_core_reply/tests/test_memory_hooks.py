@@ -256,3 +256,52 @@ class MemoryHookTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class GroupContextInjectionTests(unittest.TestCase):
+    def _seed(self, plugin, umo, rows):
+        for nickname, text in rows:
+            plugin.pipeline.state.remember_history(
+                umo, nickname=nickname, qq="", text=text, has_image=False, has_face=False
+            )
+
+    def test_recent_group_messages_reach_the_prompt(self):
+        plugin, _, _ = make_plugin(overrides={"memory_mode": "astrbot"})
+        event = FakeEvent("hello", group_id=GROUP, sender_name="Alice", sender_id="1001")
+        plugin._mark_candidate(event, "hello", ambient=False)
+        umo = str(event.unified_msg_origin)
+        self._seed(plugin, umo, [("Bob", "昨天有人问机器人怎么不回话"),
+                                 ("Carol", "好像是登录掉了")])
+        req = types.SimpleNamespace(system_prompt="BASE")
+        plugin.persona.inject_memory_context(event, req)
+        self.assertIn("[群聊上下文", req.system_prompt)
+        self.assertIn("昨天有人问机器人怎么不回话", req.system_prompt)
+        self.assertIn("好像是登录掉了", req.system_prompt)
+        self.assertTrue(event.get_extra("qqbot_core_reply_group_context_injected"))
+
+    def test_group_context_can_be_switched_off(self):
+        plugin, _, _ = make_plugin(
+            overrides={"memory_mode": "astrbot", "group_context_enabled": False}
+        )
+        event = FakeEvent("hello", group_id=GROUP, sender_name="Alice", sender_id="1001")
+        plugin._mark_candidate(event, "hello", ambient=False)
+        umo = str(event.unified_msg_origin)
+        self._seed(plugin, umo, [("Bob", "这句不该出现")])
+        req = types.SimpleNamespace(system_prompt="BASE")
+        plugin.persona.inject_memory_context(event, req)
+        self.assertNotIn("[群聊上下文", req.system_prompt)
+        # 关闭后回落到旧的「说话人参考」块，只做身份区分
+        self.assertIn("群聊说话人参考", req.system_prompt)
+
+    def test_context_is_bounded_by_limit(self):
+        plugin, _, _ = make_plugin(
+            overrides={"memory_mode": "astrbot", "group_context_limit": 2}
+        )
+        event = FakeEvent("hello", group_id=GROUP, sender_name="Alice", sender_id="1001")
+        plugin._mark_candidate(event, "hello", ambient=False)
+        umo = str(event.unified_msg_origin)
+        self._seed(plugin, umo, [("Bob", "第一条"), ("Bob", "第二条"), ("Bob", "第三条")])
+        req = types.SimpleNamespace(system_prompt="BASE")
+        plugin.persona.inject_memory_context(event, req)
+        self.assertNotIn("第一条", req.system_prompt)
+        self.assertIn("第二条", req.system_prompt)
+        self.assertIn("第三条", req.system_prompt)

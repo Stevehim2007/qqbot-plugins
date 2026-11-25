@@ -80,6 +80,10 @@ DEFAULTS: dict[str, Any] = {
     "inherit_astrbot_wake_prefix": True,
     # Ambient group participation.
     "ambient_group_chat_enabled": False,
+    "group_context_enabled": True,
+    "group_context_limit": 30,
+    "group_context_ttl_seconds": 3600,
+    "group_context_max_chars": 3000,
     "ambient_group_keywords": ["机器人", "小助手"],
     "ambient_group_keyword_probability": 0.5,
     "ambient_group_min_interval_seconds": 60,
