@@ -16,15 +16,17 @@ from astrbot.api.star import Context, Star, StarTools, register
 
 try:
     from . import aux_ai
+    from . import buffers as bank_buffers
     from . import memory_router as router
     from . import store as bank_store
 except ImportError:  # AstrBot loads plugin modules as top-level
     import aux_ai  # type: ignore[no-redef]
+    import buffers as bank_buffers  # type: ignore[no-redef]
     import memory_router as router  # type: ignore[no-redef]
     import store as bank_store  # type: ignore[no-redef]
 
 PLUGIN_NAME = "qqbot_memory_bank"
-PLUGIN_VERSION = "0.7.1"
+PLUGIN_VERSION = "0.7.2"
 DEFAULTS = {
     "enabled": True,
     "digest_enabled": True,
@@ -158,8 +160,7 @@ class MemoryBankPlugin(Star):
         self.config_obj = config if isinstance(config, dict) else {}
         self._store: bank_store.KnowledgeStore | None = None
         self._store_path: Path | None = None
-        self._turns: dict[str, list[str]] = {}
-        self._digest_turns: dict[str, list[str]] = {}
+        self._buffers: bank_buffers.BufferStore | None = None
 
     def _cfg(self, key: str, default: Any = None) -> Any:
         value = self.config_obj.get(key, DEFAULTS.get(key, default))
@@ -173,6 +174,15 @@ class MemoryBankPlugin(Star):
             return Path(StarTools.get_data_dir(PLUGIN_NAME))
         except Exception:
             return Path("data/plugin_data") / PLUGIN_NAME
+
+    def _buffer_store(self) -> bank_buffers.BufferStore:
+        """Rolling extraction/digest buffers persisted next to knowledge.db."""
+
+        path = self._data_dir() / "buffers.json"
+        if self._buffers is None or self._buffers.path != path:
+            self._buffers = bank_buffers.BufferStore(path)
+            self._buffers.load()
+        return self._buffers
 
     def _get_store(self) -> bank_store.KnowledgeStore:
         path = self._data_dir() / "knowledge.db"
@@ -481,25 +491,29 @@ class MemoryBankPlugin(Star):
             pass
         scope = event_scope(event)
         actor_hash, actor_label = event_actor(event)
-        buffer_key = f"{scope}|{actor_hash}"
-        buffer = self._turns.setdefault(buffer_key, [])
-        buffer.append(text[:500])
-        del buffer[:-10]
         every = max(2, min(20, int(self._cfg("extract_every_turns", 4))))
-        if len(buffer) < every:
-            return
-        messages = list(buffer)
-        self._turns[buffer_key] = []
-        asyncio.create_task(
-            self._extract_and_store(
-                scope,
-                event_persona(event),
-                str(getattr(event, "unified_msg_origin", "") or ""),
-                messages,
-                actor_hash,
-                actor_label,
-            )
+        batches = self._buffer_store().add_turn(
+            scope,
+            actor_hash=actor_hash,
+            actor_label=actor_label,
+            text=text[:500],
+            every=every,
         )
+        if not batches:
+            return
+        umo = str(getattr(event, "unified_msg_origin", "") or "")
+        persona_id = event_persona(event)
+        for batch_actor_hash, batch_actor_label, messages in batches:
+            asyncio.create_task(
+                self._extract_and_store(
+                    scope,
+                    persona_id,
+                    umo,
+                    messages,
+                    batch_actor_hash,
+                    batch_actor_label,
+                )
+            )
 
     def _observe_digest(self, event: AstrMessageEvent) -> None:
         """Collect every message into a per-group rolling digest buffer.
@@ -524,14 +538,10 @@ class MemoryBankPlugin(Star):
                 return
             sender = str(getattr(event, "sender_name", "") or "").strip()[:24]
             line = f"{sender}：{text[:200]}" if sender else text[:200]
-            buffer = self._digest_turns.setdefault(umo, [])
-            buffer.append(line)
             every = max(5, min(200, int(self._cfg("digest_every_turns", 20) or 20)))
-            del buffer[:-every]
-            if len(buffer) < every:
+            messages = self._buffer_store().add_digest_line(umo, line, every=every)
+            if not messages:
                 return
-            messages = list(buffer)
-            self._digest_turns[umo] = []
             asyncio.create_task(
                 self._summarize_context(
                     umo,
@@ -624,6 +634,14 @@ class MemoryBankPlugin(Star):
             limit = max(1, min(10, int(self._cfg("max_facts_per_extract", 5))))
             min_conf = max(0.0, min(1.0, float(self._cfg("routing_min_confidence", 0.6))))
             auto_core = bool(self._cfg("auto_write_core_memory", False))
+            logger.info(
+                "memory extract: scope=%s actor=%s messages=%d routes=%d source=%s",
+                scope,
+                actor_label or actor_hash[:8] or "-",
+                len(messages),
+                len(routes),
+                source,
+            )
             for item in routes[:limit]:
                 route = str(item.get("route") or "ignore").strip().lower()
                 content = str(item.get("content") or "").strip()
