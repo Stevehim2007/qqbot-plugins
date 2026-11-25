@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 try:  # package import
     from . import persona_bridge as persona_bridge_engine
@@ -676,6 +679,12 @@ class PersonaService:
                         + "\n".join(lines)
                     )
                     event.set_extra("qqbot_core_reply_group_context_injected", True)
+                    logger.info(
+                        "group context injected: messages=%d chars=%d group=%s",
+                        len(lines) - 1,
+                        used,
+                        self._safe_group_id(event),
+                    )
             except Exception:
                 pass
         if self.config.bool("ambient_group_chat_enabled"):
