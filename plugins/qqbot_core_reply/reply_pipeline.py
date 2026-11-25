@@ -698,6 +698,15 @@ class ReplyPipeline:
                 policy_params.get("participation.mode")
                 or self.config.string("participation.mode", "probability")
             ).lower()
+            # Record every inbound message before any participation decision:
+            # 「群聊上下文」要能看到没有回复的对话，否则概率=0 的群会彻底失忆。
+            history = self.history_for(event)
+            self.remember_history(
+                event,
+                text,
+                has_image=has_image,
+                has_face=has_face,
+            )
             if (
                 not is_private
                 and not mentioned
@@ -712,13 +721,6 @@ class ReplyPipeline:
                 )
                 self.block_default_llm(event)
                 return None
-            history = self.history_for(event)
-            self.remember_history(
-                event,
-                text,
-                has_image=has_image,
-                has_face=has_face,
-            )
             mode = ""
             if not explicit and not is_private and participation_mode == "unified":
                 try:

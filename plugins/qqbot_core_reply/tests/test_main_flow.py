@@ -823,6 +823,17 @@ class SilenceNudgeTests(unittest.TestCase):
         umo = str(event.unified_msg_origin)
         self.assertEqual(plugin.pipeline.state.ignored_group_count(umo), 1)
 
+    def test_probability_zero_group_still_records_history(self):
+        plugin, _ctx, _probabilities = self._skipping_pipeline(
+            {"participation.group_probability": 0.0}
+        )
+        event = group_event("概率为零也要记住这句")
+        run(collect_event(plugin, event))
+        self.assertFalse(event.llm_requested)
+        umo = str(event.unified_msg_origin)
+        texts = [item.get("text") for item in plugin.pipeline.state.history_for(umo)]
+        self.assertIn("概率为零也要记住这句", texts)
+
     def test_forced_participation_after_configured_silent_skips(self):
         plugin, _ctx, probabilities = self._skipping_pipeline(
             {"participation.silence_nudge_after": 2}
